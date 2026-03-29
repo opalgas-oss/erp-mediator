@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+ 
+    // Fungsi helper — bisa dipakai di semua rules
+    function isSignedIn() {
+              return request.auth != null;
+    }
+    function getRole() {
+      return request.auth.token.role;
+    }
+    function getTenantId() {
+      return request.auth.token.tenant_id;
+    }
+    function isPlatformOwner() {
+      return request.auth.token.is_platform_owner == true;
+    }
+    function belongsToTenant(tId) {
+      return getTenantId() == tId;
+    }
+    function isTenantAdmin(tId) {
+      return getRole() in ['SUPER_ADMIN','DISPATCHER','FINANCE','SUPPORT']
+        && belongsToTenant(tId);
+    }
+ 
+    // Platform Owner bisa akses segalanya
+    match /platform_owners/{ownerId} {
+      allow read, write: if isPlatformOwner();
+    }
+ 
+    // Konfigurasi tenant — hanya admin tenant sendiri
+    match /tenants/{tenantId}/config/{key} {
+      allow read: if isSignedIn() && belongsToTenant(tenantId);
+      allow write: if isTenantAdmin(tenantId) || isPlatformOwner();
+    }
+ 
+    // Orders — customer bisa buat, admin bisa update
+    match /tenants/{tenantId}/orders/{orderId} {
+      allow read: if isTenantAdmin(tenantId)
+        || (isSignedIn()
+            && resource.data.customer_info.uid == request.auth.uid
+            && belongsToTenant(tenantId));
+      allow create: if isSignedIn()
+        && getRole() == 'CUSTOMER'
+        && belongsToTenant(tenantId);
+      allow update: if isTenantAdmin(tenantId);
+ 
+      // Chat — tidak bisa diedit atau dihapus, SELAMANYA
+      match /chat_messages/{msgId} {
+        allow create: if isSignedIn() && belongsToTenant(tenantId);
+        allow update, delete: if false;
+      }
+    }
+ 
+    // Audit logs — append only, tidak bisa diubah
+    match /tenants/{tenantId}/audit_logs/{logId} {
+              allow read: if isTenantAdmin(tenantId) || isPlatformOwner();
+      allow create: if isSignedIn() && belongsToTenant(tenantId);
+      allow update, delete: if false;
+    }
+ 
+    // Transaksi keuangan — hanya Finance dan Super Admin
+    match /tenants/{tenantId}/escrow_transactions/{txId} {
+      allow read, write: if getRole() in ['SUPER_ADMIN','FINANCE']
+        && belongsToTenant(tenantId);
+    }
+  }
+}
