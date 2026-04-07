@@ -1,8 +1,10 @@
 // Halaman utama homepage — Server Component, merakit semua komponen
 // metadata diekspor di sini agar Next.js bisa inject ke <head>
 import type { Metadata } from 'next'
-import StatsBar from '@/components/homepage/StatsBar'
+import dynamic from 'next/dynamic'
 import HomepageClient from '@/components/homepage/HomepageClient'
+
+const StatsBar = dynamic(() => import('@/components/homepage/StatsBar'), { ssr: false })
 
 export const metadata: Metadata = {
   title: 'Mediator — Platform Jasa Terpercaya Indonesia',
@@ -10,6 +12,6 @@ export const metadata: Metadata = {
 }
 
 export default function Home() {
-  // StatsBar adalah async Server Component — di-render di sini lalu dikirim ke client sebagai ReactNode
+  // StatsBar di-load secara dinamis di browser (ssr: false) — tidak di-render saat build
   return <HomepageClient statsBar={<StatsBar />} />
 }
