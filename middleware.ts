@@ -64,82 +64,87 @@ function decodeJwtPayload(token: string): JwtPayload | null {
 
 // ─── Middleware Utama ─────────────────────────────────────────────────────
 export function middleware(request: NextRequest): NextResponse {
-  const { pathname } = request.nextUrl
+  try {
+    const { pathname } = request.nextUrl
 
-  // Guard 1 — Route publik eksak → langsung izinkan
-  if (PUBLIC_PATHS.includes(pathname)) {
-    return NextResponse.next()
-  }
-
-  // Guard 2 — Prefix publik: Next.js internal dan auth API
-  if (
-    pathname.startsWith('/_next/') ||
-    pathname.startsWith('/api/auth/')
-  ) {
-    return NextResponse.next()
-  }
-
-  // Guard 3 — File statis berdasarkan ekstensi
-  if (STATIC_EXTENSIONS.test(pathname)) {
-    return NextResponse.next()
-  }
-
-  // Guard 4 — Route /favicon.ico
-  if (pathname === '/favicon.ico') {
-    return NextResponse.next()
-  }
-
-  // Guard 5 — Proteksi route /dashboard
-  if (pathname.startsWith('/dashboard')) {
-    // Ambil session cookie (JWT)
-    const sessionToken = request.cookies.get('session')?.value
-
-    // Tidak ada session → redirect ke login
-    if (!sessionToken) {
-      return NextResponse.redirect(new URL('/login', request.url))
+    // Guard 1 — Route publik eksak → langsung izinkan
+    if (PUBLIC_PATHS.includes(pathname)) {
+      return NextResponse.next()
     }
 
-    // Decode payload JWT tanpa verifikasi kriptografi
-    const payload = decodeJwtPayload(sessionToken)
-
-    // Decode gagal atau tidak ada field role → redirect ke login
-    if (!payload || typeof payload.role !== 'string') {
-      return NextResponse.redirect(new URL('/login', request.url))
+    // Guard 2 — Prefix publik: Next.js internal dan auth API
+    if (
+      pathname.startsWith('/_next/') ||
+      pathname.startsWith('/api/auth/')
+    ) {
+      return NextResponse.next()
     }
 
-    const userRole = payload.role
+    // Guard 3 — File statis berdasarkan ekstensi
+    if (STATIC_EXTENSIONS.test(pathname)) {
+      return NextResponse.next()
+    }
 
-    // Tentukan role yang dibutuhkan berdasarkan path dashboard
-    let requiredRole: string | null = null
-    for (const [dashboardPath, role] of Object.entries(DASHBOARD_ROLE_MAP)) {
-      if (pathname.startsWith(dashboardPath)) {
-        requiredRole = role
-        break
+    // Guard 4 — Route /favicon.ico
+    if (pathname === '/favicon.ico') {
+      return NextResponse.next()
+    }
+
+    // Guard 5 — Proteksi route /dashboard
+    if (pathname.startsWith('/dashboard')) {
+      // Ambil session cookie (JWT)
+      const sessionToken = request.cookies.get('session')?.value
+
+      // Tidak ada session → redirect ke login
+      if (!sessionToken) {
+        return NextResponse.redirect(new URL('/login', request.url))
       }
+
+      // Decode payload JWT tanpa verifikasi kriptografi
+      const payload = decodeJwtPayload(sessionToken)
+
+      // Decode gagal atau tidak ada field role → redirect ke login
+      if (!payload || typeof payload.role !== 'string') {
+        return NextResponse.redirect(new URL('/login', request.url))
+      }
+
+      const userRole = payload.role
+
+      // Tentukan role yang dibutuhkan berdasarkan path dashboard
+      let requiredRole: string | null = null
+      for (const [dashboardPath, role] of Object.entries(DASHBOARD_ROLE_MAP)) {
+        if (pathname.startsWith(dashboardPath)) {
+          requiredRole = role
+          break
+        }
+      }
+
+      // Path /dashboard tidak dikenali → langsung izinkan (handled di page level)
+      if (requiredRole === null) {
+        return NextResponse.next()
+      }
+
+      // Role cocok → izinkan akses
+      if (userRole === requiredRole) {
+        return NextResponse.next()
+      }
+
+      // Role tidak cocok → redirect ke dashboard yang sesuai role user
+      const redirectPath = ROLE_REDIRECT[userRole]
+      if (redirectPath) {
+        return NextResponse.redirect(new URL(redirectPath, request.url))
+      }
+
+      // Role tidak dikenali sama sekali → redirect ke login
+      return NextResponse.redirect(new URL('/login', request.url))
     }
 
-    // Path /dashboard tidak dikenali → langsung izinkan (handled di page level)
-    if (requiredRole === null) {
-      return NextResponse.next()
-    }
-
-    // Role cocok → izinkan akses
-    if (userRole === requiredRole) {
-      return NextResponse.next()
-    }
-
-    // Role tidak cocok → redirect ke dashboard yang sesuai role user
-    const redirectPath = ROLE_REDIRECT[userRole]
-    if (redirectPath) {
-      return NextResponse.redirect(new URL(redirectPath, request.url))
-    }
-
-    // Role tidak dikenali sama sekali → redirect ke login
-    return NextResponse.redirect(new URL('/login', request.url))
+    // Semua path lain yang tidak masuk kategori di atas → izinkan
+    return NextResponse.next()
+  } catch {
+    // Middleware crash → tetap izinkan request agar aplikasi tidak lumpuh total
+    return NextResponse.next()
   }
-
-  // Semua path lain yang tidak masuk kategori di atas → izinkan
-  return NextResponse.next()
 }
 
 // ─── Matcher Config ───────────────────────────────────────────────────────
