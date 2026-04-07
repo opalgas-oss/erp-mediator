@@ -35,6 +35,9 @@ const ROLE_REDIRECT: Record<string, string> = {
 // ─── Tipe Payload JWT ────────────────────────────────────────────────────
 interface JwtPayload {
   role?: string
+  // Durasi timeout sesi dalam menit — diembed ke claims saat login berhasil
+  // Kalau field ini tidak ada di claims: timeout check dilewati (tidak error)
+  session_timeout_minutes?: number
   [key: string]: unknown
 }
 
@@ -108,6 +111,33 @@ export function middleware(request: NextRequest): NextResponse {
         return NextResponse.redirect(new URL('/login', request.url))
       }
 
+      // ── Cek session timeout ────────────────────────────────────────────
+      // Baca session_timeout_minutes dari JWT claims — diembed saat login berhasil
+      // Middleware berjalan di Edge Runtime: tidak bisa import lib/policy.ts
+      // Kalau field tidak ada di claims → skip check tanpa error
+      const timeoutMenit =
+        typeof payload.session_timeout_minutes === 'number' &&
+        payload.session_timeout_minutes > 0
+          ? payload.session_timeout_minutes
+          : null
+
+      if (timeoutMenit !== null) {
+        const sekarang      = Date.now()
+        const lastActiveStr = request.cookies.get('session_last_active')?.value
+
+        if (lastActiveStr) {
+          const lastActiveMs = parseInt(lastActiveStr, 10)
+          const timeoutMs    = timeoutMenit * 60 * 1000
+
+          // Sesi sudah melewati batas inaktif → redirect ke login dengan alasan timeout
+          if (!isNaN(lastActiveMs) && sekarang - lastActiveMs > timeoutMs) {
+            return NextResponse.redirect(new URL('/login?reason=timeout', request.url))
+          }
+        }
+        // Cookie belum ada (request pertama) atau belum timeout → lanjut
+        // session_last_active diperbarui di respons valid di bawah
+      }
+
       const userRole = payload.role
 
       // Tentukan role yang dibutuhkan berdasarkan path dashboard
@@ -121,11 +151,32 @@ export function middleware(request: NextRequest): NextResponse {
 
       // Path /dashboard tidak dikenali → langsung izinkan (handled di page level)
       if (requiredRole === null) {
+        // Perbarui session_last_active jika timeout dikonfigurasi
+        if (timeoutMenit !== null) {
+          const res = NextResponse.next()
+          res.cookies.set('session_last_active', String(Date.now()), {
+            path:     '/',
+            maxAge:   timeoutMenit * 60,
+            sameSite: 'strict',
+            httpOnly: true,
+          })
+          return res
+        }
         return NextResponse.next()
       }
 
-      // Role cocok → izinkan akses
+      // Role cocok → izinkan akses, perbarui session_last_active
       if (userRole === requiredRole) {
+        if (timeoutMenit !== null) {
+          const res = NextResponse.next()
+          res.cookies.set('session_last_active', String(Date.now()), {
+            path:     '/',
+            maxAge:   timeoutMenit * 60,
+            sameSite: 'strict',
+            httpOnly: true,
+          })
+          return res
+        }
         return NextResponse.next()
       }
 
