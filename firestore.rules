@@ -1,68 +1,232 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
- 
-    // Fungsi helper — bisa dipakai di semua rules
-    function isSignedIn() {
-              return request.auth != null;
+
+    // === FUNGSI HELPER ===
+    // Cek user sudah login
+    function isAuthenticated() {
+      return request.auth != null;
     }
-    function getRole() {
-      return request.auth.token.role;
+
+    // Cek role dari JWT Custom Claims
+    function hasRole(role) {
+      return isAuthenticated() && request.auth.token.role == role;
     }
-    function getTenantId() {
-      return request.auth.token.tenant_id;
+
+    // Cek tenant_id dari JWT cocok dengan dokumen
+    function isSameTenant(tenantId) {
+      return isAuthenticated() && request.auth.token.tenant_id == tenantId;
     }
-    function isPlatformOwner() {
-      return request.auth.token.is_platform_owner == true;
+
+    // Cek SuperAdmin
+    function isSuperAdmin() {
+      return hasRole('SUPERADMIN');
     }
-    function belongsToTenant(tId) {
-      return getTenantId() == tId;
+
+    // Cek AdminTenant untuk tenant tertentu
+    function isAdminTenant(tenantId) {
+      return hasRole('ADMIN_TENANT') && isSameTenant(tenantId);
     }
-    function isTenantAdmin(tId) {
-      return getRole() in ['SUPER_ADMIN','DISPATCHER','FINANCE','SUPPORT']
-        && belongsToTenant(tId);
+
+    // Cek Vendor untuk tenant tertentu
+    function isVendor(tenantId) {
+      return hasRole('VENDOR') && isSameTenant(tenantId);
     }
- 
-    // Platform Owner bisa akses segalanya
+
+    // Cek Customer untuk tenant tertentu
+    function isCustomer(tenantId) {
+      return hasRole('CUSTOMER') && isSameTenant(tenantId);
+    }
+
+    // Cek user adalah member dari tenant (role apapun)
+    function isTenantMember(tenantId) {
+      return isAuthenticated() && isSameTenant(tenantId);
+    }
+
+    // Cek dokumen milik user sendiri
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // === PLATFORM CONFIG ===
+    // Hanya bisa ditulis Admin SDK (server). Client hanya baca jika authenticated.
+    match /platform_config/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if false; // hanya Admin SDK yang bisa write
+    }
+
+    // === PLATFORM OWNERS ===
     match /platform_owners/{ownerId} {
-      allow read, write: if isPlatformOwner();
+      allow read: if isSuperAdmin() || isOwner(ownerId);
+      allow write: if isSuperAdmin();
     }
- 
-    // Konfigurasi tenant — hanya admin tenant sendiri
-    match /tenants/{tenantId}/config/{key} {
-      allow read: if isSignedIn() && belongsToTenant(tenantId);
-      allow write: if isTenantAdmin(tenantId) || isPlatformOwner();
-    }
- 
-    // Orders — customer bisa buat, admin bisa update
-    match /tenants/{tenantId}/orders/{orderId} {
-      allow read: if isTenantAdmin(tenantId)
-        || (isSignedIn()
-            && resource.data.customer_info.uid == request.auth.uid
-            && belongsToTenant(tenantId));
-      allow create: if isSignedIn()
-        && getRole() == 'CUSTOMER'
-        && belongsToTenant(tenantId);
-      allow update: if isTenantAdmin(tenantId);
- 
-      // Chat — tidak bisa diedit atau dihapus, SELAMANYA
-      match /chat_messages/{msgId} {
-        allow create: if isSignedIn() && belongsToTenant(tenantId);
-        allow update, delete: if false;
+
+    // === TENANTS ===
+    match /tenants/{tenantId} {
+
+      // Config tenant — bisa dibaca semua member tenant, ditulis AdminTenant/SuperAdmin
+      match /config/{document=**} {
+        allow read: if isSuperAdmin() || isTenantMember(tenantId);
+        allow write: if isSuperAdmin() || isAdminTenant(tenantId);
       }
-    }
- 
-    // Audit logs — append only, tidak bisa diubah
-    match /tenants/{tenantId}/audit_logs/{logId} {
-              allow read: if isTenantAdmin(tenantId) || isPlatformOwner();
-      allow create: if isSignedIn() && belongsToTenant(tenantId);
-      allow update, delete: if false;
-    }
- 
-    // Transaksi keuangan — hanya Finance dan Super Admin
-    match /tenants/{tenantId}/escrow_transactions/{txId} {
-      allow read, write: if getRole() in ['SUPER_ADMIN','FINANCE']
-        && belongsToTenant(tenantId);
+
+      // Users — baca: admin + diri sendiri. Tulis: admin atau diri sendiri (profile update)
+      match /users/{userId} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId) || isOwner(userId);
+        allow create: if isSuperAdmin() || isAdminTenant(tenantId);
+        allow update: if isSuperAdmin() || isAdminTenant(tenantId) || isOwner(userId);
+        allow delete: if isSuperAdmin();
+      }
+
+      // Vendor registrations — vendor bisa create (daftar), admin bisa baca dan update status
+      match /vendor_registrations/{vendorId} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId) || (isVendor(tenantId) && isOwner(vendorId));
+        allow create: if isAuthenticated() && isSameTenant(tenantId);
+        allow update: if isSuperAdmin() || isAdminTenant(tenantId);
+        allow delete: if isSuperAdmin();
+      }
+
+      // Vendors dan products — bisa dibaca semua member tenant
+      match /vendors/{vendorId} {
+        allow read: if isSuperAdmin() || isTenantMember(tenantId);
+        allow write: if isSuperAdmin() || isAdminTenant(tenantId) || (isVendor(tenantId) && isOwner(vendorId));
+
+        match /products/{productId} {
+          allow read: if isSuperAdmin() || isTenantMember(tenantId);
+          allow write: if isSuperAdmin() || isAdminTenant(tenantId) || (isVendor(tenantId) && isOwner(vendorId));
+        }
+      }
+
+      // Categories dan cities — bisa dibaca semua (termasuk yang belum login untuk browse)
+      match /categories/{categoryId} {
+        allow read: if true;
+        allow write: if isSuperAdmin() || isAdminTenant(tenantId);
+      }
+
+      match /cities/{cityId} {
+        allow read: if true;
+        allow write: if isSuperAdmin() || isAdminTenant(tenantId);
+      }
+
+      // Orders — customer bisa create, semua member bisa baca order milik sendiri
+      match /orders/{orderId} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId) ||
+                       (isTenantMember(tenantId) && (
+                         resource.data.customer_id == request.auth.uid ||
+                         resource.data.vendor_id == request.auth.uid
+                       ));
+        allow create: if isCustomer(tenantId);
+        allow update: if isSuperAdmin() || isAdminTenant(tenantId);
+        allow delete: if isSuperAdmin();
+
+        // Bids — vendor bisa create bid, semua pihak terkait bisa baca
+        match /bids/{bidId} {
+          allow read: if isSuperAdmin() || isAdminTenant(tenantId) ||
+                         (isTenantMember(tenantId) && (
+                           resource.data.vendor_id == request.auth.uid
+                         ));
+          allow create: if isVendor(tenantId);
+          allow update: if isSuperAdmin() || isAdminTenant(tenantId);
+          allow delete: if isSuperAdmin();
+        }
+
+        // Chat messages — PERMANEN, tidak bisa dihapus siapapun kecuali SuperAdmin
+        match /chat_messages/{msgId} {
+          allow read: if isSuperAdmin() || isAdminTenant(tenantId) || isTenantMember(tenantId);
+          allow create: if isTenantMember(tenantId);
+          allow update: if false;
+          allow delete: if isSuperAdmin();
+        }
+      }
+
+      // Escrow transactions — hanya admin dan SuperAdmin
+      match /escrow_transactions/{txId} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId);
+        allow write: if isSuperAdmin();
+      }
+
+      // Dispute cases
+      match /dispute_cases/{caseId} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId) || isTenantMember(tenantId);
+        allow create: if isTenantMember(tenantId);
+        allow update: if isSuperAdmin() || isAdminTenant(tenantId);
+        allow delete: if isSuperAdmin();
+      }
+
+      // Chat rooms dispute anonim
+      match /chat_rooms/{roomId} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId) || isTenantMember(tenantId);
+        allow create: if isSuperAdmin() || isAdminTenant(tenantId);
+        allow update: if isSuperAdmin() || isAdminTenant(tenantId);
+        allow delete: if isSuperAdmin();
+      }
+
+      // Session logs — PERMANEN, tidak bisa dihapus
+      match /session_logs/{sessionId} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId) || isOwner(resource.data.uid);
+        allow create: if isTenantMember(tenantId);
+        allow update: if isTenantMember(tenantId); // untuk update logout_at
+        allow delete: if false;
+      }
+
+      // Trusted devices — user bisa kelola device sendiri
+      match /trusted_devices/{deviceId} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId) || isOwner(resource.data.uid);
+        allow create: if isTenantMember(tenantId);
+        allow update: if isTenantMember(tenantId);
+        allow delete: if isSuperAdmin() || isAdminTenant(tenantId) || isOwner(resource.data.uid);
+      }
+
+      // OTP codes — hanya user sendiri dan admin
+      match /otp_codes/{uid} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId) || isOwner(uid);
+        allow write: if isSuperAdmin() || isAdminTenant(tenantId) || isOwner(uid);
+      }
+
+      // User presence — user update presence sendiri, admin bisa baca semua
+      match /user_presence/{uid} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId);
+        allow write: if isTenantMember(tenantId) && isOwner(uid);
+      }
+
+      // Activity logs — APPEND-ONLY, tidak bisa update atau delete
+      match /activity_logs/{logId} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId);
+        allow create: if isTenantMember(tenantId);
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // Audit logs — APPEND-ONLY, tidak bisa update atau delete
+      match /audit_logs/{logId} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId);
+        allow create: if isTenantMember(tenantId);
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // WA queue — hanya server (Admin SDK) yang bisa write
+      match /wa_queue/{jobId} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId);
+        allow write: if false;
+      }
+
+      // Disbursement queue — hanya server (Admin SDK) yang bisa write
+      match /disbursement_queue/{jobId} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId);
+        allow write: if false;
+      }
+
+      // WA numbers dan payment methods — admin manage
+      match /wa_numbers/{numberId} {
+        allow read: if isSuperAdmin() || isAdminTenant(tenantId);
+        allow write: if isSuperAdmin() || isAdminTenant(tenantId);
+      }
+
+      match /payment_methods/{id} {
+        allow read: if isTenantMember(tenantId);
+        allow write: if isSuperAdmin() || isAdminTenant(tenantId);
+      }
     }
   }
 }

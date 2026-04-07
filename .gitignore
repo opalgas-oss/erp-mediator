@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Firebase Admin SDK credential
+erp-mediator-firebase-adminsdk-*.json
+
+# Firebase Service Account Key — jangan pernah commit file ini
+scripts/serviceAccountKey.json
+
+# Claude Code internal memory — bukan bagian dari source project
+.claude/
