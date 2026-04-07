@@ -9,10 +9,10 @@ export default async function StatsBar() {
     const showStatsBar = await getConfigValue('homepage', 'show_stats_bar')
     if (!showStatsBar) return null
 
-    // Baca nilai statistik dari config dengan fallback '0' kalau field tidak ada
-    const mitraCount = await getConfigValue('homepage', 'stats_mitra_count').catch(() => '0') as string
-    const kotaCount = await getConfigValue('homepage', 'stats_kota_count').catch(() => '0') as string
-    const responsMenit = await getConfigValue('homepage', 'stats_respons_menit').catch(() => '0') as string
+    // Baca nilai statistik dari config — kalau gagal, lempar ke catch di luar → return null
+    const mitraCount = await getConfigValue('homepage', 'stats_mitra_count') as string
+    const kotaCount = await getConfigValue('homepage', 'stats_kota_count') as string
+    const responsMenit = await getConfigValue('homepage', 'stats_respons_menit') as string
 
     // Data stats yang akan ditampilkan
     const stats = [
