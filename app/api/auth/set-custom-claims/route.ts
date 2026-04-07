@@ -1,83 +1,102 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+// app/api/auth/set-custom-claims/route.ts
+// POST — Set custom claims JWT: role, tenant_id, session_timeout_minutes
+// Dipanggil setelah login berhasil — bukan dari browser langsung
 
-// ============================================================
-// INISIALISASI FIREBASE ADMIN — Hanya berjalan di server
-// Firebase Admin berbeda dari Firebase biasa di lib/firebase.ts
-// Firebase biasa = untuk browser, Firebase Admin = untuk server
-// ============================================================
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { initializeApp, getApps, cert } from 'firebase-admin/app'
+import { getAuth } from 'firebase-admin/auth'
+import { getFirestore } from 'firebase-admin/firestore'
+import { getEffectivePolicy } from '@/lib/policy'
+
+// ─── Inisialisasi Firebase Admin ──────────────────────────────────────────────
+// Hanya inisialisasi sekali — getApps() mencegah duplikasi instance
 function initAdmin() {
   if (getApps().length === 0) {
     initializeApp({
       credential: cert({
-        projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
+        projectId:   process.env.FIREBASE_ADMIN_PROJECT_ID,
         clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        privateKey:  process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
       }),
-    });
+    })
   }
 }
 
-// ============================================================
-// POST /api/auth/set-custom-claims
-// Menerima: uid, role, tenant_id
-// Melakukan: set custom claims ke token JWT user
-// Keamanan: hanya bisa dipanggil dari server — bukan dari browser langsung
-// ============================================================
+// ─── Skema Validasi Input ─────────────────────────────────────────────────────
+const RequestSchema = z.object({
+  uid:       z.string().min(1, 'uid wajib diisi'),
+  role:      z.string().min(1, 'role wajib diisi'),
+  tenant_id: z.string().min(1, 'tenant_id wajib diisi'),
+})
+
+// ─── Role yang Diizinkan ──────────────────────────────────────────────────────
+const ROLE_DIIZINKAN = ['CUSTOMER', 'VENDOR', 'ADMIN_TENANT', 'SUPERADMIN'] as const
+
+// ─── Handler POST ─────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
-    initAdmin();
+    initAdmin()
 
-    const body = await request.json();
-    const { uid, role, tenant_id } = body;
+    // ── Validasi input dengan Zod ───────────────────────────────────────────
+    const body = await request.json()
+    const parsed = RequestSchema.safeParse(body)
 
-    // Validasi input — pastikan semua field ada
-    if (!uid || !role || !tenant_id) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'uid, role, dan tenant_id wajib diisi' },
+        { error: parsed.error.errors[0].message },
         { status: 400 }
-      );
+      )
     }
 
-    // Validasi role — hanya role yang diizinkan
-    const roleYangDiizinkan = ['CUSTOMER', 'VENDOR', 'SUPER_ADMIN', 'DISPATCHER', 'FINANCE', 'SUPPORT'];
-    if (!roleYangDiizinkan.includes(role)) {
+    const { uid, role, tenant_id } = parsed.data
+
+    // ── Validasi role — hanya role yang terdaftar ───────────────────────────
+    if (!ROLE_DIIZINKAN.includes(role as typeof ROLE_DIIZINKAN[number])) {
       return NextResponse.json(
-        { error: 'Role tidak valid' },
+        { error: `Role tidak valid. Role yang diizinkan: ${ROLE_DIIZINKAN.join(', ')}` },
         { status: 400 }
-      );
+      )
     }
 
-    // Set custom claims ke token JWT user di Firebase
-    // Ini yang membuat middleware bisa baca role dari token
+    // ── Baca session_timeout_minutes dari policy ────────────────────────────
+    // Merge 2 level: platform default + tenant override via getEffectivePolicy
+    // Field: security_login.session_timeout_minutes (angka menit)
+    // Jika policy tidak ada atau bukan angka positif → embed null (timeout dinonaktifkan)
+    const policy = await getEffectivePolicy(tenant_id, 'security_login')
+    const timeoutMenit =
+      typeof policy.session_timeout_minutes === 'number' &&
+      policy.session_timeout_minutes > 0
+        ? policy.session_timeout_minutes
+        : null
+
+    // ── Set custom claims ke JWT user di Firebase ───────────────────────────
+    // Middleware membaca claims ini di Edge Runtime untuk RBAC dan timeout check
     await getAuth().setCustomUserClaims(uid, {
-      role: role,
-      tenant_id: tenant_id,
-      is_platform_owner: false,
-    });
+      role,
+      tenant_id,
+      is_platform_owner:      false,
+      session_timeout_minutes: timeoutMenit,  // null = timeout tidak aktif
+    })
 
-    // Catat audit log ke Firestore
-    const db = getFirestore();
+    // ── Catat audit log ke Firestore ────────────────────────────────────────
+    const db = getFirestore()
     await db.collection(`tenants/${tenant_id}/audit_logs`).add({
-      action: 'SET_CUSTOM_CLAIMS',
-      actor: uid,
-      role: role,
-      tenant_id: tenant_id,
-      timestamp: new Date(),
-    });
+      action:                  'SET_CUSTOM_CLAIMS',
+      actor:                   uid,
+      role,
+      tenant_id,
+      session_timeout_minutes: timeoutMenit,
+      timestamp:               new Date(),
+    })
 
     return NextResponse.json(
       { success: true, message: 'Custom claims berhasil ditetapkan' },
       { status: 200 }
-    );
+    )
 
-  } catch (error: any) {
-    console.error('Error set-custom-claims:', error);
-    return NextResponse.json(
-      { error: error.message || 'Terjadi kesalahan server' },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Terjadi kesalahan server'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
