@@ -48,7 +48,8 @@ type Tahap =
 const FIREBASE_ERRORS: Record<string, string> = {
   'auth/user-not-found':         'Email atau password yang Anda masukkan salah.',
   'auth/wrong-password':         'Email atau password yang Anda masukkan salah.',
-  'auth/invalid-credential':     'Email atau password yang Anda masukkan salah.',
+  'auth/invalid-credential':          'Email atau password yang Anda masukkan salah.',
+  'auth/invalid-login-credentials':   'Email atau password yang Anda masukkan salah.',
   'auth/too-many-requests':      'Terlalu banyak percobaan. Coba lagi beberapa menit.',
   'auth/network-request-failed': 'Gagal terhubung. Periksa koneksi internet.',
   'auth/user-disabled':          'Akun ini dinonaktifkan. Hubungi admin.',
