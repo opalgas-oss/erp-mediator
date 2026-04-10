@@ -71,6 +71,33 @@ interface DataSesiParalel {
   role:     string
 }
 
+// ─── Sub-komponen UI (di luar LoginForm agar tidak remount setiap render) ─────
+
+// Wrapper layout yang sama untuk semua tahap
+function Wrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
+        {children}
+      </Card>
+    </div>
+  )
+}
+
+function SpinnerBiru() {
+  return (
+    <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+  )
+}
+
+function KotakError({ pesan }: { pesan: string }) {
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+      {pesan}
+    </div>
+  )
+}
+
 // ─── Komponen Form Login ───────────────────────────────────────────────────────
 function LoginForm() {
   const router       = useRouter()
@@ -593,31 +620,6 @@ function LoginForm() {
   // ═══════════════════════════════════════════════════════════════════════════
   // RENDER PER TAHAP
   // ═══════════════════════════════════════════════════════════════════════════
-
-  // ── Wrapper layout yang sama untuk semua tahap ────────────────────────────
-  function Wrapper({ children }: { children: React.ReactNode }) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <Card className="w-full max-w-sm">
-          {children}
-        </Card>
-      </div>
-    )
-  }
-
-  function SpinnerBiru() {
-    return (
-      <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-    )
-  }
-
-  function KotakError({ pesan }: { pesan: string }) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-        {pesan}
-      </div>
-    )
-  }
 
   // ── TAHAP 0: Loading GPS ──────────────────────────────────────────────────
   if (tahap === 'LOADING_GPS') {
