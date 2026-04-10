@@ -26,10 +26,7 @@ function initAdmin() {
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
 
 const RequestSchema = z.object({
-  uid:       z.string().min(1, 'uid wajib diisi'),
   email:     z.string().email('Format email tidak valid'),
-  nama:      z.string().min(1, 'nama wajib diisi'),
-  nomor_wa:  z.string().min(1, 'nomor_wa wajib diisi'),
   tenant_id: z.string().min(1, 'tenant_id wajib diisi'),
 })
 
@@ -90,7 +87,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { uid, email, nama, nomor_wa, tenant_id } = parsed.data
+    const { email, tenant_id } = parsed.data
+
+    // ── Cari data user dari Firestore berdasarkan email ───────────────────────
+    const db       = getFirestore()
+    const snapshot = await db
+      .collection('tenants')
+      .doc(tenant_id)
+      .collection('users')
+      .where('email', '==', email)
+      .limit(1)
+      .get()
+
+    if (snapshot.empty) {
+      return NextResponse.json({ error: 'Akun tidak ditemukan' }, { status: 404 })
+    }
+
+    const userDoc  = snapshot.docs[0]
+    const userData = userDoc.data()
+    const uid      = userDoc.id
+    const nama     = (userData.nama as string) || (userData.name as string) || email
+    const nomor_wa = (userData.nomor_wa as string) || (userData.phone as string) || ''
 
     // ── Tambah counter gagal dan evaluasi apakah akun perlu dikunci ───────────
     const result = await incrementLockCount({
