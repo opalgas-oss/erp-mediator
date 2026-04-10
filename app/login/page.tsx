@@ -46,9 +46,9 @@ type Tahap =
 
 // ─── Peta Error Firebase ke Pesan Indonesia ───────────────────────────────────
 const FIREBASE_ERRORS: Record<string, string> = {
-  'auth/user-not-found':         'Email atau password salah. Silakan coba lagi.',
-  'auth/wrong-password':         'Email atau password salah. Silakan coba lagi.',
-  'auth/invalid-credential':     'Email atau password salah. Silakan coba lagi.',
+  'auth/user-not-found':         'Email atau password yang Anda masukkan salah.',
+  'auth/wrong-password':         'Email atau password yang Anda masukkan salah.',
+  'auth/invalid-credential':     'Email atau password yang Anda masukkan salah.',
   'auth/too-many-requests':      'Terlalu banyak percobaan. Coba lagi beberapa menit.',
   'auth/network-request-failed': 'Gagal terhubung. Periksa koneksi internet.',
   'auth/user-disabled':          'Akun ini dinonaktifkan. Hubungi admin.',
