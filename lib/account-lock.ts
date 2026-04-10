@@ -96,16 +96,35 @@ export async function incrementLockCount(data: {
       .doc(data.uid)
 
     // Baca dokumen existing untuk ambil count lama
-    const snap      = await docRef.get()
-    const existing  = snap.exists ? (snap.data() as Partial<AccountLockDoc>) : {}
-    const countBaru = (existing.count || 0) + 1
+    const snap     = await docRef.get()
+    const existing = snap.exists ? (snap.data() as Partial<AccountLockDoc>) : {}
+
+    const sekarang = new Date()
+
+    // Cek apakah kunci sudah expired — kalau ya, reset count sebelum increment
+    // Sehingga percobaan pertama setelah expired dihitung sebagai count = 1
+    let startCount = existing.count || 0
+
+    if (existing.status === 'locked' && existing.lock_until) {
+      // lock_until dari Firestore berupa Timestamp — konversi ke Date
+      const lockUntilRaw  = existing.lock_until as unknown as { toDate?: () => Date }
+      const lockUntilDate = typeof lockUntilRaw.toDate === 'function'
+        ? lockUntilRaw.toDate()
+        : new Date(existing.lock_until as unknown as string)
+
+      if (lockUntilDate <= sekarang) {
+        // Kunci sudah expired — reset count dan status sebelum increment
+        startCount = 0
+        await docRef.set({ count: 0, status: 'unlocked' }, { merge: true })
+      }
+    }
+
+    const countBaru = startCount + 1
 
     // Baca batas dan durasi kunci dari policy — TIDAK boleh hardcode
     const loginPolicy  = await getEffectivePolicy(data.tenantId, 'security_login')
     const maxPercobaan = loginPolicy.max_login_attempts
     const durasiMenit  = loginPolicy.lock_duration_minutes
-
-    const sekarang = new Date()
 
     if (countBaru >= maxPercobaan) {
       // ── Akun dikunci ──────────────────────────────────────────────────────

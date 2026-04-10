@@ -249,7 +249,7 @@ function LoginForm() {
       const dataLock = await resLock.json()
 
       if (dataLock.locked) {
-        setError(`Terlalu banyak percobaan. Akun dikunci hingga ${dataLock.lock_until_wib}. Coba lagi nanti.`)
+        setError(`Terlalu banyak percobaan. Akun dikunci hingga pukul ${dataLock.lock_until_wib}. Coba lagi nanti.`)
         setIsLoading(false)
         return
       }
@@ -333,7 +333,7 @@ function LoginForm() {
 
         if (dataLockAccount.locked) {
           // Akun baru saja dikunci — tampilkan pesan kunci dan hentikan
-          setError(`Terlalu banyak percobaan. Akun dikunci hingga ${dataLockAccount.lock_until_wib}. Coba lagi nanti.`)
+          setError(`Terlalu banyak percobaan. Akun dikunci hingga pukul ${dataLockAccount.lock_until_wib}. Coba lagi nanti.`)
           setIsLoading(false)
           return
         }
