@@ -99,30 +99,6 @@ function KotakError({ pesan }: { pesan: string }) {
   )
 }
 
-// ─── Helper Throttling berbasis localStorage ──────────────────────────────────
-
-function bacaThrottling(email: string): { count: number; lockUntil: number | null } {
-  try {
-    const raw = localStorage.getItem(`login_attempts_${email}`)
-    if (!raw) return { count: 0, lockUntil: null }
-    return JSON.parse(raw)
-  } catch {
-    return { count: 0, lockUntil: null }
-  }
-}
-
-function simpanThrottling(email: string, data: { count: number; lockUntil: number | null }) {
-  try {
-    localStorage.setItem(`login_attempts_${email}`, JSON.stringify(data))
-  } catch {}
-}
-
-function hapusThrottling(email: string) {
-  try {
-    localStorage.removeItem(`login_attempts_${email}`)
-  } catch {}
-}
-
 // ─── Komponen Form Login ───────────────────────────────────────────────────────
 function LoginForm() {
   const router       = useRouter()
@@ -153,7 +129,7 @@ function LoginForm() {
   const [nama,      setNama]      = useState('')
   const [nomorWA,   setNomorWA]   = useState('')
 
-  // Throttling: state UI saja — data persist di localStorage
+  // Throttling: state UI saja — data persist di Firestore via API
   const [akunDikunci, setAkunDikunci] = useState(false)
   const [waktuKunci,  setWaktuKunci]  = useState('')
 
@@ -173,19 +149,6 @@ function LoginForm() {
 
   // Ref untuk mencegah double-call GPS
   const gpsUdahDiminta = useRef(false)
-
-  // Cek kunci throttling saat email berubah (persist dari localStorage)
-  useEffect(() => {
-    if (!email) return
-    const data = bacaThrottling(email)
-    if (data.lockUntil && Date.now() < data.lockUntil) {
-      setAkunDikunci(true)
-      setWaktuKunci(formatWaktuLogin(data.lockUntil))
-    } else if (data.lockUntil && Date.now() >= data.lockUntil) {
-      hapusThrottling(email)
-      setAkunDikunci(false)
-    }
-  }, [email])
 
   // ── Format timestamp login_at dari check-session (JSON) ──────────────────
   function formatWaktuLogin(ts: unknown): string {
@@ -270,18 +233,30 @@ function LoginForm() {
 
   // ── TAHAP 1: Submit email + password ─────────────────────────────────────
   async function handleLogin() {
-    const throttleCheck = bacaThrottling(email)
-    if (throttleCheck.lockUntil && Date.now() < throttleCheck.lockUntil) {
-      setAkunDikunci(true)
-      setWaktuKunci(formatWaktuLogin(throttleCheck.lockUntil))
-      return
-    }
     if (!validasiForm()) return
 
     setIsLoading(true)
     setError('')
 
-    let loginPolicy: { max_login_attempts: number; lock_duration_minutes: number; otp_max_attempts: number; otp_expiry_minutes: number } | undefined
+    // ── Cek kunci akun via API sebelum memanggil Firebase Auth ───────────────
+    // Kalau akun terkunci: tampilkan pesan dan hentikan proses
+    try {
+      const resLock  = await fetch('/api/auth/check-lock', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email }),
+      })
+      const dataLock = await resLock.json()
+
+      if (dataLock.locked) {
+        setError(`Terlalu banyak percobaan. Akun dikunci hingga ${dataLock.lock_until_wib}. Coba lagi nanti.`)
+        setIsLoading(false)
+        return
+      }
+    } catch (errLock) {
+      // Kalau API check-lock tidak bisa dihubungi — log dan lanjut proses
+      console.error('[login] check-lock gagal:', errLock)
+    }
 
     try {
       // Autentikasi via Firebase Auth
@@ -304,9 +279,17 @@ function LoginForm() {
       setTenantId(claimTenantId)
 
       // Baca policy security_login — semua nilai keamanan dari sini, tidak ada hardcode
-      loginPolicy = await getEffectivePolicy(claimTenantId, 'security_login')
+      const loginPolicy = await getEffectivePolicy(claimTenantId, 'security_login')
       setMaxOtpPercobaan(loginPolicy.otp_max_attempts)
       setOtpExpiryMenit(loginPolicy.otp_expiry_minutes)
+
+      // ── Reset kunci akun setelah Firebase Auth berhasil ──────────────────
+      // Fire-and-forget — kalau gagal: log error, jangan hentikan proses login
+      fetch('/api/auth/unlock-account', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ uid: cred.user.uid, tenant_id: claimTenantId, method: 'auto' }),
+      }).catch(err => console.error('[login] unlock-account gagal:', err))
 
       // ── TAHAP 2: Cek sesi paralel via API ────────────────────────────────
       setTahap('LOADING')
@@ -326,40 +309,46 @@ function LoginForm() {
         return
       }
 
-      // Hapus throttling setelah login Firebase berhasil
-      hapusThrottling(email)
-
       // ── TAHAP 3: Muat data user + role ───────────────────────────────────
       await muatDataUser(cred.user.uid, claimTenantId, claimRole)
 
     } catch (err: unknown) {
       const code = (err as { code?: string }).code || ''
 
-      // Baca data throttling dari localStorage
-      const throttleData   = bacaThrottling(email)
-      const countBaru      = throttleData.count + 1
+      // ── Catat login gagal ke Firestore via API throttling ─────────────────
+      // uid dan nama mungkin belum tersedia saat Firebase Auth gagal — gunakan fallback
+      try {
+        const resLockAccount  = await fetch('/api/auth/lock-account', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            uid:       uid     || email,  // fallback ke email jika uid belum ada
+            email,
+            nama:      nama    || email,  // fallback ke email jika nama belum ada
+            nomor_wa:  nomorWA || '',     // kosong jika belum ada
+            tenant_id: 'tenant_erpmediator',
+          }),
+        })
+        const dataLockAccount = await resLockAccount.json()
 
-      // Ambil batas dari policy, fallback 5 jika belum dimuat
-      const batasPercobaan = loginPolicy?.max_login_attempts ?? 5
-      const durasiMenit    = loginPolicy?.lock_duration_minutes ?? 30
-
-      if (countBaru >= batasPercobaan) {
-        const lockUntil = Date.now() + durasiMenit * 60 * 1000
-        simpanThrottling(email, { count: countBaru, lockUntil })
-        setAkunDikunci(true)
-        setWaktuKunci(formatWaktuLogin(lockUntil))
-      } else {
-        simpanThrottling(email, { count: countBaru, lockUntil: null })
-        setAkunDikunci(false)
+        if (dataLockAccount.locked) {
+          // Akun baru saja dikunci — tampilkan pesan kunci dan hentikan
+          setError(`Terlalu banyak percobaan. Akun dikunci hingga ${dataLockAccount.lock_until_wib}. Coba lagi nanti.`)
+          setIsLoading(false)
+          return
+        }
+      } catch (errLockAccount) {
+        // Kalau API lock-account tidak bisa dihubungi — log dan lanjut tampilkan error biasa
+        console.error('[login] lock-account gagal:', errLockAccount)
       }
 
-      // Log login gagal — hanya jika tenantId sudah diketahui
+      // Log login gagal ke activity log — hanya jika tenantId sudah diketahui
       if (tenantId && uid) {
         writeActivityLog(tenantId, {
           uid, nama, tenant_id: tenantId, session_id: '',
           role: '', action_type: 'FORM_ERROR', module: 'AUTH',
           page: '/login', page_label: 'Halaman Login',
-          action_detail: `Login gagal — percobaan ke-${countBaru}: ${code || 'error tidak diketahui'}`,
+          action_detail: `Login gagal: ${code || 'error tidak diketahui'}`,
           result: 'FAILED', device: getDeviceInfo(), gps_kota: gps?.kota || '',
         }).catch(() => {/* log gagal tidak boleh crash UI */})
       }
