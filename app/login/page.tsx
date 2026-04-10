@@ -951,7 +951,7 @@ function LoginForm() {
             value={email}
             onChange={e => { setEmail(e.target.value); setErrorEmail('') }}
             placeholder="contoh@email.com"
-            disabled={isLoading || akunDikunci}
+            disabled={isLoading}
             aria-invalid={!!errorEmail}
             className={errorEmail ? 'border-red-400 bg-red-50' : ''}
           />
@@ -972,7 +972,7 @@ function LoginForm() {
               value={password}
               onChange={e => { setPassword(e.target.value); setErrorPassword('') }}
               placeholder="Masukkan password"
-              disabled={isLoading || akunDikunci}
+              disabled={isLoading}
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
               aria-invalid={!!errorPassword}
               className={`pr-24 ${errorPassword ? 'border-red-400 bg-red-50' : ''}`}
@@ -1003,7 +1003,7 @@ function LoginForm() {
         {/* Tombol Masuk */}
         <Button
           className="w-full"
-          disabled={isLoading || akunDikunci}
+          disabled={isLoading}
           onClick={handleLogin}
         >
           {isLoading ? (
