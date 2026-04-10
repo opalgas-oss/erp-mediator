@@ -31,8 +31,8 @@ function initAdmin() {
 const RequestSchema = z.object({
   uid:              z.string().min(1, 'uid wajib diisi'),
   tenant_id:        z.string().min(1, 'tenant_id wajib diisi'),
-  method:           z.enum(['auto', 'manual'], {
-    errorMap: () => ({ message: 'method harus "auto" atau "manual"' }),
+  method:           z.enum(['auto', 'manual'] as const, {
+    message: 'method harus "auto" atau "manual"',
   }),
   unlocked_by_uid:  z.string().optional(),
 })
