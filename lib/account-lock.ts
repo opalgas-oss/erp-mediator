@@ -5,7 +5,6 @@
 
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore }                  from 'firebase-admin/firestore'
-import { getEffectivePolicy }            from '@/lib/policy'
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 
@@ -121,10 +120,12 @@ export async function incrementLockCount(data: {
 
     const countBaru = startCount + 1
 
-    // Baca batas dan durasi kunci dari policy — TIDAK boleh hardcode
-    const loginPolicy  = await getEffectivePolicy(data.tenantId, 'security_login')
-    const maxPercobaan = loginPolicy.max_login_attempts
-    const durasiMenit  = loginPolicy.lock_duration_minutes
+    // Baca batas dan durasi kunci langsung dari Firestore via Admin SDK
+    const platformRef  = db.doc('platform_config/policies/security_login/config')
+    const platformSnap = await platformRef.get()
+    const platformData = platformSnap.exists ? platformSnap.data() : {}
+    const maxPercobaan = (platformData?.max_login_attempts as number) ?? 5
+    const durasiMenit  = (platformData?.lock_duration_minutes as number) ?? 15
 
     if (countBaru >= maxPercobaan) {
       // ── Akun dikunci ──────────────────────────────────────────────────────
