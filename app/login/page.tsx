@@ -28,6 +28,7 @@ import {
 import { updateUserPresence, writeActivityLog } from '@/lib/activity'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -701,6 +702,11 @@ function LoginForm() {
         <CardHeader>
           <CardTitle className="text-center text-base">Masuk Sebagai</CardTitle>
         </CardHeader>
+        {gps?.kota && (
+          <div className="flex justify-end px-6 -mt-2 mb-0">
+            <Badge variant="outline">📍 {gps.kota}</Badge>
+          </div>
+        )}
         <CardContent className="pb-6 space-y-4">
           {error && <KotakError pesan={error} />}
 
@@ -747,6 +753,11 @@ function LoginForm() {
         <CardHeader>
           <CardTitle className="text-center text-base">Verifikasi OTP</CardTitle>
         </CardHeader>
+        {gps?.kota && (
+          <div className="flex justify-end px-6 -mt-2 mb-0">
+            <Badge variant="outline">📍 {gps.kota}</Badge>
+          </div>
+        )}
         <CardContent className="pb-6 space-y-4">
           <p className="text-sm text-muted-foreground text-center">
             Kode OTP telah dikirim ke WhatsApp Anda. Masukkan 6 digit kode di bawah ini.
@@ -811,6 +822,11 @@ function LoginForm() {
         <CardHeader>
           <CardTitle className="text-center text-base">Aktifkan Biometric</CardTitle>
         </CardHeader>
+        {gps?.kota && (
+          <div className="flex justify-end px-6 -mt-2 mb-0">
+            <Badge variant="outline">📍 {gps.kota}</Badge>
+          </div>
+        )}
         <CardContent className="pb-6 space-y-4">
           <p className="text-sm text-muted-foreground text-center">
             Aktifkan biometric (sidik jari / Face ID) agar login berikutnya lebih cepat dan aman.
@@ -854,6 +870,12 @@ function LoginForm() {
           ERP Mediator Hyperlocal
         </p>
       </CardHeader>
+
+      {gps?.kota && (
+        <div className="flex justify-end px-6 -mt-2 mb-0">
+          <Badge variant="outline">📍 {gps.kota}</Badge>
+        </div>
+      )}
 
       <CardContent className="pb-6 space-y-4">
         {/* Pesan akun dikunci karena terlalu banyak percobaan */}
