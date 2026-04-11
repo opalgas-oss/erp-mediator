@@ -42,6 +42,7 @@ export interface AccountLockDoc {
   unlock_at:      Date | null
   unlocked_by:    string | null
   unlock_method:  'auto' | 'manual' | null
+  last_attempt_at?: Date
 }
 
 // ─── FUNGSI 1: getAccountLock ─────────────────────────────────────────────────
@@ -138,12 +139,13 @@ export async function incrementLockCount(data: {
         nomor_wa:      data.nomor_wa,
         tenant_id:     data.tenantId,
         count:         countBaru,
-        status:        'locked',
-        lock_until:    lockUntil,
-        locked_at:     sekarang,
-        unlock_at:     null,
-        unlocked_by:   null,
-        unlock_method: null,
+        status:          'locked',
+        lock_until:      lockUntil,
+        locked_at:       sekarang,
+        unlock_at:       null,
+        unlocked_by:     null,
+        unlock_method:   null,
+        last_attempt_at: sekarang,
       }, { merge: true })
 
       return { locked: true, lock_until: lockUntil, count: countBaru }
@@ -156,12 +158,13 @@ export async function incrementLockCount(data: {
         nomor_wa:      data.nomor_wa,
         tenant_id:     data.tenantId,
         count:         countBaru,
-        status:        'unlocked',
-        lock_until:    null,
-        locked_at:     existing.locked_at || null,
-        unlock_at:     null,
-        unlocked_by:   null,
-        unlock_method: null,
+        status:          'unlocked',
+        lock_until:      null,
+        locked_at:       existing.locked_at || null,
+        unlock_at:       null,
+        unlocked_by:     null,
+        unlock_method:   null,
+        last_attempt_at: sekarang,
       }, { merge: true })
 
       return { locked: false, count: countBaru }
