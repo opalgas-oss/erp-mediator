@@ -1,21 +1,22 @@
-// middleware.ts — letaknya di ROOT folder, sejajar dengan folder app/
-// Berjalan di Edge Runtime — tidak boleh import library Node.js
+﻿// middleware.ts â€” letaknya di ROOT folder, sejajar dengan folder app/
+// Berjalan di Edge Runtime â€” tidak boleh import library Node.js
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-// ─── Konstanta Route Publik ────────────────────────────────────────────────
+// â”€â”€â”€ Konstanta Route Publik â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Route ini langsung diizinkan tanpa perlu autentikasi
 const PUBLIC_PATHS: string[] = [
   '/',
   '/login',
   '/register',
   '/pending-approval',
+  '/setup',
 ]
 
 // Ekstensi file statis yang langsung diizinkan
 const STATIC_EXTENSIONS = /\.(png|jpg|jpeg|svg|ico|css|js|webp|woff|woff2|ttf)$/i
 
-// ─── Pemetaan Dashboard per Role ──────────────────────────────────────────
+// â”€â”€â”€ Pemetaan Dashboard per Role â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Urutan penting: route yang lebih spesifik ditulis lebih dulu
 const DASHBOARD_ROLE_MAP: Record<string, string> = {
   '/dashboard/customer':   'CUSTOMER',
@@ -32,18 +33,18 @@ const ROLE_REDIRECT: Record<string, string> = {
   SUPERADMIN:   '/dashboard/superadmin',
 }
 
-// ─── Tipe Payload JWT ────────────────────────────────────────────────────
+// â”€â”€â”€ Tipe Payload JWT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface JwtPayload {
   role?: string
-  // Durasi timeout sesi dalam menit — diembed ke claims saat login berhasil
+  // Durasi timeout sesi dalam menit â€” diembed ke claims saat login berhasil
   // Kalau field ini tidak ada di claims: timeout check dilewati (tidak error)
   session_timeout_minutes?: number
   [key: string]: unknown
 }
 
-// ─── Decode JWT (tanpa verifikasi kriptografi) ────────────────────────────
+// â”€â”€â”€ Decode JWT (tanpa verifikasi kriptografi) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Verifikasi penuh dilakukan di API routes server-side.
-// Edge Runtime hanya butuh tahu role untuk routing — cukup decode base64.
+// Edge Runtime hanya butuh tahu role untuk routing â€” cukup decode base64.
 function decodeJwtPayload(token: string): JwtPayload | null {
   try {
     const parts = token.split('.')
@@ -51,7 +52,7 @@ function decodeJwtPayload(token: string): JwtPayload | null {
 
     // Bagian tengah (index 1) adalah payload, dikodekan dengan base64url
     const base64 = parts[1]
-      .replace(/-/g, '+') // base64url → base64 standar
+      .replace(/-/g, '+') // base64url â†’ base64 standar
       .replace(/_/g, '/')
 
     // Padding agar panjang base64 kelipatan 4
@@ -60,22 +61,22 @@ function decodeJwtPayload(token: string): JwtPayload | null {
     const decoded = atob(padded) // tersedia di Edge Runtime
     return JSON.parse(decoded) as JwtPayload
   } catch {
-    // Decode gagal — kembalikan null agar middleware redirect ke /login
+    // Decode gagal â€” kembalikan null agar middleware redirect ke /login
     return null
   }
 }
 
-// ─── Middleware Utama ─────────────────────────────────────────────────────
+// â”€â”€â”€ Middleware Utama â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export function middleware(request: NextRequest): NextResponse {
   try {
     const { pathname } = request.nextUrl
 
-    // Guard 1 — Route publik eksak → langsung izinkan
+    // Guard 1 â€” Route publik eksak â†’ langsung izinkan
     if (PUBLIC_PATHS.includes(pathname)) {
       return NextResponse.next()
     }
 
-    // Guard 2 — Prefix publik: Next.js internal dan auth API
+    // Guard 2 â€” Prefix publik: Next.js internal dan auth API
     if (
       pathname.startsWith('/_next/') ||
       pathname.startsWith('/api/auth/')
@@ -83,22 +84,22 @@ export function middleware(request: NextRequest): NextResponse {
       return NextResponse.next()
     }
 
-    // Guard 3 — File statis berdasarkan ekstensi
+    // Guard 3 â€” File statis berdasarkan ekstensi
     if (STATIC_EXTENSIONS.test(pathname)) {
       return NextResponse.next()
     }
 
-    // Guard 4 — Route /favicon.ico
+    // Guard 4 â€” Route /favicon.ico
     if (pathname === '/favicon.ico') {
       return NextResponse.next()
     }
 
-    // Guard 5 — Proteksi route /dashboard
+    // Guard 5 â€” Proteksi route /dashboard
     if (pathname.startsWith('/dashboard')) {
       // Ambil session cookie (JWT)
       const sessionToken = request.cookies.get('session')?.value
 
-      // Tidak ada session → redirect ke login
+      // Tidak ada session â†’ redirect ke login
       if (!sessionToken) {
         return NextResponse.redirect(new URL('/login', request.url))
       }
@@ -106,15 +107,15 @@ export function middleware(request: NextRequest): NextResponse {
       // Decode payload JWT tanpa verifikasi kriptografi
       const payload = decodeJwtPayload(sessionToken)
 
-      // Decode gagal atau tidak ada field role → redirect ke login
+      // Decode gagal atau tidak ada field role â†’ redirect ke login
       if (!payload || typeof payload.role !== 'string') {
         return NextResponse.redirect(new URL('/login', request.url))
       }
 
-      // ── Cek session timeout ────────────────────────────────────────────
-      // Baca session_timeout_minutes dari JWT claims — diembed saat login berhasil
+      // â”€â”€ Cek session timeout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // Baca session_timeout_minutes dari JWT claims â€” diembed saat login berhasil
       // Middleware berjalan di Edge Runtime: tidak bisa import lib/policy.ts
-      // Kalau field tidak ada di claims → skip check tanpa error
+      // Kalau field tidak ada di claims â†’ skip check tanpa error
       const timeoutMenit =
         typeof payload.session_timeout_minutes === 'number' &&
         payload.session_timeout_minutes > 0
@@ -129,12 +130,12 @@ export function middleware(request: NextRequest): NextResponse {
           const lastActiveMs = parseInt(lastActiveStr, 10)
           const timeoutMs    = timeoutMenit * 60 * 1000
 
-          // Sesi sudah melewati batas inaktif → redirect ke login dengan alasan timeout
+          // Sesi sudah melewati batas inaktif â†’ redirect ke login dengan alasan timeout
           if (!isNaN(lastActiveMs) && sekarang - lastActiveMs > timeoutMs) {
             return NextResponse.redirect(new URL('/login?reason=timeout', request.url))
           }
         }
-        // Cookie belum ada (request pertama) atau belum timeout → lanjut
+        // Cookie belum ada (request pertama) atau belum timeout â†’ lanjut
         // session_last_active diperbarui di respons valid di bawah
       }
 
@@ -149,7 +150,7 @@ export function middleware(request: NextRequest): NextResponse {
         }
       }
 
-      // Path /dashboard tidak dikenali → langsung izinkan (handled di page level)
+      // Path /dashboard tidak dikenali â†’ langsung izinkan (handled di page level)
       if (requiredRole === null) {
         // Perbarui session_last_active jika timeout dikonfigurasi
         if (timeoutMenit !== null) {
@@ -165,7 +166,7 @@ export function middleware(request: NextRequest): NextResponse {
         return NextResponse.next()
       }
 
-      // Role cocok → izinkan akses, perbarui session_last_active
+      // Role cocok â†’ izinkan akses, perbarui session_last_active
       if (userRole === requiredRole) {
         if (timeoutMenit !== null) {
           const res = NextResponse.next()
@@ -180,28 +181,29 @@ export function middleware(request: NextRequest): NextResponse {
         return NextResponse.next()
       }
 
-      // Role tidak cocok → redirect ke dashboard yang sesuai role user
+      // Role tidak cocok â†’ redirect ke dashboard yang sesuai role user
       const redirectPath = ROLE_REDIRECT[userRole]
       if (redirectPath) {
         return NextResponse.redirect(new URL(redirectPath, request.url))
       }
 
-      // Role tidak dikenali sama sekali → redirect ke login
+      // Role tidak dikenali sama sekali â†’ redirect ke login
       return NextResponse.redirect(new URL('/login', request.url))
     }
 
-    // Semua path lain yang tidak masuk kategori di atas → izinkan
+    // Semua path lain yang tidak masuk kategori di atas â†’ izinkan
     return NextResponse.next()
   } catch {
-    // Middleware crash → tetap izinkan request agar aplikasi tidak lumpuh total
+    // Middleware crash â†’ tetap izinkan request agar aplikasi tidak lumpuh total
     return NextResponse.next()
   }
 }
 
-// ─── Matcher Config ───────────────────────────────────────────────────────
+// â”€â”€â”€ Matcher Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Jalankan middleware di semua path kecuali file statis Next.js dan gambar
 export const config = {
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 }
+

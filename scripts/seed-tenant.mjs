@@ -1,6 +1,7 @@
 // scripts/seed-tenant.mjs
 // Script untuk membuat struktur Firestore dan mengisi data tenant pertama
 // Jalankan sekali: node scripts/seed-tenant.mjs
+// Diperbarui: Sesi #018 — tambah security_login item 9-14, 142-145, 171-174 + message_library item 126-170
 
 import { createRequire } from 'module';
 import { initializeApp, cert } from 'firebase-admin/app';
@@ -92,35 +93,112 @@ async function seedTenant() {
 // ============================================================
 
 async function seedPolicies() {
-  // Kebijakan keamanan login — max attempts, OTP, biometric, session timeout
+  // ----------------------------------------------------------
+  // security_login — Kebijakan keamanan login
+  // Item 1-8   : dari Sprint 0 (sudah ada sebelumnya)
+  // Item 9-14  : BARU Sesi #017 v6 — reset counter + progressive lockout + notif superadmin
+  // Item 142-145: BARU Sesi #017 v7 — GPS mode, GPS timeout, OTP digits, OTP resend cooldown
+  // Item 171-174: BARU Sesi #017 v8 — password rules
+  // ----------------------------------------------------------
   await db.doc('platform_config/policies/security_login/config').set({
-    max_login_attempts: 5,
-    max_login_attempts_tenant_can_override: true,
-    lock_duration_minutes: 15,
-    lock_duration_minutes_tenant_can_override: true,
+
+    // --- Item 1-8: sudah ada, tidak berubah ---
     require_otp: true,
     require_otp_tenant_can_override: true,
     require_biometric_offer: true,
     require_biometric_offer_tenant_can_override: true,
-    session_timeout_minutes: 480,
-    session_timeout_minutes_tenant_can_override: true,
+    max_login_attempts: 5,
+    max_login_attempts_tenant_can_override: true,
+    lock_duration_minutes: 15,
+    lock_duration_minutes_tenant_can_override: true,
     otp_expiry_minutes: 5,
     otp_expiry_minutes_tenant_can_override: false,
     otp_max_attempts: 3,
     otp_max_attempts_tenant_can_override: false,
     trusted_device_days: 30,
     trusted_device_days_tenant_can_override: true,
-  }, { merge: true });
+    session_timeout_minutes: 480,
+    session_timeout_minutes_tenant_can_override: true,
 
-  // Kebijakan sesi paralel — scope dan aturan login dari beberapa perangkat
+    // --- Item 9-14: BARU — Reset Counter + Progressive Lockout + Notif SuperAdmin ---
+    // Item 9: Aktifkan reset counter login otomatis berdasarkan waktu idle
+    login_attempts_reset_enabled: true,
+    login_attempts_reset_enabled_tenant_can_override: true,
+
+    // Item 10: Berapa jam idle sebelum counter percobaan login di-reset ke 0
+    login_attempts_reset_hours: 24,
+    login_attempts_reset_hours_tenant_can_override: true,
+
+    // Item 11: Aktifkan durasi kunci yang makin lama setiap kunci berulang
+    progressive_lockout_enabled: false,
+    progressive_lockout_enabled_tenant_can_override: true,
+
+    // Item 12: Pengali durasi kunci per kunci berulang (lock ke-2 = lock_duration x multiplier)
+    lock_duration_multiplier: 2,
+    lock_duration_multiplier_tenant_can_override: true,
+
+    // Item 13: Batas maksimum durasi kunci meskipun progressive terus naik (dalam jam)
+    max_lock_duration_hours: 24,
+    max_lock_duration_hours_tenant_can_override: true,
+
+    // Item 14: Kirim notifikasi WA ke SuperAdmin setiap ada akun yang dikunci
+    notify_superadmin_on_lock: true,
+    notify_superadmin_on_lock_tenant_can_override: false,
+
+    // --- Item 142-145: BARU — GPS + OTP Config ---
+    // Item 142: Mode GPS saat login (required / optional / disabled)
+    gps_mode: 'required',
+    gps_mode_tenant_can_override: false,
+
+    // Item 143: Timeout GPS dalam detik — sebelum dianggap gagal
+    gps_timeout_seconds: 10,
+    gps_timeout_seconds_tenant_can_override: true,
+
+    // Item 144: Panjang kode OTP yang dikirim ke WA (4, 6, atau 8 digit)
+    otp_digits: 6,
+    otp_digits_tenant_can_override: false,
+
+    // Item 145: Jeda detik sebelum user boleh kirim ulang OTP
+    otp_resend_cooldown_seconds: 60,
+    otp_resend_cooldown_seconds_tenant_can_override: true,
+
+    // --- Item 171-174: BARU — Password Rules ---
+    // Nilai default mengikuti implementasi yang sudah berjalan (min 8, tanpa kombinasi).
+    // Perubahan ke min 12 + kombinasi dicatat sebagai Issue Tertunda — diupdate setelah semua TC + RBAC lulus.
+
+    // Item 171: Panjang minimum password (karakter)
+    password_min_length: 8,
+    password_min_length_tenant_can_override: false,
+
+    // Item 172: Password wajib mengandung huruf besar
+    password_require_uppercase: false,
+    password_require_uppercase_tenant_can_override: false,
+
+    // Item 173: Password wajib mengandung angka
+    password_require_number: false,
+    password_require_number_tenant_can_override: false,
+
+    // Item 174: Password wajib mengandung simbol
+    password_require_symbol: false,
+    password_require_symbol_tenant_can_override: false,
+
+  }, { merge: true });
+  console.log('  ✅ security_login — 26 field (14 baru: item 9-14, 142-145, 171-174)');
+
+  // ----------------------------------------------------------
+  // concurrent_session — Kebijakan sesi paralel
+  // ----------------------------------------------------------
   await db.doc('platform_config/policies/concurrent_session/config').set({
     scope: 'per_tenant',
     scope_tenant_can_override: false,
     default_rule: 'different_role_only',
     default_rule_tenant_can_override: true,
   }, { merge: true });
+  console.log('  ✅ concurrent_session');
 
-  // Kebijakan komisi transaksi — tipe, rate, flat fee, batas minimum/maksimum
+  // ----------------------------------------------------------
+  // commission — Kebijakan komisi transaksi
+  // ----------------------------------------------------------
   await db.doc('platform_config/policies/commission/config').set({
     default_type: 'percent',
     default_type_tenant_can_override: true,
@@ -135,8 +213,11 @@ async function seedPolicies() {
     charged_to: 'customer',
     charged_to_tenant_can_override: true,
   }, { merge: true });
+  console.log('  ✅ commission');
 
-  // Kebijakan timer durasi setiap tahap dalam proses reverse auction
+  // ----------------------------------------------------------
+  // timers — Kebijakan durasi setiap tahap reverse auction
+  // ----------------------------------------------------------
   await db.doc('platform_config/policies/timers/config').set({
     t_bid_minutes: 15,
     t_bid_minutes_tenant_can_override: true,
@@ -155,8 +236,11 @@ async function seedPolicies() {
     t_otp_minutes: 5,
     t_otp_minutes_tenant_can_override: false,
   }, { merge: true });
+  console.log('  ✅ timers');
 
-  // Kebijakan pencatatan aktivitas — apa yang dicatat dan berapa lama disimpan
+  // ----------------------------------------------------------
+  // activity_logging — Kebijakan pencatatan aktivitas
+  // ----------------------------------------------------------
   await db.doc('platform_config/policies/activity_logging/config').set({
     log_page_views: true,
     log_page_views_tenant_can_override: true,
@@ -170,6 +254,7 @@ async function seedPolicies() {
     retention_days_tenant_can_override: true,
     max_retention_days: 730,
   }, { merge: true });
+  console.log('  ✅ activity_logging');
 }
 
 // ============================================================
@@ -177,19 +262,118 @@ async function seedPolicies() {
 // ============================================================
 
 async function seedConfigRegistry() {
-  // Template pesan WhatsApp untuk berbagai event platform
+  // ----------------------------------------------------------
+  // message_library — Semua template pesan platform
+  //
+  // Item 120-125 : Vendor registration flow (sudah ada)
+  // Item 126     : OTP login WA
+  // Item 127-128 : Account lock — notif WA ke user + SuperAdmin
+  // Item 146     : Account lock — pesan UI browser
+  // Item 147-150 : GPS denied messages
+  // Item 151-159 : Login flow messages
+  // Item 160-166 : Login UI text (header, footer, loading)
+  // Item 167-170 : Label role di dropdown selector
+  // ----------------------------------------------------------
   await db.doc('platform_config/settings/config_registry/message_library').set({
     config_id: 'message_library',
     label: 'Perpustakaan Pesan',
     category: 'komunikasi',
     sprint: 1,
-    otp_wa: 'OTP Anda {kode} untuk akses masuk sebagai Role: {role}. JANGAN BERIKAN OTP KEPADA SIAPAPUN. Gunakan sebelum Jam: {jam} Tanggal {tanggal}',
-    vendor_pending: 'Terima kasih {nama}, pendaftaran Vendor Anda sedang kami review. Kami akan menghubungi Anda dalam {durasi} jam kerja.',
-    vendor_approved: 'Selamat {nama}! Akun Vendor Anda telah diaktifkan. Silakan login di {url}',
-    vendor_rejected: 'Maaf {nama}, pendaftaran Vendor Anda belum dapat kami setujui. Hubungi kami di {kontak} untuk informasi lebih lanjut.',
-    order_baru_vendor: 'Ada order baru menunggu penawaran Anda! Order #{order_id} - {nama_layanan} di {kota}. Segera buka aplikasi untuk melihat detail.',
     updated_at: new Date().toISOString(),
+
+    // --- Item 120-125: Vendor Registration Flow ---
+    vendor_register_pending: 'Terima kasih {{nama}}, pendaftaran Vendor Anda sudah kami terima. Tunggu verifikasi dari Admin. Hubungi: admin@mediator.com',
+    admin_vendor_pending_notif: 'Ada pendaftaran Vendor baru. Lakukan verifikasi di Dashboard → Menu Pendaftaran Vendor.',
+    vendor_register_review: 'Pendaftaran Anda sedang di-review Admin. Pastikan No WA aktif agar Admin dapat verifikasi. Hubungi: admin@mediator.com',
+    vendor_approved_wa: 'Pendaftaran disetujui. Buka email Anda untuk aktivasi akun. Login dengan akun yang didaftarkan. Hubungi: admin@mediator.com',
+    vendor_approved_email: 'Pendaftaran disetujui. Lakukan aktivasi akun. Login dengan akun dan password yang didaftarkan. Hubungi: admin@mediator.com',
+    vendor_rejected: 'Maaf {{nama}}, pendaftaran Vendor Anda belum dapat kami setujui saat ini. Hubungi kami untuk informasi lebih lanjut.',
+
+    // --- Item 126: OTP Login WA ---
+    // Dikirim ke Vendor & Admin saat login — Customer TIDAK mendapat OTP
+    // Variables: {{kode}}, {{role}}, {{jam}}, {{tanggal}}
+    otp_login: 'OTP Anda {{kode}} untuk akses masuk sebagai Role: {{role}}. JANGAN BERIKAN OTP KEPADA SIAPAPUN. Gunakan sebelum Jam: {{jam}} Tanggal {{tanggal}}',
+
+    // --- Item 127: Notifikasi WA ke User saat Akun Dikunci ---
+    // Variables: {{nama}}, {{jam_unlock}}, {{jumlah_percobaan}}, {{email_superadmin}}
+    account_locked_user: `Halo {{nama}},
+
+Akun Anda di ERP Mediator dikunci karena terlalu banyak percobaan login yang gagal ({{jumlah_percobaan}} percobaan).
+
+Akun akan terbuka kembali pada pukul {{jam_unlock}} WIB.
+
+Jika bukan Anda yang mencoba login, segera hubungi kami:
+{{email_superadmin}}
+
+Abaikan pesan ini jika ini memang Anda.`,
+
+    // --- Item 128: Notifikasi WA ke SuperAdmin saat Ada Akun Dikunci ---
+    // Variables: {{nama_user}}, {{email_user}}, {{waktu_kejadian}}, {{jumlah_percobaan}}, {{jam_unlock}}
+    account_locked_superadmin: `[ALERT KEAMANAN] Akun Dikunci
+
+Nama user  : {{nama_user}}
+Email      : {{email_user}}
+Waktu      : {{waktu_kejadian}} WIB
+Percobaan  : {{jumlah_percobaan}} kali gagal
+Dikunci s/d: {{jam_unlock}} WIB
+
+Cek dashboard untuk detail dan unlock manual jika diperlukan.`,
+
+    // --- Item 146: Pesan UI Browser saat Akun Dikunci ---
+    // Variables: {{jam_unlock}}
+    account_locked_ui: 'Terlalu banyak percobaan. Akun dikunci hingga pukul {{jam_unlock}} WIB. Coba lagi nanti.',
+
+    // --- Item 147-150: GPS Denied Messages ---
+    gps_checking_text: 'Sedang memeriksa lokasi Anda...',
+    gps_denied_title: 'Izin Lokasi Diperlukan',
+    gps_denied_body: 'Platform ini memerlukan akses lokasi untuk keamanan akun Anda. Aktifkan izin lokasi di browser, lalu muat ulang halaman.',
+    gps_denied_button: 'Muat Ulang Halaman',
+
+    // --- Item 151-159: Login Flow Messages ---
+    // Item 151: Vendor belum approved — Variables: {{email_superadmin}}
+    vendor_pending_login: 'Akun Anda sedang menunggu verifikasi dari Admin. Kami akan menghubungi Anda via WhatsApp setelah proses selesai. Pertanyaan? Hubungi: {{email_superadmin}}',
+
+    // Item 152: Concurrent session warning — Variables: {{device}}, {{gps_kota}}, {{login_time}}
+    concurrent_session_warning: 'Akun Anda sedang digunakan di perangkat {{device}} ({{gps_kota}}). Login pada: {{login_time}} WIB. Pastikan Anda yang menggunakannya, silakan minta pengguna tersebut logout terlebih dahulu agar Anda dapat login kembali.',
+
+    // Item 153: Kredensial salah
+    login_error_credentials: 'Email atau password yang Anda masukkan salah.',
+
+    // Item 154: Kode OTP salah — Variables: {{sisa_percobaan}}
+    login_error_otp_wrong: 'Kode OTP salah. Sisa percobaan: {{sisa_percobaan}}',
+
+    // Item 155: OTP kadaluarsa
+    login_error_otp_expired: 'Kode OTP sudah kadaluarsa. Klik Kirim ulang.',
+
+    // Item 156: Koneksi gagal
+    login_error_connection: 'Gagal terhubung. Periksa koneksi internet Anda.',
+
+    // Item 157: OTP berhasil dikirim ulang
+    login_otp_resend_sent: 'Kode OTP baru telah dikirim ke WhatsApp Anda.',
+
+    // Item 158: Error global — judul
+    login_error_global_title: 'Terjadi Kesalahan',
+
+    // Item 159: Error global — isi
+    login_error_global_body: 'Gagal terhubung. Periksa koneksi internet Anda.',
+
+    // --- Item 160-166: Login UI Text (teks statis halaman login) ---
+    login_header_title: 'Selamat Datang Kembali',
+    login_header_subtitle: 'Masuk untuk melanjutkan',
+    login_footer_text: 'Belum punya akun?',
+    login_footer_link: 'Daftar Sekarang',
+    login_loading_otp: 'Mengirim kode OTP...',
+    login_loading_verify: 'Memverifikasi...',
+    login_loading_connect: 'Menghubungkan...',
+
+    // --- Item 167-170: Label Role di Dropdown Selector ---
+    role_label_customer: 'Pelanggan',
+    role_label_vendor: 'Mitra / Vendor',
+    role_label_admin_tenant: 'Admin',
+    role_label_superadmin: 'Super Admin',
+
   }, { merge: true });
+  console.log('  ✅ message_library — 35 item (item 120-128, 146-170)');
 }
 
 // ============================================================
@@ -210,6 +394,7 @@ async function seedTenantConfig() {
     },
     created_at: new Date().toISOString(),
   }, { merge: true });
+  console.log('  ✅ tenant config default');
 }
 
 // ============================================================
@@ -218,6 +403,7 @@ async function seedTenantConfig() {
 
 async function main() {
   console.log('🚀 Mulai seeding database ERP Mediator...');
+  console.log('   Versi seed: Sesi #018 — security_login + message_library lengkap');
   console.log('');
 
   await seedTenant();
@@ -225,16 +411,18 @@ async function main() {
   console.log('Seeding platform policies...');
   await seedPolicies();
   console.log('✅ Policies selesai (5 dokumen)');
+  console.log('');
 
   console.log('Seeding config registry...');
   await seedConfigRegistry();
-  console.log('✅ Config registry selesai (1 dokumen)');
+  console.log('✅ Config registry selesai (1 dokumen — message_library)');
+  console.log('');
 
   console.log('Seeding tenant config...');
   await seedTenantConfig();
-  console.log('✅ Tenant config selesai (1 dokumen)');
-
+  console.log('✅ Tenant config selesai');
   console.log('');
+
   console.log('🎉 SELESAI! Seluruh database sudah siap.');
   console.log('Tenant ID:', TENANT_ID);
   process.exit(0);

@@ -1,6 +1,6 @@
 # ERP Mediator Hyperlocal — Konteks Project untuk Claude Code
 # Sprint 1 — Login & Auth Lengkap
-# Terakhir diupdate: 6 April 2026 — Sesi #007
+# Terakhir diupdate: 14 April 2026 — Sesi #025
 
 ---
 
@@ -18,23 +18,104 @@
 
 ---
 
+## TOOLS YANG DIGUNAKAN
+
+- Claude Desktop + MCP Filesystem: baca/tulis file langsung ke folder project (AKTIF)
+- Terminal Claude Code: eksekusi coding — buat file, edit kode, jalankan perintah
+- v0.app: TIDAK DIGUNAKAN sejak Sesi #022 — semua UI dikerjakan via Claude + MCP
+
+Port lokal: localhost:3000 (satu port saja, tidak boleh ganti)
+
+---
+
+## PROTOKOL PENULISAN DOKUMEN — WAJIB (Ditetapkan Sesi #024)
+
+BERLAKU untuk semua file dokumen tanpa kecuali:
+1. Baca versi lama via MCP dulu — WAJIB sebelum tulis versi baru
+2. Konten lama yang tidak berubah → copy paste UTUH + beri keterangan "(dari Sesi #XXX / vX)"
+3. Konten lama yang sudah disepakati salah/tidak diperlukan → hapus bagian itu saja
+4. Konten baru dari chat → tambahkan di bagian yang relevan
+5. TIDAK ADA kata "ringkasan" — semua konten ditulis UTUH dan LENGKAP
+6. File dokumen = sumber kebenaran — JANGAN simpan info penting hanya di memori
+7. JANGAN tulis berdasarkan asumsi atau ingatan — HARAM
+
+---
+
+## WORKFLOW WAJIB — IKUTI SEBELUM EKSEKUSI APAPUN
+
+WAJIB diikuti untuk setiap perubahan kode, penambahan fitur, atau perbaikan bug:
+
+1. BACA file terkait via MCP dulu — jangan berasumsi kondisi kode
+2. LAPOR rencana lengkap:
+   - Tahapan kerja yang akan dilakukan
+   - File yang akan diubah + bagian/fungsi mana + alasan
+   - Dampak ke file lain
+3. TUNGGU konfirmasi Philips — SETUJU / REVISI / TOLAK
+4. EKSEKUSI hanya yang disetujui — SATU TAHAP, SATU KONFIRMASI
+5. TEST bersama Philips — catat hasil LULUS / GAGAL
+6. UPDATE dokumen setelah kode terbukti berjalan
+7. BUAT Manual Guide DOCX — panduan verifikasi untuk Philips
+
+---
+
 ## SPRINT AKTIF
 
 - Sprint: Sprint 1 — Login & Auth Lengkap
-- Yang sedang dikerjakan: Belum mulai — butuh dokumen dulu sebelum coding
+- Step selesai: A, B, C, D, E.1, E.2, E.3, E.4.1, E.4.2
+- Yang sedang dikerjakan: E.4.3 — Implementasi UI/UX Modul Konfigurasi
+- Referensi UI: UI_UX_Approved\dashboard_config_login_sesi025_v1.html
+- Testing: 10/36 TC lulus — 26 TC pending
+- Referensi: WORKFLOW_SYSTEM_LOGIN_v4.md + TEST_CASES_LOGIN.md
 
 ---
 
 ## FILE LIB YANG SUDAH ADA
 
 - lib/firebase.ts — koneksi Firebase (client-side)
-- lib/auth.ts — RBAC, session cookies, role mapping
+- lib/auth.ts — RBAC, session cookies, role mapping (setSessionCookies, ROLE_DASHBOARD)
+- lib/auth-server.ts — verifyJWT() server-side via Firebase Admin — HANYA untuk Server Component & API Route
 - lib/getTenantConfig.ts — baca config tenant dari Firestore
 - lib/config-registry.ts — getConfigValue(), getConfigItem(), getAllConfigsByCategory()
 - lib/policy.ts — getEffectivePolicy() — merge policy 2 level
 - lib/activity.ts — updateUserPresence() + writeActivityLog()
 - lib/cache.ts — abstraksi layer cache (TTL + LRU + stampede prevention)
 - lib/session.ts — GPS, OTP, Biometric, session log
+- lib/account-lock.ts — getAccountLock(), setAccountLock() — cek & kelola kunci akun
+- lib/pilihan-opsi.ts — 17 grup Pilihan Opsi untuk dropdown dinamis
+
+---
+
+## FILE PENTING YANG SUDAH ADA
+
+- app/login/page.tsx — halaman login multi-tahap (GPS → Kredensial → OTP → Biometric)
+- app/register/page.tsx — halaman register Customer + Vendor
+- app/setup/page.tsx — halaman buat akun SuperAdmin pertama (first-time setup)
+- app/dashboard/superadmin/layout.tsx — layout sidebar SuperAdmin + proteksi verifyJWT
+- app/dashboard/superadmin/page.tsx — halaman utama Dashboard SuperAdmin
+- app/dashboard/superadmin/settings/config/page.tsx — halaman konfigurasi login SuperAdmin
+- app/api/setup/check/route.ts — cek apakah setup sudah selesai
+- app/api/setup/create-superadmin/route.ts — buat akun SuperAdmin (dipanggil sekali)
+- app/api/config/[feature_key]/route.ts — GET + PATCH config item
+- app/api/auth/check-lock/route.ts — cek apakah akun terkunci sebelum login
+- app/api/auth/lock-account/route.ts — catat login gagal + kunci akun jika melebihi batas
+- app/api/auth/unlock-account/route.ts — buka kunci akun (auto setelah login berhasil)
+- app/api/auth/check-session/route.ts — cek sesi paralel (concurrent session)
+- components/ConfigItem.tsx — komponen item konfigurasi reusable
+- components/config/ConfigRenderer.tsx — renderer config generik (dibuat E.4)
+- scripts/seed-tenant.mjs — seed data awal: security_login policy + message_library
+- middleware.ts — proteksi route /dashboard, baca cookie 'session', routing per role
+
+---
+
+## ATURAN PENTING COOKIE SESSION
+
+- Cookie 'session' berisi Firebase ID Token (JWT)
+- Middleware membaca cookie 'session' untuk routing
+- verifyJWT() di Server Component membaca cookie 'session' dan verifikasi via Admin SDK
+- SUPERADMIN: login page set cookie 'session' = Firebase ID Token langsung
+- Non-SUPERADMIN: selesaiLogin() memanggil setSessionCookies() — BELUM set cookie 'session'
+  → Akan diperbaiki di Sprint 2 (non-SUPERADMIN dashboard belum dibuat)
+- JANGAN set cookie 'session_role' atau 'session_tenant' untuk SUPERADMIN
 
 ---
 
@@ -72,8 +153,12 @@
 
 - /platform_config/policies/{featureKey} — platform-level policy
 - /platform_config/config_registry/{configId} — Dynamic Config Registry
+- /platform_config/settings — is_setup_complete flag
+- /users/{uid} — data SUPERADMIN (root level, BUKAN di /tenants/)
 - /tenants/{tenantId}/config/main — tenant-level config + policy override
-- /tenants/{tenantId}/users/{uid} — data user per tenant
+- /tenants/{tenantId}/users/{uid} — data user per tenant (Customer, Vendor, AdminTenant)
+- /tenants/{tenantId}/vendor_registrations/{vendorId} — pendaftaran vendor
+- /tenants/{tenantId}/account_locks/{uid} — kunci akun throttling
 - /tenants/{tenantId}/user_presence/{uid} — realtime presence (OVERWRITE)
 - /tenants/{tenantId}/activity_logs/{logId} — audit log (APPEND-ONLY)
 - /tenants/{tenantId}/session_logs/{sessionId} — session tracking

@@ -264,8 +264,17 @@ function LoginForm() {
       const tokenResult = await cred.user.getIdTokenResult(true)
 
       // Ambil tenantId dan role dari custom claims JWT
-      const claimTenantId = tokenResult.claims.tenant_id as string
-      const claimRole     = tokenResult.claims.role      as string
+      const claimTenantId = (tokenResult.claims.tenant_id as string) || ''
+      const claimRole     = tokenResult.claims.role as string
+
+      // SUPERADMIN tidak punya tenant_id — bypass semua cek tenant
+      if (claimRole === 'SUPERADMIN') {
+        const idToken = await cred.user.getIdToken()
+        const maxAge = 60 * 60
+        document.cookie = `session=${idToken}; path=/; max-age=${maxAge}; SameSite=Strict`
+        router.push('/dashboard/superadmin')
+        return
+      }
 
       if (!claimTenantId) {
         setError('Konfigurasi akun belum lengkap. Hubungi admin.')

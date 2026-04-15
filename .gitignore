@@ -48,3 +48,13 @@ scripts/serviceAccountKey.json
 
 # Claude Code internal memory — bukan bagian dari source project
 .claude/
+
+# Environment files
+.env*.local
+.env.development.local
+.env.production.local
+
+# Firebase service account keys
+firebase-dev-service-account.json
+firebase-prod-service-account.json
+*-service-account.json
