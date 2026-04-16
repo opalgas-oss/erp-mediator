@@ -1,12 +1,5 @@
-﻿import { redirect } from 'next/navigation'
-import { verifyJWT } from '@/lib/auth-server'
-
-export default async function SuperAdminPage() {
-  const payload = await verifyJWT()
-  if (!payload || payload.role !== 'SUPERADMIN') {
-    redirect('/login')
-  }
-
+// Layout sudah verifikasi JWT — page tidak perlu verifikasi ulang
+export default function SuperAdminPage() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center h-full text-center p-10">
       <svg className="w-12 h-12 text-slate-300 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
