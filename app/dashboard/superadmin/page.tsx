@@ -1,31 +1,20 @@
-// app/dashboard/superadmin/page.tsx
-// Halaman utama Dashboard SuperAdmin — Server Component
-// Ini placeholder — konten lengkap dikerjakan di Sprint 2
-
-import { redirect }  from 'next/navigation'
+﻿import { redirect } from 'next/navigation'
 import { verifyJWT } from '@/lib/auth-server'
 
-// ─── Label Teks ───────────────────────────────────────────────────────────────
-const LABEL_JUDUL    = 'Dashboard SuperAdmin'
-const LABEL_SAMBUTAN = 'Selamat datang,'
-
-// ─── Halaman ──────────────────────────────────────────────────────────────────
 export default async function SuperAdminPage() {
-  // Cek sesi lagi di level page — defense in depth di balik layout
   const payload = await verifyJWT()
-
   if (!payload || payload.role !== 'SUPERADMIN') {
     redirect('/login')
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold text-gray-900 mb-1">
-        {LABEL_JUDUL}
-      </h1>
-      <p className="text-sm text-gray-500">
-        {LABEL_SAMBUTAN}{' '}
-        <span className="font-medium text-gray-700">{payload.displayName}</span>
+    <div className="flex-1 flex flex-col items-center justify-center h-full text-center p-10">
+      <svg className="w-12 h-12 text-slate-300 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
+        <rect x="9" y="3" width="6" height="4" rx="2"/>
+      </svg>
+      <p className="text-sm text-slate-400 leading-relaxed">
+        Pilih sub-menu dari sidebar kiri<br />untuk melihat konfigurasi
       </p>
     </div>
   )

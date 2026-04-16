@@ -10,7 +10,7 @@ const PUBLIC_PATHS: string[] = [
   '/login',
   '/register',
   '/pending-approval',
-  '/setup',
+  '/init-philipsliemena',
 ]
 
 // Ekstensi file statis yang langsung diizinkan
@@ -206,4 +206,5 @@ export const config = {
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 }
+
 

@@ -64,7 +64,7 @@ export async function getConfigValue(
   fieldKey: string
 ): Promise<unknown> {
   // Baca dokumen dari Firestore
-  const configRef = doc(db, 'platform_config', 'settings', 'config_registry', configId);
+  const configRef = doc(db, 'platform_config', 'config_registry', configId);
   const configSnap = await getDoc(configRef);
 
   // Kalau item tidak ada di database
@@ -100,7 +100,7 @@ export async function getConfigItem(
   configId: string
 ): Promise<ConfigRegistryItem> {
   // Baca dokumen dari Firestore
-  const configRef = doc(db, 'platform_config', 'settings', 'config_registry', configId);
+  const configRef = doc(db, 'platform_config', 'config_registry', configId);
   const configSnap = await getDoc(configRef);
 
   // Kalau item tidak ada di database
@@ -129,7 +129,7 @@ export async function getAllConfigsByCategory(
 ): Promise<ConfigRegistryItem[]> {
   // Query Firestore dengan filter kategori dan batas jumlah hasil
   const configQuery = query(
-    collection(db, 'platform_config', 'settings', 'config_registry'),
+    collection(db, 'platform_config', 'config_registry'),
     where('category', '==', category),
     limit(maxResults)
   );

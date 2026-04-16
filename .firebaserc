@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "erp-mediator"
-  }
+    "default": "erp-mediator",
+    "dev": "erp-mediator-dev"
+  },
+  "targets": {},
+  "etags": {}
 }

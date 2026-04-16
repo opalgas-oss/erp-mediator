@@ -1,10 +1,11 @@
 # ERP Mediator Hyperlocal — Konteks Project untuk Claude Code
 # Sprint 1 — Login & Auth Lengkap
-# Terakhir diupdate: 14 April 2026 — Sesi #025
+# Terakhir diupdate: 16 April 2026 — Sesi #030
 
 ---
 
 ## IDENTITAS PROJECT
+(dari Sesi #025 — tidak berubah)
 
 - Nama: Platform Marketplace Jasa Reverse Auction (Multi-Tenant, Multi-Brand)
 - Stack: Next.js 14, Firestore, Firebase Auth, shadcn/ui, Vercel
@@ -19,6 +20,7 @@
 ---
 
 ## TOOLS YANG DIGUNAKAN
+(dari Sesi #025 — tidak berubah)
 
 - Claude Desktop + MCP Filesystem: baca/tulis file langsung ke folder project (AKTIF)
 - Terminal Claude Code: eksekusi coding — buat file, edit kode, jalankan perintah
@@ -42,6 +44,7 @@ BERLAKU untuk semua file dokumen tanpa kecuali:
 ---
 
 ## WORKFLOW WAJIB — IKUTI SEBELUM EKSEKUSI APAPUN
+(dari Sesi #025 — tidak berubah)
 
 WAJIB diikuti untuk setiap perubahan kode, penambahan fitur, atau perbaikan bug:
 
@@ -59,10 +62,11 @@ WAJIB diikuti untuk setiap perubahan kode, penambahan fitur, atau perbaikan bug:
 ---
 
 ## SPRINT AKTIF
+(Update Sesi #030)
 
 - Sprint: Sprint 1 — Login & Auth Lengkap
-- Step selesai: A, B, C, D, E.1, E.2, E.3, E.4.1, E.4.2
-- Yang sedang dikerjakan: E.4.3 — Implementasi UI/UX Modul Konfigurasi
+- Step selesai: A, B, C, D, E.1, E.2, E.3, E.4.1, E.4.2, TAHAP 0, **TAHAP 1 (selesai localhost)**
+- Yang sedang dikerjakan: Push TAHAP 1 ke Staging → konfirmasi Philips → lanjut TAHAP 2
 - Referensi UI: UI_UX_Approved\dashboard_config_login_sesi025_v1.html
 - Testing: 10/36 TC lulus — 26 TC pending
 - Referensi: WORKFLOW_SYSTEM_LOGIN_v4.md + TEST_CASES_LOGIN.md
@@ -70,10 +74,12 @@ WAJIB diikuti untuk setiap perubahan kode, penambahan fitur, atau perbaikan bug:
 ---
 
 ## FILE LIB YANG SUDAH ADA
+(Update Sesi #030 — tambah lib/firebase-admin.ts)
 
 - lib/firebase.ts — koneksi Firebase (client-side)
 - lib/auth.ts — RBAC, session cookies, role mapping (setSessionCookies, ROLE_DASHBOARD)
 - lib/auth-server.ts — verifyJWT() server-side via Firebase Admin — HANYA untuk Server Component & API Route
+- lib/firebase-admin.ts — getAdminDb() helper — export admin Firestore untuk API routes (BARU Sesi #030)
 - lib/getTenantConfig.ts — baca config tenant dari Firestore
 - lib/config-registry.ts — getConfigValue(), getConfigItem(), getAllConfigsByCategory()
 - lib/policy.ts — getEffectivePolicy() — merge policy 2 level
@@ -86,28 +92,33 @@ WAJIB diikuti untuk setiap perubahan kode, penambahan fitur, atau perbaikan bug:
 ---
 
 ## FILE PENTING YANG SUDAH ADA
+(Update Sesi #030)
 
 - app/login/page.tsx — halaman login multi-tahap (GPS → Kredensial → OTP → Biometric)
 - app/register/page.tsx — halaman register Customer + Vendor
-- app/setup/page.tsx — halaman buat akun SuperAdmin pertama (first-time setup)
-- app/dashboard/superadmin/layout.tsx — layout sidebar SuperAdmin + proteksi verifyJWT
-- app/dashboard/superadmin/page.tsx — halaman utama Dashboard SuperAdmin
-- app/dashboard/superadmin/settings/config/page.tsx — halaman konfigurasi login SuperAdmin
+- app/init-philipsliemena/page.tsx — halaman buat akun SuperAdmin pertama (secret path, RENAME dari app/setup/ Sesi #030)
+- app/dashboard/superadmin/layout.tsx — layout sidebar SuperAdmin + proteksi verifyJWT (DIUPDATE Sesi #030)
+- app/dashboard/superadmin/page.tsx — empty state sebelum klik sub-menu (DIUPDATE Sesi #030)
+- app/dashboard/superadmin/settings/config/page.tsx — Server Component, fetch data langsung (DIUPDATE Sesi #030)
+- app/dashboard/superadmin/settings/config/ConfigPageClient.tsx — Client component interaksi toggle/save/reset (BARU Sesi #030)
+- app/dashboard/superadmin/settings/[...slug]/page.tsx — catch-all "belum tersedia" (BARU Sesi #030)
 - app/api/setup/check/route.ts — cek apakah setup sudah selesai
 - app/api/setup/create-superadmin/route.ts — buat akun SuperAdmin (dipanggil sekali)
-- app/api/config/[feature_key]/route.ts — GET + PATCH config item
+- app/api/config/[feature_key]/route.ts — GET + PATCH config item (DIUPDATE Sesi #030 — hapus mock, baca Firestore)
 - app/api/auth/check-lock/route.ts — cek apakah akun terkunci sebelum login
 - app/api/auth/lock-account/route.ts — catat login gagal + kunci akun jika melebihi batas
 - app/api/auth/unlock-account/route.ts — buka kunci akun (auto setelah login berhasil)
 - app/api/auth/check-session/route.ts — cek sesi paralel (concurrent session)
+- components/SidebarNav.tsx — sidebar navigasi SuperAdmin (BARU Sesi #030)
 - components/ConfigItem.tsx — komponen item konfigurasi reusable
 - components/config/ConfigRenderer.tsx — renderer config generik (dibuat E.4)
-- scripts/seed-tenant.mjs — seed data awal: security_login policy + message_library
-- middleware.ts — proteksi route /dashboard, baca cookie 'session', routing per role
+- scripts/seed-tenant.mjs — seed data: security_login policy + message_library + config_schema (DITULIS ULANG Sesi #030)
+- middleware.ts — proteksi route /dashboard, baca cookie 'session', routing per role (DIUPDATE Sesi #030 — init-philipsliemena)
 
 ---
 
 ## ATURAN PENTING COOKIE SESSION
+(dari Sesi #025 — tidak berubah)
 
 - Cookie 'session' berisi Firebase ID Token (JWT)
 - Middleware membaca cookie 'session' untuk routing
@@ -120,6 +131,7 @@ WAJIB diikuti untuk setiap perubahan kode, penambahan fitur, atau perbaikan bug:
 ---
 
 ## ATURAN CODING WAJIB — TIDAK BOLEH DILANGGAR
+(dari Sesi #025 — tidak berubah)
 
 ### Aturan Arsitektur
 1. SEMUA nilai konfigurasi bisnis WAJIB baca via getEffectivePolicy() — TIDAK BOLEH hardcode
@@ -150,9 +162,11 @@ WAJIB diikuti untuk setiap perubahan kode, penambahan fitur, atau perbaikan bug:
 ---
 
 ## PATH FIRESTORE PENTING
+(dari Sesi #025 — tidak berubah, tambah 1 path baru Sesi #030)
 
 - /platform_config/policies/{featureKey} — platform-level policy
 - /platform_config/config_registry/{configId} — Dynamic Config Registry
+- /platform_config/config_registry/items/security_login — config schema 16 item 4 grup (di-seed Sesi #030)
 - /platform_config/settings — is_setup_complete flag
 - /users/{uid} — data SUPERADMIN (root level, BUKAN di /tenants/)
 - /tenants/{tenantId}/config/main — tenant-level config + policy override
@@ -170,6 +184,7 @@ WAJIB diikuti untuk setiap perubahan kode, penambahan fitur, atau perbaikan bug:
 ---
 
 ## ARSITEKTUR POLICY — 2 LEVEL
+(dari Sesi #025 — tidak berubah)
 
 Level 1 (Platform Owner):
   /platform_config/policies/{featureKey}
@@ -186,6 +201,7 @@ Fungsi merge: getEffectivePolicy(tenantId, featureKey)
 ---
 
 ## FEATURE KEYS YANG ADA
+(dari Sesi #025 — tidak berubah)
 
 - security_login — keamanan login (max attempts, OTP, biometric, session timeout)
 - concurrent_session — aturan sesi paralel
@@ -196,6 +212,7 @@ Fungsi merge: getEffectivePolicy(tenantId, featureKey)
 ---
 
 ## TIGA SISTEM REALTIME
+(dari Sesi #025 — tidak berubah)
 
 Sistem 1 — Config Changes:
   onSnapshot /tenants/{tenantId}/config/main
@@ -215,6 +232,7 @@ Semua 3 listener WAJIB dihentikan saat logout DAN saat tab/browser ditutup.
 ---
 
 ## STANDAR CACHE (lib/cache.ts)
+(dari Sesi #025 — tidak berubah)
 
 lib/cache.ts WAJIB mengimplementasikan:
 - TTL per item: setiap item cache punya waktu kadaluarsa
