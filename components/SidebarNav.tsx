@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -20,9 +20,11 @@ const SUB_MENU = [
 
 export function SidebarNav() {
   const pathname = usePathname()
-  const [open, setOpen] = useState(false)
+  // Default open kalau sedang di halaman settings — user tidak perlu klik dulu
+  const [open, setOpen] = useState(() => pathname.includes('/settings'))
 
   useEffect(() => {
+    // Kalau user navigasi langsung ke /settings (misal via URL bar) — pastikan sub-menu terbuka
     if (pathname.includes('/settings')) {
       setOpen(true)
     }
@@ -35,13 +37,19 @@ export function SidebarNav() {
         <p className="text-xs text-slate-400 mt-0.5">SuperAdmin Panel</p>
       </div>
       <nav className="flex-1 overflow-y-auto overflow-x-auto px-2 py-3">
+        {/* Tombol Konfigurasi — hanya toggle buka/tutup, tidak navigate */}
         <button
-          onClick={() => setOpen(!open)}
+          onClick={() => setOpen(prev => !prev)}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-blue-700 hover:bg-slate-100 transition-colors"
         >
           <Settings size={15} className="shrink-0 opacity-70" />
           <span>Konfigurasi</span>
-          <span className="ml-auto text-xs text-slate-400" style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+          <span
+            className="ml-auto text-xs text-slate-400 transition-transform duration-200"
+            style={{ display: 'inline-block', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          >
+            ▼
+          </span>
         </button>
         {open && (
           <div className="mt-0.5">
@@ -64,4 +72,3 @@ export function SidebarNav() {
     </aside>
   )
 }
-
