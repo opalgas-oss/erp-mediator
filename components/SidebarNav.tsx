@@ -20,11 +20,9 @@ const SUB_MENU = [
 
 export function SidebarNav() {
   const pathname = usePathname()
-  // Default open kalau sedang di halaman settings — user tidak perlu klik dulu
   const [open, setOpen] = useState(() => pathname.includes('/settings'))
 
   useEffect(() => {
-    // Kalau user navigasi langsung ke /settings (misal via URL bar) — pastikan sub-menu terbuka
     if (pathname.includes('/settings')) {
       setOpen(true)
     }
@@ -37,7 +35,6 @@ export function SidebarNav() {
         <p className="text-xs text-slate-400 mt-0.5">SuperAdmin Panel</p>
       </div>
       <nav className="flex-1 overflow-y-auto overflow-x-auto px-2 py-3">
-        {/* Tombol Konfigurasi — hanya toggle buka/tutup, tidak navigate */}
         <button
           onClick={() => setOpen(prev => !prev)}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-blue-700 hover:bg-slate-100 transition-colors"
@@ -57,6 +54,7 @@ export function SidebarNav() {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
                 className={`block py-1.5 pl-9 pr-3 text-xs rounded-md my-px transition-colors whitespace-nowrap ${
                   pathname === item.href
                     ? 'bg-blue-50 text-blue-700 font-semibold'
