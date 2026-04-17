@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { Settings } from 'lucide-react'
 
@@ -20,6 +20,7 @@ const SUB_MENU = [
 
 export function SidebarNav() {
   const pathname = usePathname()
+  const router   = useRouter()
   const [open, setOpen] = useState(() => pathname.includes('/settings'))
 
   useEffect(() => {
@@ -27,6 +28,18 @@ export function SidebarNav() {
       setOpen(true)
     }
   }, [pathname])
+
+  function handleKonfigurasiClick() {
+    if (open && pathname.includes('/settings')) {
+      // Sub-menu terbuka + user sedang di halaman settings
+      // → tutup sub-menu + kembali ke empty state
+      setOpen(false)
+      router.push('/dashboard/superadmin')
+    } else {
+      // Hanya toggle buka/tutup sub-menu
+      setOpen(prev => !prev)
+    }
+  }
 
   return (
     <aside className="w-64 shrink-0 bg-white border-r border-slate-200 flex flex-col h-screen overflow-hidden">
@@ -36,7 +49,7 @@ export function SidebarNav() {
       </div>
       <nav className="flex-1 overflow-y-auto overflow-x-auto px-2 py-3">
         <button
-          onClick={() => setOpen(prev => !prev)}
+          onClick={handleKonfigurasiClick}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-blue-700 hover:bg-slate-100 transition-colors"
         >
           <Settings size={15} className="shrink-0 opacity-70" />
