@@ -7,28 +7,11 @@
 //   - lib/auth-server.ts → server-only (verifyJWT via Firebase Admin)
 //
 // Catatan cookie 'session':
-//   Middleware membaca cookie 'session' sebagai Firebase ID token.
-//   Login page saat ini baru set cookie 'session_role' dan 'session_tenant' via setSessionCookies().
-//   Agar verifyJWT() bekerja, login page perlu menyimpan Firebase ID token ke cookie 'session'.
-//   Ini akan diperbaiki di Sprint 2 — lihat: app/login/page.tsx → selesaiLogin()
+//   Cookie 'session' berisi Firebase ID Token (JWT)
+//   verifyJWT() membaca cookie 'session' dan verifikasi via Admin SDK
 
-import { initializeApp, getApps, cert }  from 'firebase-admin/app'
-import { getAuth }                        from 'firebase-admin/auth'
-import { cookies }                        from 'next/headers'
-
-// ─── Inisialisasi Firebase Admin ─────────────────────────────────────────────
-// Hanya inisialisasi sekali — getApps() mencegah duplikasi instance
-function initAdmin(): void {
-  if (getApps().length === 0) {
-    initializeApp({
-      credential: cert({
-        projectId:   process.env.FIREBASE_ADMIN_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-        privateKey:  process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
-    })
-  }
-}
+import { getAdminAuth } from '@/lib/firebase-admin'
+import { cookies }      from 'next/headers'
 
 // ─── Tipe Hasil verifyJWT ──────────────────────────────────────────────────────
 export interface JWTPayload {
@@ -44,8 +27,6 @@ export interface JWTPayload {
 // Caller wajib redirect ke /login jika return null.
 export async function verifyJWT(): Promise<JWTPayload | null> {
   try {
-    initAdmin()
-
     // cookies() di Next.js 15+ adalah async — wajib await
     const cookieStore = await cookies()
     const token       = cookieStore.get('session')?.value
@@ -54,7 +35,8 @@ export async function verifyJWT(): Promise<JWTPayload | null> {
     if (!token) return null
 
     // Verifikasi tanda tangan JWT via Firebase Admin SDK
-    const decoded = await getAuth().verifyIdToken(token)
+    // getAdminAuth() pakai instance yang sama dari lib/firebase-admin.ts
+    const decoded = await getAdminAuth().verifyIdToken(token)
 
     return {
       uid:         decoded.uid,
