@@ -1,23 +1,12 @@
 // lib/credential-reader.ts
 // Membaca credential service dari tabel instance_credentials di PostgreSQL.
 // Jika belum ada di database, fallback otomatis ke environment variable.
-//
-// Urutan prioritas:
-//   1. Database (provider_instances is_default + instance_credentials)
-//   2. Environment variable (fallback selama credential belum dipindah ke DB)
-//
-// Cara pakai:
-//   const token = await getCredential('fonnte', 'api_token')
-//   const key   = await getCredential('xendit', 'secret_key')
 
 import 'server-only'
 import { unstable_cache }             from 'next/cache'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { dekripsi }                   from '@/lib/credential-crypto'
 
-// ─── Pemetaan fallback: provider kode + field key → nama env var ──────────────
-// Dipakai selama credential belum dipindah ke database.
-// Setelah seed-credentials.mjs dijalankan dan DB terisi, fallback ini tidak dipakai.
 const ENV_FALLBACK: Record<string, Record<string, string>> = {
   supabase: {
     project_url:      'NEXT_PUBLIC_SUPABASE_URL',
@@ -52,19 +41,31 @@ const ENV_FALLBACK: Record<string, Record<string, string>> = {
   },
 }
 
-// ─── FUNGSI UTAMA: getCredential ─────────────────────────────────────────────
-// Ambil satu nilai credential berdasarkan provider kode + field key.
-// Cache 15 menit via unstable_cache — invalidated saat credential diupdate.
+// ─── Tipe internal untuk hasil join Supabase ──────────────────────────────────
+interface FieldDef {
+  field_key: string
+  is_secret: boolean
+}
 
+interface CredWithDef {
+  encrypted_value: string
+  provider_field_definitions: FieldDef | FieldDef[] | null
+}
+
+function extractFieldDef(raw: FieldDef | FieldDef[] | null): FieldDef | null {
+  if (!raw) return null
+  if (Array.isArray(raw)) return raw[0] ?? null
+  return raw
+}
+
+// ─── FUNGSI UTAMA: getCredential ─────────────────────────────────────────────
 export async function getCredential(
   providerKode: string,
   fieldKey: string
 ): Promise<string | null> {
-
   const fromDB = await tryGetFromDB(providerKode, fieldKey)
   if (fromDB !== null) return fromDB
 
-  // Fallback ke env var
   const envKey = ENV_FALLBACK[providerKode]?.[fieldKey]
   if (envKey) {
     const envVal = process.env[envKey] ?? null
@@ -84,7 +85,6 @@ async function tryGetFromDB(
       async () => {
         const db = createServerSupabaseClient()
 
-        // 1. Ambil provider
         const { data: provider } = await db
           .from('service_providers')
           .select('id')
@@ -94,7 +94,6 @@ async function tryGetFromDB(
 
         if (!provider) return null
 
-        // 2. Ambil instance default yang aktif
         const { data: instance } = await db
           .from('provider_instances')
           .select('id')
@@ -105,7 +104,6 @@ async function tryGetFromDB(
 
         if (!instance) return null
 
-        // 3. Ambil field definition
         const { data: fieldDef } = await db
           .from('provider_field_definitions')
           .select('id, is_secret')
@@ -115,7 +113,6 @@ async function tryGetFromDB(
 
         if (!fieldDef) return null
 
-        // 4. Ambil nilai credential
         const { data: cred } = await db
           .from('instance_credentials')
           .select('encrypted_value')
@@ -125,36 +122,26 @@ async function tryGetFromDB(
 
         if (!cred) return null
 
-        // Dekripsi jika secret, plain text jika tidak
         if (fieldDef.is_secret) {
           return dekripsi(cred.encrypted_value)
         }
         return cred.encrypted_value
       },
       [`credential:${providerKode}:${fieldKey}`],
-      {
-        revalidate: 15 * 60,
-        tags: ['credentials', `credential:${providerKode}`],
-      }
+      { revalidate: 15 * 60, tags: ['credentials', `credential:${providerKode}`] }
     )
 
     return await cached()
   } catch {
-    // DB belum ada data atau error lain → pakai fallback env
     return null
   }
 }
 
 // ─── FUNGSI: getCredentialsByProvider ────────────────────────────────────────
-// Ambil semua credential satu provider sekaligus — lebih efisien dari N panggilan.
-// Berguna saat butuh semua field (contoh: inisialisasi Xendit client).
-
 export async function getCredentialsByProvider(
   providerKode: string
 ): Promise<Record<string, string>> {
   const result: Record<string, string> = {}
-
-  // Kumpulkan semua env fallback untuk provider ini
   const envFields = ENV_FALLBACK[providerKode] ?? {}
 
   try {
@@ -183,32 +170,27 @@ export async function getCredentialsByProvider(
 
         const { data: creds } = await db
           .from('instance_credentials')
-          .select(`
-            encrypted_value,
-            provider_field_definitions!inner(field_key, is_secret)
-          `)
+          .select('encrypted_value, provider_field_definitions!inner(field_key, is_secret)')
           .eq('instance_id', instance.id)
 
         if (!creds || creds.length === 0) return {}
 
         const map: Record<string, string> = {}
-        for (const c of creds) {
-          const def = c.provider_field_definitions as { field_key: string; is_secret: boolean }
+        for (const c of (creds as unknown as CredWithDef[])) {
+          const def = extractFieldDef(c.provider_field_definitions)
+          if (!def) continue
           try {
             map[def.field_key] = def.is_secret
               ? dekripsi(c.encrypted_value)
               : c.encrypted_value
           } catch {
-            // Gagal dekripsi satu field → skip, jangan crash semua
+            // Skip field yang gagal didekripsi
           }
         }
         return map
       },
       [`credentials:provider:${providerKode}`],
-      {
-        revalidate: 15 * 60,
-        tags: ['credentials', `credential:${providerKode}`],
-      }
+      { revalidate: 15 * 60, tags: ['credentials', `credential:${providerKode}`] }
     )
 
     const fromDB = await cached()
@@ -217,7 +199,6 @@ export async function getCredentialsByProvider(
     // DB error → semua dari env fallback
   }
 
-  // Isi yang kosong dari env fallback
   for (const [fieldKey, envKey] of Object.entries(envFields)) {
     if (!result[fieldKey]) {
       const val = process.env[envKey]
