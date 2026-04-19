@@ -1,3 +1,6 @@
+// force-dynamic: layout ini verifikasi JWT ke Supabase — tidak boleh di-prerender saat build
+export const dynamic = 'force-dynamic'
+
 import { redirect } from 'next/navigation'
 import { verifyJWT } from '@/lib/auth-server'
 import { SidebarNav } from '@/components/SidebarNav'
