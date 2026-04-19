@@ -160,6 +160,12 @@ async function seedConfigRegistry() {
     { policy_key: 'session_inactive_timeout_minutes', label: 'Session timeout tidak aktif (menit)', kategori: 'Session & Concurrent', nilai: '30',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
     { policy_key: 'concurrent_rule',                  label: 'Aturan login bersamaan',               kategori: 'Session & Concurrent', nilai: 'different_role_only', tipe_data: 'select',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: ['none','different_role_only','always'] },
     { policy_key: 'notify_superadmin_on_lock',        label: 'Notif WA ke SuperAdmin saat dikunci',  kategori: 'Session & Concurrent', nilai: 'true',                tipe_data: 'boolean', akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    // ── GPS (3 item) ───────────────────────────────────────────────
+    { policy_key: 'gps_timeout_seconds',              label: 'Timeout GPS (detik)',                  kategori: 'GPS',                  nilai: '10',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin'],         nilai_enum: null },
+    { policy_key: 'gps_cache_ttl_minutes',            label: 'Cache lokasi GPS (menit)',             kategori: 'GPS',                  nilai: '30',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin'],         nilai_enum: null },
+    { policy_key: 'gps_mode',                         label: 'Mode GPS',                             kategori: 'GPS',                  nilai: 'required',            tipe_data: 'select',  akses_baca: ['superadmin'],         akses_ubah: ['superadmin'],         nilai_enum: ['required','optional'] },
+    // ── Validasi (1 item) ──────────────────────────────────────────
+    { policy_key: 'password_min_length',              label: 'Panjang minimum password',             kategori: 'Validasi',             nilai: '8',                   tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin'],         nilai_enum: null },
   ]
 
   const rows = items.map(item => ({
@@ -171,7 +177,7 @@ async function seedConfigRegistry() {
 
   const { error } = await db.from('config_registry').insert(rows)
   if (error) throw new Error(`seedConfigRegistry insert: ${error.message}`)
-  console.log(`  ✅ Config Registry: 16 item security_login`)
+  console.log(`  ✅ Config Registry: 20 item security_login (16 login + 3 GPS + 1 validasi)`)
 }
 
 // ============================================================
@@ -200,7 +206,7 @@ async function seedMessageLibrary() {
     { key: 'login_validasi_email_kosong',         kategori: 'login_ui', channel: 'ui', teks: 'Email wajib diisi.',                                     variabel: [], keterangan: 'Validasi client-side: field email kosong' },
     { key: 'login_validasi_email_format',         kategori: 'login_ui', channel: 'ui', teks: 'Format email tidak valid.',                              variabel: [], keterangan: 'Validasi client-side: email tidak mengandung @ atau domain' },
     { key: 'login_validasi_password_kosong',      kategori: 'login_ui', channel: 'ui', teks: 'Password wajib diisi.',                                  variabel: [], keterangan: 'Validasi client-side: field password kosong' },
-    { key: 'login_validasi_password_min',         kategori: 'login_ui', channel: 'ui', teks: 'Password minimal 8 karakter.',                           variabel: [], keterangan: 'Validasi client-side: password < 8 karakter' },
+    { key: 'login_validasi_password_min',         kategori: 'login_ui', channel: 'ui', teks: 'Password minimal {min_panjang} karakter.',                           variabel: ['min_panjang'], keterangan: 'Validasi client-side: password kurang dari password_min_length di config_registry' },
 
     // ── otp_ui: 5 pesan tahap verifikasi OTP ────────────────────────────────
     { key: 'otp_error_kurang_digit',      kategori: 'otp_ui', channel: 'ui', teks: 'Masukkan 6 digit kode OTP.',                      variabel: [], keterangan: 'Input OTP kurang dari 6 digit' },

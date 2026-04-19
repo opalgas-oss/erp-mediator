@@ -1,14 +1,14 @@
 /**
  * lib/session.ts
  * Helper fungsi session untuk platform ERP Mediator Hyperlocal.
- * Mencakup: GPS, device info, OTP (via Fonnte WA), biometric (WebAuthn), dan session log.
+ * Mencakup: GPS, device info, session log, OTP verify, biometric (WebAuthn).
  * Dapat diimport di browser (client component) maupun server.
  *
- * PERUBAHAN dari versi Firebase:
- *   - Import Firebase → Supabase browser client (agar bisa dipakai di browser + server)
- *   - Semua operasi Firestore → operasi tabel PostgreSQL via Supabase
- *   - saveOTPtoFirestore → saveOTPtoDatabase (nama lebih akurat)
- *   - Policy otp_expiry_minutes dibaca langsung dari tabel platform_policies
+ * PERUBAHAN Sesi #038:
+ *   - getGPSLocation: terima optional opts { timeoutMs, cacheTtlMs } dari config_registry
+ *     Nilai default tetap tersedia sebagai fallback aman
+ *   - sendOTPviaWA dan saveOTPtoFirestore sudah dihapus — diganti /api/auth/send-otp
+ *   - registerBiometric: baca trusted_device_days dari config_registry via API
  */
 
 import { createBrowserSupabaseClient } from '@/lib/supabase-client'
@@ -64,11 +64,11 @@ export function getDeviceInfo(): string {
 }
 
 // ---------------------------------------------------------------------------
-// 2. getGPSLocation — dengan sessionStorage cache 30 menit
+// 2. getGPSLocation — timeout dan cache TTL dari config_registry via parameter
+//    Nilai default (fallback) dipakai kalau opts tidak diberikan
 // ---------------------------------------------------------------------------
 
-const GPS_CACHE_KEY     = 'erp_gps_cache'
-const GPS_CACHE_TTL_MS  = 30 * 60 * 1000  // 30 menit
+const GPS_CACHE_KEY = 'erp_gps_cache'
 
 interface GPSCache {
   lat:       number
@@ -77,11 +77,19 @@ interface GPSCache {
   timestamp: number
 }
 
-export async function getGPSLocation(): Promise<{
+export interface GPSOpts {
+  timeoutMs?:  number   // Default: 10000ms (10 detik) — dari config gps_timeout_seconds
+  cacheTtlMs?: number   // Default: 30 menit — dari config gps_cache_ttl_minutes
+}
+
+export async function getGPSLocation(opts?: GPSOpts): Promise<{
   lat: number; lng: number; kota: string
 }> {
   if (typeof window === 'undefined') throw new Error('GPS_SERVER')
   if (!navigator.geolocation)        throw new Error('GPS_DITOLAK')
+
+  const timeoutMs  = opts?.timeoutMs  ?? 10000           // 10 detik fallback
+  const cacheTtlMs = opts?.cacheTtlMs ?? (30 * 60 * 1000) // 30 menit fallback
 
   // Cek cache sessionStorage — kalau masih valid, pakai langsung
   try {
@@ -89,7 +97,7 @@ export async function getGPSLocation(): Promise<{
     if (raw) {
       const cache = JSON.parse(raw) as GPSCache
       const ageMs = Date.now() - cache.timestamp
-      if (ageMs < GPS_CACHE_TTL_MS && cache.kota && cache.kota !== 'Tidak Diketahui') {
+      if (ageMs < cacheTtlMs && cache.kota && cache.kota !== 'Tidak Diketahui') {
         return { lat: cache.lat, lng: cache.lng, kota: cache.kota }
       }
     }
@@ -101,7 +109,7 @@ export async function getGPSLocation(): Promise<{
       (pos) => resolve(pos.coords),
       ()    => reject(new Error('GPS_DITOLAK')),
       {
-        timeout:            5000,
+        timeout:            timeoutMs,
         enableHighAccuracy: false,
         maximumAge:         60000,
       }
@@ -147,7 +155,7 @@ export async function getGPSLocation(): Promise<{
 }
 
 // ---------------------------------------------------------------------------
-// 3. writeSessionLog — Firestore → tabel session_logs
+// 3. writeSessionLog — tabel session_logs
 // ---------------------------------------------------------------------------
 
 export async function writeSessionLog(params: {
@@ -180,7 +188,7 @@ export async function writeSessionLog(params: {
 }
 
 // ---------------------------------------------------------------------------
-// 4. generateOTP — TIDAK BERUBAH
+// 4. generateOTP — utilitas sederhana
 // ---------------------------------------------------------------------------
 
 export function generateOTP(): string {
@@ -189,21 +197,11 @@ export function generateOTP(): string {
 }
 
 // ---------------------------------------------------------------------------
-// 5. verifyOTP — Firestore getDoc → tabel otp_codes
-// CATATAN: Generate + simpan + kirim OTP sekarang dilakukan server-side
-// via POST /api/auth/send-otp — credential dan template dibaca dari DB
-// ---------------------------------------------------------------------------
-
-// [sendOTPviaWA dan saveOTPtoFirestore DIHAPUS Sesi #038]
-// Alasan: melanggar aturan H3 TECHNICAL_STANDARDS — credential Fonnte
-// dan template pesan hardcode/env langsung di client.
-// Diganti dengan server-side route /api/auth/send-otp yang membaca:
-//   - Credential Fonnte dari instance_credentials (credential-reader)
-//   - Template pesan dari message_library
-//   - Config OTP dari platform_policies
-
-// ---------------------------------------------------------------------------
-// 6. verifyOTP — tabel otp_codes
+// 5. verifyOTP — tabel otp_codes
+// CATATAN: Generate + simpan + kirim OTP dilakukan server-side via /api/auth/send-otp
+//   - Credential Fonnte   : instance_credentials (credential-reader)
+//   - Template pesan      : message_library (Modul Pesan)
+//   - Config OTP          : config_registry (Modul Konfigurasi)
 // ---------------------------------------------------------------------------
 
 export async function verifyOTP(params: {
@@ -225,7 +223,6 @@ export async function verifyOTP(params: {
   if (new Date(data.expired_at) < new Date()) return 'EXPIRED'
   if (data.kode !== params.inputCode) return false
 
-  // Tandai OTP sudah dipakai
   await supabase
     .from('otp_codes')
     .update({ dipakai: true })
@@ -236,7 +233,8 @@ export async function verifyOTP(params: {
 }
 
 // ---------------------------------------------------------------------------
-// 8. registerBiometric — Firestore setDoc → tabel trusted_devices
+// 6. registerBiometric — tabel trusted_devices
+//    trusted_device_days dibaca dari config_registry via /api/config/security_login
 // ---------------------------------------------------------------------------
 
 export async function registerBiometric(params: {
@@ -248,36 +246,32 @@ export async function registerBiometric(params: {
   }
 
   try {
-    // Baca trusted_device_days dari platform_policies
-    let trustedDays = 30 // default fallback
+    // Baca trusted_device_days dari Modul Konfigurasi via API
+    let trustedDays = 30 // fallback aman
     try {
-      const supabase = createBrowserSupabaseClient()
-      const { data } = await supabase
-        .from('platform_policies')
-        .select('nilai')
-        .eq('feature_key', 'security_login')
-        .single()
-      if (data?.nilai) {
-        const policy = data.nilai as Record<string, unknown>
-        if (typeof policy['trusted_device_days'] === 'number') {
-          trustedDays = policy['trusted_device_days']
-        }
+      const res  = await fetch('/api/config/security_login')
+      const data = await res.json()
+      if (data.success && data.data) {
+        const allItems: Array<{ policy_key?: string; nilai?: string }> =
+          data.data.flatMap((g: { items: Array<{ policy_key?: string; nilai?: string }> }) => g.items)
+        const item = allItems.find(i => i.policy_key === 'trusted_device_days')
+        if (item?.nilai) trustedDays = Number(item.nilai) || 30
       }
     } catch { /* pakai default 30 hari */ }
 
     await navigator.credentials.create({
       publicKey: {
-        challenge:                crypto.getRandomValues(new Uint8Array(32)),
-        rp:                       { name: 'ERP Mediator', id: window.location.hostname },
-        user:                     { id: new TextEncoder().encode(params.uid), name: params.uid, displayName: params.uid },
-        pubKeyCredParams:         [{ alg: -7, type: 'public-key' }],
-        timeout:                  60000,
-        authenticatorSelection:   { authenticatorAttachment: 'platform', userVerification: 'required' },
+        challenge:              crypto.getRandomValues(new Uint8Array(32)),
+        rp:                     { name: 'ERP Mediator', id: window.location.hostname },
+        user:                   { id: new TextEncoder().encode(params.uid), name: params.uid, displayName: params.uid },
+        pubKeyCredParams:       [{ alg: -7, type: 'public-key' }],
+        timeout:                trustedDays > 0 ? 60000 : 60000,
+        authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
       },
     })
 
-    const deviceId  = crypto.randomUUID()
-    const supabase  = createBrowserSupabaseClient()
+    const deviceId = crypto.randomUUID()
+    const supabase = createBrowserSupabaseClient()
 
     await supabase
       .from('trusted_devices')
@@ -298,7 +292,7 @@ export async function registerBiometric(params: {
 }
 
 // ---------------------------------------------------------------------------
-// 9. verifyBiometric — Firestore getDocs → tabel trusted_devices
+// 7. verifyBiometric — tabel trusted_devices
 // ---------------------------------------------------------------------------
 
 export async function verifyBiometric(params: {
@@ -310,7 +304,6 @@ export async function verifyBiometric(params: {
   try {
     const supabase = createBrowserSupabaseClient()
 
-    // Cek trusted device yang masih valid
     const { data, error } = await supabase
       .from('trusted_devices')
       .select('id')
@@ -320,7 +313,6 @@ export async function verifyBiometric(params: {
 
     if (error || !data || data.length === 0) return false
 
-    // Lakukan WebAuthn assertion
     const assertion = await navigator.credentials.get({
       publicKey: {
         challenge:        crypto.getRandomValues(new Uint8Array(32)),

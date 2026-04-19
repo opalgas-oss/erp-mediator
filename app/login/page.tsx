@@ -5,19 +5,14 @@
 //   TAHAP 0 GPS → TAHAP 1 Kredensial → TAHAP 2 Cek Sesi Paralel
 //   → TAHAP 3 Pilih Role → TAHAP 4 OTP → TAHAP 5 Biometric → TAHAP 6 Selesai
 //
-// PERUBAHAN dari versi Firebase:
-//   - signInWithEmailAndPassword → supabase.auth.signInWithPassword()
-//   - getIdTokenResult → decode JWT access_token untuk baca custom claims
-//   - getDoc Firestore → query tabel users / user_profiles PostgreSQL
-//   - Manual set cookie 'session' → Supabase SSR kelola cookie otomatis
-//   - FIREBASE_ERRORS → SUPABASE_ERROR_KEYS
-//
-// PERUBAHAN Sesi #037:
-//   - Hapus SUPABASE_ERRORS (hardcode pesan) → ganti SUPABASE_ERROR_KEYS (map error ke DB key)
-//   - Semua pesan error dan validasi dibaca dari tabel message_library via /api/message-library
-//   - Tambah state dbPesan + useEffect fetch pesan saat mount
-//   - Tambah fungsi m(key, vars?) sebagai helper baca pesan dengan fallback ke DEFAULT_PESAN
-//   - DEFAULT_PESAN dipakai sebagai fallback sampai data DB terload
+// PERUBAHAN Sesi #038:
+//   - GPS useEffect: fetch config_registry dulu, baru start GPS dengan nilai dari DB
+//   - validasiForm: password_min_length dari configLogin state (bukan hardcode 8)
+//   - configLogin state: load dari config_registry via /api/config/security_login saat mount
+//   - kirimOTP: pakai /api/auth/send-otp (server-side, credential+config dari DB)
+//   - SUPERADMIN: tulis session_logs + user_presence
+//   - Cookie max-age: dari session_timeout_minutes di config_registry
+//   - Semua pesan: dari message_library via m() helper
 
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams }            from 'next/navigation'
@@ -52,35 +47,32 @@ type Tahap =
   | 'SELESAI'
 
 // ─── Default pesan (fallback sampai data dari /api/message-library terload) ───
-// Nilai ini HARUS sinkron dengan nilai default di tabel message_library.
-// Jika admin mengubah teks pesan via Dashboard, nilai DB yang berlaku — bukan ini.
 const DEFAULT_PESAN: Record<string, string> = {
-  login_error_credentials_salah:       'Email atau password yang Anda masukkan salah.',
-  login_error_email_belum_konfirmasi:  'Email belum dikonfirmasi. Hubungi admin.',
-  login_error_terlalu_banyak_percobaan:'Terlalu banyak percobaan. Coba lagi beberapa menit.',
-  login_error_koneksi_gagal:           'Gagal terhubung. Periksa koneksi internet.',
-  login_error_umum:                    'Terjadi kesalahan. Coba lagi.',
-  login_error_gps_diperlukan:          'Aktifkan GPS di browser untuk melanjutkan. Klik ikon lokasi di address bar, lalu izinkan akses lokasi.',
-  login_error_config_belum_lengkap:    'Konfigurasi akun belum lengkap. Hubungi admin.',
-  login_error_role_tidak_ditemukan:    'Role akun tidak ditemukan. Hubungi admin.',
-  login_error_akun_belum_aktif:        'Akun Anda belum diaktifkan. Tunggu verifikasi dari Admin.',
-  login_error_gagal_muat_data:         'Gagal memuat data akun. Coba lagi.',
-  login_error_gagal_config:            'Gagal memuat konfigurasi. Coba lagi.',
-  login_error_gagal_selesaikan:        'Gagal menyelesaikan login. Coba lagi.',
-  login_error_akun_dikunci:            'Terlalu banyak percobaan. Akun dikunci hingga pukul {lock_until_wib}.',
-  login_validasi_email_kosong:         'Email wajib diisi.',
-  login_validasi_email_format:         'Format email tidak valid.',
-  login_validasi_password_kosong:      'Password wajib diisi.',
-  login_validasi_password_min:         'Password minimal 8 karakter.',
-  otp_error_kurang_digit:              'Masukkan 6 digit kode OTP.',
-  otp_error_kadaluarsa:                'Kode OTP sudah kadaluarsa. Klik Kirim ulang.',
-  otp_error_salah:                     'Kode OTP salah. Sisa percobaan: {sisa_percobaan}.',
-  otp_error_batas_habis:               'Batas percobaan OTP habis. Klik Kirim ulang.',
-  otp_error_verifikasi_gagal:          'Gagal memverifikasi OTP. Coba lagi.',
+  login_error_credentials_salah:        'Email atau password yang Anda masukkan salah.',
+  login_error_email_belum_konfirmasi:   'Email belum dikonfirmasi. Hubungi admin.',
+  login_error_terlalu_banyak_percobaan: 'Terlalu banyak percobaan. Coba lagi beberapa menit.',
+  login_error_koneksi_gagal:            'Gagal terhubung. Periksa koneksi internet.',
+  login_error_umum:                     'Terjadi kesalahan. Coba lagi.',
+  login_error_gps_diperlukan:           'Aktifkan GPS di browser untuk melanjutkan. Klik ikon lokasi di address bar, lalu izinkan akses lokasi.',
+  login_error_config_belum_lengkap:     'Konfigurasi akun belum lengkap. Hubungi admin.',
+  login_error_role_tidak_ditemukan:     'Role akun tidak ditemukan. Hubungi admin.',
+  login_error_akun_belum_aktif:         'Akun Anda belum diaktifkan. Tunggu verifikasi dari Admin.',
+  login_error_gagal_muat_data:          'Gagal memuat data akun. Coba lagi.',
+  login_error_gagal_config:             'Gagal memuat konfigurasi. Coba lagi.',
+  login_error_gagal_selesaikan:         'Gagal menyelesaikan login. Coba lagi.',
+  login_error_akun_dikunci:             'Terlalu banyak percobaan. Akun dikunci hingga pukul {lock_until_wib}.',
+  login_validasi_email_kosong:          'Email wajib diisi.',
+  login_validasi_email_format:          'Format email tidak valid.',
+  login_validasi_password_kosong:       'Password wajib diisi.',
+  login_validasi_password_min:          'Password minimal {min_panjang} karakter.',
+  otp_error_kurang_digit:               'Masukkan 6 digit kode OTP.',
+  otp_error_kadaluarsa:                 'Kode OTP sudah kadaluarsa. Klik Kirim ulang.',
+  otp_error_salah:                      'Kode OTP salah. Sisa percobaan: {sisa_percobaan}.',
+  otp_error_batas_habis:                'Batas percobaan OTP habis. Klik Kirim ulang.',
+  otp_error_verifikasi_gagal:           'Gagal memverifikasi OTP. Coba lagi.',
 }
 
-// ─── Map error Supabase → message library key ─────────────────────────────────
-// Tidak hardcode pesan di sini — hanya map ke key yang dibaca dari DB
+// ─── Map error Supabase → message key ────────────────────────────────────────
 const SUPABASE_ERROR_KEYS: Record<string, string> = {
   'Invalid login credentials': 'login_error_credentials_salah',
   'Email not confirmed':       'login_error_email_belum_konfirmasi',
@@ -102,14 +94,19 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
   }
 }
 
-// ─── Tipe Data ────────────────────────────────────────────────────────────────
-interface UserProfileRow {
-  nama:     string
-  role:     string
-  status:   string
-  nomor_wa: string | null
+// ─── Helper: ambil semua items dari response config_registry ─────────────────
+type ConfigItem = { policy_key?: string; nilai?: string }
+type ConfigGroup = { items: ConfigItem[] }
+
+function extractConfigItems(data: ConfigGroup[]): ConfigItem[] {
+  return data.flatMap(g => g.items)
 }
 
+function findConfigValue(items: ConfigItem[], policyKey: string): string | undefined {
+  return items.find(i => i.policy_key === policyKey)?.nilai
+}
+
+// ─── Tipe Data ────────────────────────────────────────────────────────────────
 interface DataSesiParalel {
   device:   string
   gps_kota: string
@@ -178,28 +175,87 @@ function LoginForm() {
   const [otpHitunganMundur, setOtpHitunganMundur] = useState(60)
   const [otpExpiryMenit,    setOtpExpiryMenit]    = useState(5)
 
-  // State untuk pesan dari message_library — di-load sekali saat mount
+  // State config dari config_registry (Modul Konfigurasi) — untuk GPS dan validasi form
+  // Default adalah fallback aman — akan di-update saat config berhasil diload dari DB
+  const [configLogin, setConfigLogin] = useState<Record<string, string>>({
+    gps_timeout_seconds:   '10',
+    gps_cache_ttl_minutes: '30',
+    gps_mode:              'required',
+    password_min_length:   '8',
+    session_timeout_minutes: '480',
+  })
+
+  // State pesan dari message_library (Modul Pesan)
   const [dbPesan, setDbPesan] = useState<Record<string, string>>({})
 
   const gpsUdahDiminta = useRef(false)
   const gpsRef         = useRef<{ lat: number; lng: number; kota: string } | null>(null)
 
   // ── Helper baca pesan: prioritas DB, fallback ke DEFAULT_PESAN ────────────
-  // Fungsi ini menggantikan semua string hardcode di kode di bawah
   function m(key: string, vars?: Record<string, string>): string {
     const teks = dbPesan[key] ?? DEFAULT_PESAN[key] ?? key
     if (!vars) return teks
     return teks.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`)
   }
 
-  // ── Load pesan dari message_library via API saat mount ────────────────────
-  // Fetch non-blocking — form tetap bisa dipakai sebelum ini selesai
+  // ── Load pesan dari Modul Pesan (message_library) saat mount ─────────────
   useEffect(() => {
     fetch('/api/message-library?kategori=login_ui,otp_ui')
       .then(res => res.json())
       .then(json => { if (json.success && json.data) setDbPesan(json.data) })
-      .catch(() => { /* gunakan DEFAULT_PESAN sebagai fallback */ })
+      .catch(() => {})
   }, [])
+
+  // ── TAHAP 0: Load config GPS dari Modul Konfigurasi, lalu start GPS ───────
+  // GPS berjalan setelah config terload agar timeout dan cache TTL dari DB
+  useEffect(() => {
+    if (gpsUdahDiminta.current) return
+    gpsUdahDiminta.current = true
+
+    async function initConfigDanGPS() {
+      // Fetch config dari config_registry (Modul Konfigurasi)
+      let gpsTimeoutMs  = 10 * 1000       // fallback 10 detik
+      let gpsCacheTtlMs = 30 * 60 * 1000  // fallback 30 menit
+
+      try {
+        const res  = await fetch('/api/config/security_login')
+        const data = await res.json()
+        if (data.success && data.data) {
+          const items = extractConfigItems(data.data)
+          const map: Record<string, string> = {}
+          for (const item of items) {
+            if (item.policy_key && item.nilai !== undefined) map[item.policy_key] = item.nilai
+          }
+          if (Object.keys(map).length > 0) setConfigLogin(prev => ({ ...prev, ...map }))
+
+          const timeoutSec = Number(findConfigValue(items, 'gps_timeout_seconds'))
+          const cacheMenit = Number(findConfigValue(items, 'gps_cache_ttl_minutes'))
+          if (timeoutSec)  gpsTimeoutMs  = timeoutSec * 1000
+          if (cacheMenit)  gpsCacheTtlMs = cacheMenit * 60 * 1000
+        }
+      } catch { /* pakai fallback */ }
+
+      // Jalankan GPS background dengan nilai dari config_registry
+      try {
+        const hasil = await getGPSLocation({ timeoutMs: gpsTimeoutMs, cacheTtlMs: gpsCacheTtlMs })
+        setGps(hasil)
+        gpsRef.current = hasil
+      } catch {
+        // GPS ditolak atau timeout — form tetap berjalan normal
+      }
+    }
+
+    initConfigDanGPS()
+  }, [])
+
+  // ── Timer OTP ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (tahap !== 'OTP' || otpHitunganMundur <= 0) return
+    const timer = setTimeout(() => {
+      setOtpHitunganMundur(prev => Math.max(0, prev - 1))
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [tahap, otpHitunganMundur])
 
   function formatWaktuLogin(ts: unknown): string {
     if (!ts) return 'waktu tidak diketahui'
@@ -215,54 +271,50 @@ function LoginForm() {
     }
   }
 
-  // ── TAHAP 0: GPS background — tidak memblokir form ────────────────────────
-  useEffect(() => {
-    if (gpsUdahDiminta.current) return
-    gpsUdahDiminta.current = true
-
-    async function muatGPSBackground() {
-      try {
-        const hasil = await getGPSLocation()
-        setGps(hasil)
-        gpsRef.current = hasil
-      } catch {
-        // GPS ditolak atau timeout — form tetap berjalan normal
-      }
-    }
-    muatGPSBackground()
-  }, [])
-
-  // ── Timer OTP ─────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (tahap !== 'OTP' || otpHitunganMundur <= 0) return
-    const timer = setTimeout(() => {
-      setOtpHitunganMundur(prev => Math.max(0, prev - 1))
-    }, 1000)
-    return () => clearTimeout(timer)
-  }, [tahap, otpHitunganMundur])
-
+  // ── validasiForm: password_min_length dari config_registry ───────────────
   function validasiForm(): boolean {
     let valid = true
     if (!email) { setErrorEmail(m('login_validasi_email_kosong')); valid = false }
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setErrorEmail(m('login_validasi_email_format')); valid = false }
     else setErrorEmail('')
 
+    const minPanjang = Number(configLogin['password_min_length'] || '8')
     if (!password) { setErrorPassword(m('login_validasi_password_kosong')); valid = false }
-    else if (password.length < 8) { setErrorPassword(m('login_validasi_password_min')); valid = false }
+    else if (password.length < minPanjang) {
+      setErrorPassword(m('login_validasi_password_min', { min_panjang: String(minPanjang) }))
+      valid = false
+    }
     else setErrorPassword('')
 
     return valid
+  }
+
+  // ── Helper: ambil config dari state atau fetch ulang ──────────────────────
+  async function getSessionTimeoutMinutes(): Promise<number> {
+    try {
+      const res  = await fetch('/api/config/security_login')
+      const data = await res.json()
+      if (data.success && data.data) {
+        const items = extractConfigItems(data.data)
+        const val   = findConfigValue(items, 'session_timeout_minutes')
+        if (val) return Number(val) || 480
+      }
+    } catch {}
+    return Number(configLogin['session_timeout_minutes'] || '480')
   }
 
   // ── TAHAP 1: Submit email + password ──────────────────────────────────────
   async function handleLogin() {
     if (!validasiForm()) return
 
-    // Cek GPS — wajib ada sebelum lanjut autentikasi
-    if (!gpsRef.current) {
+    // Cek GPS — wajib ada sebelum lanjut autentikasi (sesuai gps_mode dari config)
+    const gpsMode = configLogin['gps_mode'] ?? 'required'
+    if (!gpsRef.current && gpsMode === 'required') {
       setIsLoading(true)
       try {
-        const hasilGPS = await getGPSLocation()
+        const gpsTimeoutMs  = Number(configLogin['gps_timeout_seconds']   || '10')  * 1000
+        const gpsCacheTtlMs = Number(configLogin['gps_cache_ttl_minutes'] || '30')  * 60 * 1000
+        const hasilGPS = await getGPSLocation({ timeoutMs: gpsTimeoutMs, cacheTtlMs: gpsCacheTtlMs })
         setGps(hasilGPS)
         gpsRef.current = hasilGPS
       } catch {
@@ -300,23 +352,12 @@ function LoginForm() {
       }
 
       const claims        = decodeJwtPayload(data.session.access_token)
-      const claimRole     = claims['app_role']    as string || ''
-      const claimTenantId = claims['tenant_id']   as string || ''
+      const claimRole     = claims['app_role']  as string || ''
+      const claimTenantId = claims['tenant_id'] as string || ''
 
       // SUPERADMIN — tidak punya tenant_id
       if (claimRole === 'SUPERADMIN') {
-        // Baca session_timeout_minutes dari Modul Konfigurasi via API
-        let sessionTimeoutMinutes = 480
-        try {
-          const resCfg  = await fetch('/api/config/security_login')
-          const dataCfg = await resCfg.json()
-          const allItems = dataCfg.data?.flatMap((g: { items: Array<{ policy_key?: string; nilai?: string }> }) => g.items) ?? []
-          const item     = allItems.find((i: { policy_key?: string }) => i.policy_key === 'session_timeout_minutes')
-          if (item?.nilai) sessionTimeoutMinutes = Number(item.nilai) || 480
-        } catch (error) {
-          console.error('[login] Gagal baca session_timeout_minutes:', error)
-        }
-
+        const sessionTimeoutMinutes = await getSessionTimeoutMinutes()
         const maxAgeSec = sessionTimeoutMinutes * 60
         const loginAt   = new Date().toISOString()
 
@@ -324,7 +365,7 @@ function LoginForm() {
         document.cookie = `gps_kota=${encodeURIComponent(gpsRef.current?.kota || 'Tidak Diketahui')}; path=/; max-age=${maxAgeSec}`
         document.cookie = `session_login_at=${encodeURIComponent(loginAt)}; path=/; max-age=${maxAgeSec}`
 
-        // Tulis session log ke Supabase (dibutuhkan TC-I01)
+        // Tulis session log ke Supabase (TC-I01)
         let sessionId = ''
         try {
           sessionId = await writeSessionLog({
@@ -340,7 +381,7 @@ function LoginForm() {
           console.error('[login] Gagal tulis session log SUPERADMIN:', error)
         }
 
-        // Update user presence (dibutuhkan TC-I04)
+        // Update user presence (TC-I04)
         updateUserPresence(
           data.user.id, '', sessionId, '', claimRole,
           getDeviceInfo(), gpsRef.current?.kota || '',
@@ -400,7 +441,6 @@ function LoginForm() {
         console.error('[login] lock-account gagal:', errLockAcc)
       }
 
-      // Cari key pesan yang sesuai dari map error Supabase
       const pesanKey = Object.entries(SUPABASE_ERROR_KEYS).find(([key]) =>
         msg.toLowerCase().includes(key.toLowerCase())
       )?.[1] ?? 'login_error_umum'
@@ -415,10 +455,6 @@ function LoginForm() {
     try {
       const supabase = createBrowserSupabaseClient()
 
-      let namaUser    = ''
-      let nomorWAUser = ''
-      let daftarRoleUser: string[] = []
-
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('nama, role, nomor_wa')
@@ -426,15 +462,11 @@ function LoginForm() {
         .eq('tenant_id', tid)
         .single()
 
-      if (profile) {
-        namaUser    = profile.nama || ''
-        nomorWAUser = profile.nomor_wa || ''
-        daftarRoleUser = [profile.role].filter(Boolean)
-      }
+      let namaUser       = profile?.nama     || ''
+      let nomorWAUser    = profile?.nomor_wa || ''
+      let daftarRoleUser = profile?.role ? [profile.role].filter(Boolean) : []
 
-      if (daftarRoleUser.length === 0 && claimRole) {
-        daftarRoleUser = [claimRole]
-      }
+      if (daftarRoleUser.length === 0 && claimRole) daftarRoleUser = [claimRole]
 
       setNama(namaUser)
       setNomorWA(nomorWAUser)
@@ -463,36 +495,28 @@ function LoginForm() {
     role: string, tid: string, uidUser: string, namaUser: string, waNumber: string,
   ) {
     try {
-      const supabase     = createBrowserSupabaseClient()
-      const { data: pol } = await supabase
-        .from('platform_policies')
-        .select('nilai')
-        .eq('feature_key', 'security_login')
-        .single()
-
-      const policy     = (pol?.nilai || {}) as Record<string, unknown>
-      const isCustomer  = role.toLowerCase() === 'customer'
-
-      // Baca require_otp dari Modul Konfigurasi via API
-      // (tidak bisa import lib/config-registry langsung karena ini client component)
+      // Baca require_otp dari Modul Konfigurasi (config_registry)
       let requireOtp = false
       try {
-        const resOtp  = await fetch('/api/config/security_login')
-        const dataOtp = await resOtp.json()
-        const allItems = dataOtp.data?.flatMap((g: { items: Array<{ policy_key?: string; nilai?: string }> }) => g.items) ?? []
-        const otpItem  = allItems.find((i: { policy_key?: string }) => i.policy_key === 'require_otp')
-        requireOtp = otpItem?.nilai === 'true'
+        const res  = await fetch('/api/config/security_login')
+        const data = await res.json()
+        if (data.success && data.data) {
+          const items  = extractConfigItems(data.data)
+          requireOtp   = findConfigValue(items, 'require_otp') === 'true'
+        }
       } catch {
-        // Fallback ke platform_policies jika config_registry gagal
-        requireOtp = policy['require_otp'] === true
+        // Fallback ke platform_policies
+        const supabase = createBrowserSupabaseClient()
+        const { data: pol } = await supabase.from('platform_policies')
+          .select('nilai').eq('feature_key', 'security_login').single()
+        requireOtp = (pol?.nilai as Record<string, unknown>)?.['require_otp'] === true
       }
 
-      const perluOTP = !isCustomer && requireOtp
+      const isCustomer = role.toLowerCase() === 'customer'
+      const perluOTP   = !isCustomer && requireOtp
 
       if (perluOTP) {
-        await kirimOTP(
-          uidUser, tid, role, waNumber, namaUser,
-        )
+        await kirimOTP(uidUser, tid, role, waNumber, namaUser)
       } else {
         setTahap('BIOMETRIC')
         setIsLoading(false)
@@ -511,18 +535,12 @@ function LoginForm() {
     setError('')
 
     try {
-      // Semua config OTP (expiry, max attempts, resend cooldown, panjang digit)
-      // dibaca dari platform_policies via server route — tidak ada hardcode di client
+      // Semua config OTP dari Modul Konfigurasi — credential dari Modul API
+      // — template dari Modul Pesan (semuanya server-side di /api/auth/send-otp)
       const res = await fetch('/api/auth/send-otp', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          uid:      uidUser,
-          tenant_id: tid,
-          role,
-          nomor_wa: waNumber,
-          nama:     namaUser,
-        }),
+        body:    JSON.stringify({ uid: uidUser, tenant_id: tid, role, nomor_wa: waNumber, nama: namaUser }),
       })
 
       const resData = await res.json()
@@ -536,9 +554,9 @@ function LoginForm() {
         device: getDeviceInfo(), gps_kota: gps?.kota || '',
       }).catch(() => {})
 
-      // Gunakan nilai dari DB — bukan hardcode
-      setOtpExpiryMenit(resData.otp_expiry_minutes     ?? 5)
-      setMaxOtpPercobaan(resData.otp_max_attempts       ?? 3)
+      // Nilai countdown dan config dari response API — bukan hardcode
+      setOtpExpiryMenit(resData.otp_expiry_minutes      ?? 5)
+      setMaxOtpPercobaan(resData.otp_max_attempts        ?? 3)
       setOtpHitunganMundur(resData.resend_cooldown_seconds ?? 60)
       setOtpInput('')
       setOtpPercobaan(0)
@@ -610,11 +628,8 @@ function LoginForm() {
 
       if (roleDipilih.toLowerCase() === 'vendor') {
         const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('status')
-          .eq('id', uid)
-          .eq('tenant_id', tenantId)
-          .single()
+          .from('user_profiles').select('status')
+          .eq('id', uid).eq('tenant_id', tenantId).single()
 
         const status = (profile?.status || '').toUpperCase()
         if (['PENDING', 'REVIEW'].includes(status)) {
@@ -632,18 +647,8 @@ function LoginForm() {
         kota: gpsRef.current?.kota ?? '',
       })
 
-      // Baca session_timeout_minutes dari Modul Konfigurasi via API
-      let sessionTimeoutMinutes = 480
-      try {
-        const resCfg  = await fetch('/api/config/security_login')
-        const dataCfg = await resCfg.json()
-        const allItems = dataCfg.data?.flatMap((g: { items: Array<{ policy_key?: string; nilai?: string }> }) => g.items) ?? []
-        const item     = allItems.find((i: { policy_key?: string }) => i.policy_key === 'session_timeout_minutes')
-        if (item?.nilai) sessionTimeoutMinutes = Number(item.nilai) || 480
-      } catch (error) {
-        console.error('[selesaiLogin] Gagal baca session_timeout_minutes:', error)
-      }
-
+      // session_timeout_minutes dari Modul Konfigurasi
+      const sessionTimeoutMinutes = await getSessionTimeoutMinutes()
       const maxAgeSec = sessionTimeoutMinutes * 60
       const loginAt   = new Date().toISOString()
 
