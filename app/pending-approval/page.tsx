@@ -1,22 +1,26 @@
-'use client';
+'use client'
 
-import { useRouter } from 'next/navigation';
-import { auth } from '@/lib/firebase';
-import { signOut } from 'firebase/auth';
+// app/pending-approval/page.tsx
+// Halaman konfirmasi untuk Vendor yang menunggu persetujuan Admin
+//
+// MIGRASI Sesi #037: Firebase signOut → Supabase signOut
+
+import { useRouter }               from 'next/navigation'
+import { createBrowserSupabaseClient } from '@/lib/supabase-client'
 
 export default function PendingApprovalPage() {
-  const router = useRouter();
+  const router = useRouter()
 
   async function handleKeluar() {
-    await signOut(auth);
-    router.push('/login');
+    const supabase = createBrowserSupabaseClient()
+    await supabase.auth.signOut()
+    router.push('/login')
   }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
 
-        {/* Ikon status */}
         <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <div className="w-8 h-8 bg-amber-400 rounded-full" />
         </div>
@@ -45,5 +49,5 @@ export default function PendingApprovalPage() {
 
       </div>
     </div>
-  );
+  )
 }
