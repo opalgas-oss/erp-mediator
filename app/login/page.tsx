@@ -4,16 +4,26 @@
 // Halaman login multi-tahap:
 //   TAHAP 0 GPS → TAHAP 1 Kredensial → TAHAP 2 Cek Sesi Paralel
 //   → TAHAP 3 Pilih Role → TAHAP 4 OTP → TAHAP 5 Biometric → TAHAP 6 Selesai
-// Client Component — semua interaksi user terjadi di browser
+//
+// PERUBAHAN dari versi Firebase:
+//   - signInWithEmailAndPassword → supabase.auth.signInWithPassword()
+//   - getIdTokenResult → decode JWT access_token untuk baca custom claims
+//   - getDoc Firestore → query tabel users / user_profiles PostgreSQL
+//   - Manual set cookie 'session' → Supabase SSR kelola cookie otomatis
+//   - FIREBASE_ERRORS → SUPABASE_ERROR_KEYS
+//
+// PERUBAHAN Sesi #037:
+//   - Hapus SUPABASE_ERRORS (hardcode pesan) → ganti SUPABASE_ERROR_KEYS (map error ke DB key)
+//   - Semua pesan error dan validasi dibaca dari tabel message_library via /api/message-library
+//   - Tambah state dbPesan + useEffect fetch pesan saat mount
+//   - Tambah fungsi m(key, vars?) sebagai helper baca pesan dengan fallback ke DEFAULT_PESAN
+//   - DEFAULT_PESAN dipakai sebagai fallback sampai data DB terload
 
 import { useState, useEffect, useRef, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
-import { signInWithEmailAndPassword } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
-import { auth, db } from '@/lib/firebase'
-import { setSessionCookies, ROLE_DASHBOARD } from '@/lib/auth'
-import { getEffectivePolicy } from '@/lib/policy'
+import { useRouter, useSearchParams }            from 'next/navigation'
+import Link                                       from 'next/link'
+import { createBrowserSupabaseClient }            from '@/lib/supabase-client'
+import { setSessionCookies, ROLE_DASHBOARD }      from '@/lib/auth'
 import {
   getGPSLocation,
   writeSessionLog,
@@ -26,45 +36,83 @@ import {
   getDeviceInfo,
 } from '@/lib/session'
 import { updateUserPresence, writeActivityLog } from '@/lib/activity'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Label } from '@/components/ui/label'
+import { Button }                                from '@/components/ui/button'
+import { Input }                                 from '@/components/ui/input'
+import { Badge }                                 from '@/components/ui/badge'
+import { Label }                                 from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 // ─── Tipe Tahap Flow Login ────────────────────────────────────────────────────
 type Tahap =
-  | 'LOADING_GPS'    // sedang meminta izin GPS
-  | 'GPS_GAGAL'      // GPS ditolak user
-  | 'KREDENSIAL'     // form email + password
-  | 'LOADING'        // transisi antar tahap
-  | 'SESI_PARALEL'   // akun diblokir karena sesi aktif di tempat lain
-  | 'ROLE'           // pilih role (jika punya lebih dari 1)
-  | 'OTP'            // input kode OTP WhatsApp
-  | 'BIOMETRIC'      // tawaran aktifkan biometric
-  | 'SELESAI'        // redirect ke dashboard
+  | 'LOADING_GPS'
+  | 'GPS_GAGAL'
+  | 'KREDENSIAL'
+  | 'LOADING'
+  | 'SESI_PARALEL'
+  | 'ROLE'
+  | 'OTP'
+  | 'BIOMETRIC'
+  | 'SELESAI'
 
-// ─── Peta Error Firebase ke Pesan Indonesia ───────────────────────────────────
-const FIREBASE_ERRORS: Record<string, string> = {
-  'auth/user-not-found':         'Email atau password yang Anda masukkan salah.',
-  'auth/wrong-password':         'Email atau password yang Anda masukkan salah.',
-  'auth/invalid-credential':          'Email atau password yang Anda masukkan salah.',
-  'auth/invalid-login-credentials':   'Email atau password yang Anda masukkan salah.',
-  'auth/too-many-requests':      'Terlalu banyak percobaan. Coba lagi beberapa menit.',
-  'auth/network-request-failed': 'Gagal terhubung. Periksa koneksi internet.',
-  'auth/user-disabled':          'Akun ini dinonaktifkan. Hubungi admin.',
+// ─── Default pesan (fallback sampai data dari /api/message-library terload) ───
+// Nilai ini HARUS sinkron dengan nilai default di tabel message_library.
+// Jika admin mengubah teks pesan via Dashboard, nilai DB yang berlaku — bukan ini.
+const DEFAULT_PESAN: Record<string, string> = {
+  login_error_credentials_salah:       'Email atau password yang Anda masukkan salah.',
+  login_error_email_belum_konfirmasi:  'Email belum dikonfirmasi. Hubungi admin.',
+  login_error_terlalu_banyak_percobaan:'Terlalu banyak percobaan. Coba lagi beberapa menit.',
+  login_error_koneksi_gagal:           'Gagal terhubung. Periksa koneksi internet.',
+  login_error_umum:                    'Terjadi kesalahan. Coba lagi.',
+  login_error_gps_diperlukan:          'Aktifkan GPS di browser untuk melanjutkan. Klik ikon lokasi di address bar, lalu izinkan akses lokasi.',
+  login_error_config_belum_lengkap:    'Konfigurasi akun belum lengkap. Hubungi admin.',
+  login_error_role_tidak_ditemukan:    'Role akun tidak ditemukan. Hubungi admin.',
+  login_error_akun_belum_aktif:        'Akun Anda belum diaktifkan. Tunggu verifikasi dari Admin.',
+  login_error_gagal_muat_data:         'Gagal memuat data akun. Coba lagi.',
+  login_error_gagal_config:            'Gagal memuat konfigurasi. Coba lagi.',
+  login_error_gagal_selesaikan:        'Gagal menyelesaikan login. Coba lagi.',
+  login_error_akun_dikunci:            'Terlalu banyak percobaan. Akun dikunci hingga pukul {lock_until_wib}.',
+  login_validasi_email_kosong:         'Email wajib diisi.',
+  login_validasi_email_format:         'Format email tidak valid.',
+  login_validasi_password_kosong:      'Password wajib diisi.',
+  login_validasi_password_min:         'Password minimal 8 karakter.',
+  otp_error_kurang_digit:              'Masukkan 6 digit kode OTP.',
+  otp_error_kadaluarsa:                'Kode OTP sudah kadaluarsa. Klik Kirim ulang.',
+  otp_error_salah:                     'Kode OTP salah. Sisa percobaan: {sisa_percobaan}.',
+  otp_error_batas_habis:               'Batas percobaan OTP habis. Klik Kirim ulang.',
+  otp_error_verifikasi_gagal:          'Gagal memverifikasi OTP. Coba lagi.',
 }
 
-// ─── Tipe Dokumen User di Firestore ──────────────────────────────────────────
-interface UserDoc {
-  nama:          string
-  role:          string | string[]
-  status:        string
-  wa_number?:    string
-  phone_number?: string
+// ─── Map error Supabase → message library key ─────────────────────────────────
+// Tidak hardcode pesan di sini — hanya map ke key yang dibaca dari DB
+const SUPABASE_ERROR_KEYS: Record<string, string> = {
+  'Invalid login credentials': 'login_error_credentials_salah',
+  'Email not confirmed':       'login_error_email_belum_konfirmasi',
+  'Too many requests':         'login_error_terlalu_banyak_percobaan',
+  'Network request failed':    'login_error_koneksi_gagal',
+  'User not found':            'login_error_credentials_salah',
 }
 
-// ─── Tipe Data Sesi Paralel yang Diblokir ────────────────────────────────────
+// ─── Decode JWT payload ───────────────────────────────────────────────────────
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  try {
+    const parts  = token.split('.')
+    if (parts.length !== 3) return {}
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
+    return JSON.parse(atob(padded)) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
+// ─── Tipe Data ────────────────────────────────────────────────────────────────
+interface UserProfileRow {
+  nama:     string
+  role:     string
+  status:   string
+  nomor_wa: string | null
+}
+
 interface DataSesiParalel {
   device:   string
   gps_kota: string
@@ -72,15 +120,12 @@ interface DataSesiParalel {
   role:     string
 }
 
-// ─── Sub-komponen UI (di luar LoginForm agar tidak remount setiap render) ─────
+// ─── Sub-komponen UI ──────────────────────────────────────────────────────────
 
-// Wrapper layout yang sama untuk semua tahap
 function Wrapper({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        {children}
-      </Card>
+      <Card className="w-full max-w-sm">{children}</Card>
     </div>
   )
 }
@@ -99,298 +144,267 @@ function KotakError({ pesan }: { pesan: string }) {
   )
 }
 
-// ─── Komponen Form Login ───────────────────────────────────────────────────────
+// ─── Komponen Form Login ──────────────────────────────────────────────────────
 function LoginForm() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const redirectTo   = searchParams.get('redirect') || ''
 
-  // Tahap flow saat ini
-  const [tahap, setTahap] = useState<Tahap>('LOADING_GPS')
+  const [tahap, setTahap] = useState<Tahap>('KREDENSIAL')
+  const [gps,   setGps]   = useState<{ lat: number; lng: number; kota: string } | null>(null)
 
-  // Data GPS dari TAHAP 0
-  const [gps, setGps] = useState<{ lat: number; lng: number; kota: string } | null>(null)
-
-  // Form kredensial TAHAP 1
   const [email,          setEmail]          = useState('')
   const [password,       setPassword]       = useState('')
   const [tampilPassword, setTampilPassword] = useState(false)
   const [errorEmail,     setErrorEmail]     = useState('')
   const [errorPassword,  setErrorPassword]  = useState('')
+  const [isLoading,      setIsLoading]      = useState(false)
+  const [error,          setError]          = useState('')
 
-  // State loading dan error umum
-  const [isLoading, setIsLoading] = useState(false)
-  const [error,     setError]     = useState('')
-
-  // Data user setelah Firebase Auth berhasil
   const [uid,       setUid]       = useState('')
   const [tenantId,  setTenantId]  = useState('')
   const [userEmail, setUserEmail] = useState('')
   const [nama,      setNama]      = useState('')
   const [nomorWA,   setNomorWA]   = useState('')
 
-  // Throttling: state UI saja — data persist di Firestore via API
   const [akunDikunci, setAkunDikunci] = useState(false)
   const [waktuKunci,  setWaktuKunci]  = useState('')
 
-  // Data sesi paralel (TAHAP 2)
   const [sesiParalel, setSesiParalel] = useState<DataSesiParalel | null>(null)
 
-  // Pemilihan role (TAHAP 3)
   const [daftarRole,  setDaftarRole]  = useState<string[]>([])
   const [roleDipilih, setRoleDipilih] = useState('')
 
-  // OTP (TAHAP 4)
   const [otpInput,          setOtpInput]          = useState('')
   const [otpPercobaan,      setOtpPercobaan]      = useState(0)
-  const [maxOtpPercobaan,   setMaxOtpPercobaan]   = useState(3)   // dari policy
-  const [otpHitunganMundur, setOtpHitunganMundur] = useState(60)  // detik sebelum kirim ulang
-  const [otpExpiryMenit,    setOtpExpiryMenit]    = useState(5)   // dari policy
+  const [maxOtpPercobaan,   setMaxOtpPercobaan]   = useState(3)
+  const [otpHitunganMundur, setOtpHitunganMundur] = useState(60)
+  const [otpExpiryMenit,    setOtpExpiryMenit]    = useState(5)
 
-  // Ref untuk mencegah double-call GPS
+  // State untuk pesan dari message_library — di-load sekali saat mount
+  const [dbPesan, setDbPesan] = useState<Record<string, string>>({})
+
   const gpsUdahDiminta = useRef(false)
+  const gpsRef         = useRef<{ lat: number; lng: number; kota: string } | null>(null)
 
-  // ── Format timestamp login_at dari check-session (JSON) ──────────────────
+  // ── Helper baca pesan: prioritas DB, fallback ke DEFAULT_PESAN ────────────
+  // Fungsi ini menggantikan semua string hardcode di kode di bawah
+  function m(key: string, vars?: Record<string, string>): string {
+    const teks = dbPesan[key] ?? DEFAULT_PESAN[key] ?? key
+    if (!vars) return teks
+    return teks.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`)
+  }
+
+  // ── Load pesan dari message_library via API saat mount ────────────────────
+  // Fetch non-blocking — form tetap bisa dipakai sebelum ini selesai
+  useEffect(() => {
+    fetch('/api/message-library?kategori=login_ui,otp_ui')
+      .then(res => res.json())
+      .then(json => { if (json.success && json.data) setDbPesan(json.data) })
+      .catch(() => { /* gunakan DEFAULT_PESAN sebagai fallback */ })
+  }, [])
+
   function formatWaktuLogin(ts: unknown): string {
     if (!ts) return 'waktu tidak diketahui'
     try {
-      // Firestore Timestamp yang sudah di-serialize ke JSON (bentuk { seconds, nanoseconds })
       if (typeof ts === 'object' && ts !== null && 'seconds' in ts) {
-        return new Date((ts as { seconds: number }).seconds * 1000).toLocaleString('id-ID', {
-          day: '2-digit', month: 'long', year: 'numeric',
-          hour: '2-digit', minute: '2-digit',
-        })
+        return new Date((ts as { seconds: number }).seconds * 1000)
+          .toLocaleString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
       }
-      return new Date(ts as string).toLocaleString('id-ID', {
-        day: '2-digit', month: 'long', year: 'numeric',
-        hour: '2-digit', minute: '2-digit',
-      })
+      return new Date(ts as string)
+        .toLocaleString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
     } catch {
       return 'waktu tidak diketahui'
     }
   }
 
-  // ── TAHAP 0: Minta GPS saat pertama load ─────────────────────────────────
+  // ── TAHAP 0: GPS background — tidak memblokir form ────────────────────────
   useEffect(() => {
-    // Guard: jangan panggil GPS dua kali (Strict Mode di dev)
     if (gpsUdahDiminta.current) return
     gpsUdahDiminta.current = true
 
-    async function muatGPS() {
+    async function muatGPSBackground() {
       try {
         const hasil = await getGPSLocation()
         setGps(hasil)
-        setTahap('KREDENSIAL')
-        // Catatan: writeActivityLog "GPS berhasil" dilakukan di selesaiLogin()
-        // karena tenantId baru tersedia setelah login berhasil
+        gpsRef.current = hasil
       } catch {
-        // GPS ditolak atau tidak tersedia di browser ini
-        setTahap('GPS_GAGAL')
+        // GPS ditolak atau timeout — form tetap berjalan normal
       }
     }
-
-    muatGPS()
+    muatGPSBackground()
   }, [])
 
-  // ── Timer OTP: hitung mundur per detik (pakai setTimeout agar tidak drift) ─
+  // ── Timer OTP ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (tahap !== 'OTP' || otpHitunganMundur <= 0) return
-
     const timer = setTimeout(() => {
       setOtpHitunganMundur(prev => Math.max(0, prev - 1))
     }, 1000)
-
-    // Cleanup wajib: hentikan timer saat unmount atau tahap berubah
     return () => clearTimeout(timer)
   }, [tahap, otpHitunganMundur])
 
-  // ── Validasi form email + password ────────────────────────────────────────
   function validasiForm(): boolean {
     let valid = true
+    if (!email) { setErrorEmail(m('login_validasi_email_kosong')); valid = false }
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setErrorEmail(m('login_validasi_email_format')); valid = false }
+    else setErrorEmail('')
 
-    if (!email) {
-      setErrorEmail('Email wajib diisi')
-      valid = false
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setErrorEmail('Format email tidak valid. Contoh: nama@email.com')
-      valid = false
-    } else {
-      setErrorEmail('')
-    }
-
-    if (!password) {
-      setErrorPassword('Password wajib diisi')
-      valid = false
-    } else if (password.length < 8) {
-      setErrorPassword('Password minimal 8 karakter')
-      valid = false
-    } else {
-      setErrorPassword('')
-    }
+    if (!password) { setErrorPassword(m('login_validasi_password_kosong')); valid = false }
+    else if (password.length < 8) { setErrorPassword(m('login_validasi_password_min')); valid = false }
+    else setErrorPassword('')
 
     return valid
   }
 
-  // ── TAHAP 1: Submit email + password ─────────────────────────────────────
+  // ── TAHAP 1: Submit email + password ──────────────────────────────────────
   async function handleLogin() {
     if (!validasiForm()) return
+
+    // Cek GPS — wajib ada sebelum lanjut autentikasi
+    if (!gpsRef.current) {
+      setIsLoading(true)
+      try {
+        const hasilGPS = await getGPSLocation()
+        setGps(hasilGPS)
+        gpsRef.current = hasilGPS
+      } catch {
+        setIsLoading(false)
+        setError(m('login_error_gps_diperlukan'))
+        return
+      }
+    }
 
     setIsLoading(true)
     setError('')
 
-    // ── Cek kunci akun via API sebelum memanggil Firebase Auth ───────────────
-    // Kalau akun terkunci: tampilkan pesan dan hentikan proses
+    // Cek kunci akun sebelum login
     try {
       const resLock  = await fetch('/api/auth/check-lock', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ email }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
       })
       const dataLock = await resLock.json()
-
       if (dataLock.locked) {
-        setError(`Terlalu banyak percobaan. Akun dikunci hingga pukul ${dataLock.lock_until_wib}. Coba lagi nanti.`)
+        setError(m('login_error_akun_dikunci', { lock_until_wib: dataLock.lock_until_wib }))
         setIsLoading(false)
         return
       }
     } catch (errLock) {
-      // Kalau API check-lock tidak bisa dihubungi — log dan lanjut proses
       console.error('[login] check-lock gagal:', errLock)
     }
 
     try {
-      // Autentikasi via Firebase Auth
-      const cred        = await signInWithEmailAndPassword(auth, email, password)
-      const tokenResult = await cred.user.getIdTokenResult(true)
+      const supabase = createBrowserSupabaseClient()
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
 
-      // Ambil tenantId dan role dari custom claims JWT
-      const claimTenantId = (tokenResult.claims.tenant_id as string) || ''
-      const claimRole     = tokenResult.claims.role as string
+      if (authError || !data.session) {
+        throw new Error(authError?.message || 'Login gagal')
+      }
 
-      // SUPERADMIN tidak punya tenant_id — bypass semua cek tenant
+      const claims        = decodeJwtPayload(data.session.access_token)
+      const claimRole     = claims['app_role']    as string || ''
+      const claimTenantId = claims['tenant_id']   as string || ''
+
+      // SUPERADMIN — tidak punya tenant_id, langsung redirect
       if (claimRole === 'SUPERADMIN') {
-        const idToken = await cred.user.getIdToken()
-        const maxAge = 60 * 60
-        document.cookie = `session=${idToken}; path=/; max-age=${maxAge}; SameSite=Strict`
+        setSessionCookies(claimRole, '')
+        const loginAt = new Date().toISOString()
+        document.cookie = `gps_kota=${encodeURIComponent(gpsRef.current?.kota || 'Tidak Diketahui')}; path=/; max-age=${8 * 3600}`
+        document.cookie = `session_login_at=${encodeURIComponent(loginAt)}; path=/; max-age=${8 * 3600}`
         router.push('/dashboard/superadmin')
         return
       }
 
       if (!claimTenantId) {
-        setError('Konfigurasi akun belum lengkap. Hubungi admin.')
+        setError(m('login_error_config_belum_lengkap'))
         setIsLoading(false)
         return
       }
 
-      // Simpan data auth ke state
-      setUid(cred.user.uid)
-      setUserEmail(cred.user.email || email)
+      setUid(data.user.id)
+      setUserEmail(data.user.email || email)
       setTenantId(claimTenantId)
 
-      // Baca policy security_login — semua nilai keamanan dari sini, tidak ada hardcode
-      const loginPolicy = await getEffectivePolicy(claimTenantId, 'security_login')
-      setMaxOtpPercobaan(loginPolicy.otp_max_attempts)
-      setOtpExpiryMenit(loginPolicy.otp_expiry_minutes)
+      const resPol    = await fetch(`/api/config/security_login`)
+      const dataPol   = await resPol.json()
+      const firstGroup = dataPol.data?.[0]?.items ?? []
+      const maxOtp    = Number(firstGroup.find((i: {feature_key: string}) => i.feature_key === 'otp_max_attempts')?.nilai ?? 3)
+      const expiryOtp = Number(firstGroup.find((i: {feature_key: string}) => i.feature_key === 'otp_expiry_minutes')?.nilai ?? 5)
+      setMaxOtpPercobaan(maxOtp)
+      setOtpExpiryMenit(expiryOtp)
 
-      // ── Reset kunci akun setelah Firebase Auth berhasil ──────────────────
-      // Fire-and-forget — kalau gagal: log error, jangan hentikan proses login
       fetch('/api/auth/unlock-account', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ uid: cred.user.uid, tenant_id: claimTenantId, method: 'auto' }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: data.user.id, tenant_id: claimTenantId, method: 'auto' }),
       }).catch(err => console.error('[login] unlock-account gagal:', err))
 
-      // ── TAHAP 2: Cek sesi paralel via API ────────────────────────────────
       setTahap('LOADING')
-
-      const resSesi = await fetch('/api/auth/check-session', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ uid: cred.user.uid, tenant_id: claimTenantId }),
+      const resSesi  = await fetch('/api/auth/check-session', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: data.user.id, tenant_id: claimTenantId }),
       })
       const dataSesi = await resSesi.json()
 
       if (dataSesi.blocked) {
-        // Akun diblokir karena ada sesi aktif
         setSesiParalel(dataSesi.sessionData || null)
         setTahap('SESI_PARALEL')
         setIsLoading(false)
         return
       }
 
-      // ── TAHAP 3: Muat data user + role ───────────────────────────────────
-      await muatDataUser(cred.user.uid, claimTenantId, claimRole)
+      await muatDataUser(data.user.id, claimTenantId, claimRole)
 
     } catch (err: unknown) {
-      const code = (err as { code?: string }).code || ''
+      const msg = err instanceof Error ? err.message : ''
 
-      // ── Catat login gagal ke Firestore via API throttling ─────────────────
-      // uid dan nama mungkin belum tersedia saat Firebase Auth gagal — gunakan fallback
       try {
-        const resLockAccount  = await fetch('/api/auth/lock-account', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({
-            uid:       uid     || email,  // fallback ke email jika uid belum ada
-            email,
-            nama:      nama    || email,  // fallback ke email jika nama belum ada
-            nomor_wa:  nomorWA || '',     // kosong jika belum ada
-            tenant_id: 'tenant_erpmediator',
-          }),
+        const resLockAcc  = await fetch('/api/auth/lock-account', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, tenant_id: tenantId || 'platform' }),
         })
-        const dataLockAccount = await resLockAccount.json()
-
-        if (dataLockAccount.locked) {
-          // Akun baru saja dikunci — tampilkan pesan kunci dan hentikan
-          setError(`Terlalu banyak percobaan. Akun dikunci hingga pukul ${dataLockAccount.lock_until_wib}. Coba lagi nanti.`)
+        const dataLockAcc = await resLockAcc.json()
+        if (dataLockAcc.locked) {
+          setError(m('login_error_akun_dikunci', { lock_until_wib: dataLockAcc.lock_until_wib }))
           setIsLoading(false)
           return
         }
-      } catch (errLockAccount) {
-        // Kalau API lock-account tidak bisa dihubungi — log dan lanjut tampilkan error biasa
-        console.error('[login] lock-account gagal:', errLockAccount)
+      } catch (errLockAcc) {
+        console.error('[login] lock-account gagal:', errLockAcc)
       }
 
-      // Log login gagal ke activity log — hanya jika tenantId sudah diketahui
-      if (tenantId && uid) {
-        writeActivityLog(tenantId, {
-          uid, nama, tenant_id: tenantId, session_id: '',
-          role: '', action_type: 'FORM_ERROR', module: 'AUTH',
-          page: '/login', page_label: 'Halaman Login',
-          action_detail: `Login gagal: ${code || 'error tidak diketahui'}`,
-          result: 'FAILED', device: getDeviceInfo(), gps_kota: gps?.kota || '',
-        }).catch(() => {/* log gagal tidak boleh crash UI */})
-      }
+      // Cari key pesan yang sesuai dari map error Supabase
+      const pesanKey = Object.entries(SUPABASE_ERROR_KEYS).find(([key]) =>
+        msg.toLowerCase().includes(key.toLowerCase())
+      )?.[1] ?? 'login_error_umum'
 
-      setError(FIREBASE_ERRORS[code] || 'Terjadi kesalahan. Coba lagi.')
+      setError(m(pesanKey))
       setIsLoading(false)
     }
   }
 
-  // ── TAHAP 3: Baca dokumen user dari Firestore → tentukan flow selanjutnya ─
+  // ── TAHAP 3: Baca data user dari PostgreSQL ────────────────────────────────
   async function muatDataUser(uidUser: string, tid: string, claimRole: string) {
     try {
-      const userRef  = doc(db, 'tenants', tid, 'users', uidUser)
-      const userSnap = await getDoc(userRef)
+      const supabase = createBrowserSupabaseClient()
 
+      let namaUser    = ''
+      let nomorWAUser = ''
       let daftarRoleUser: string[] = []
-      let namaUser                 = ''
-      let nomorWAUser              = ''
 
-      if (userSnap.exists()) {
-        const userData = userSnap.data() as UserDoc
-        namaUser   = userData.nama || ''
-        nomorWAUser = userData.wa_number || userData.phone_number || ''
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('nama, role, nomor_wa')
+        .eq('id', uidUser)
+        .eq('tenant_id', tid)
+        .single()
 
-        // Field role bisa berupa string tunggal atau array string
-        if (Array.isArray(userData.role)) {
-          daftarRoleUser = userData.role.filter(Boolean)
-        } else if (userData.role) {
-          daftarRoleUser = [userData.role]
-        }
+      if (profile) {
+        namaUser    = profile.nama || ''
+        nomorWAUser = profile.nomor_wa || ''
+        daftarRoleUser = [profile.role].filter(Boolean)
       }
 
-      // Fallback ke claim JWT jika dokumen user belum ada atau role kosong
       if (daftarRoleUser.length === 0 && claimRole) {
         daftarRoleUser = [claimRole]
       }
@@ -400,102 +414,77 @@ function LoginForm() {
       setDaftarRole(daftarRoleUser)
 
       if (daftarRoleUser.length === 1) {
-        // Hanya 1 role → langsung lanjut tanpa tampilkan pilihan
         setRoleDipilih(daftarRoleUser[0])
         await lanjutSetelahRole(daftarRoleUser[0], tid, uidUser, namaUser, nomorWAUser)
       } else if (daftarRoleUser.length > 1) {
-        // Lebih dari 1 role → tampilkan dropdown
         setRoleDipilih(daftarRoleUser[0])
         setTahap('ROLE')
         setIsLoading(false)
       } else {
-        setError('Role akun tidak ditemukan. Hubungi admin.')
+        setError(m('login_error_role_tidak_ditemukan'))
         setTahap('KREDENSIAL')
         setIsLoading(false)
       }
     } catch {
-      setError('Gagal memuat data akun. Coba lagi.')
+      setError(m('login_error_gagal_muat_data'))
       setTahap('KREDENSIAL')
       setIsLoading(false)
     }
   }
 
-  // ── Setelah role dipilih: tentukan perlu OTP atau langsung ke biometric ───
   async function lanjutSetelahRole(
-    role:       string,
-    tid:        string,
-    uidUser:    string,
-    namaUser:   string,
-    waNumber:   string,
+    role: string, tid: string, uidUser: string, namaUser: string, waNumber: string,
   ) {
     try {
-      // Baca ulang policy — tenant_id dari parameter, tidak pernah hardcode
-      const loginPolicy = await getEffectivePolicy(tid, 'security_login')
+      const supabase     = createBrowserSupabaseClient()
+      const { data: pol } = await supabase
+        .from('platform_policies')
+        .select('nilai')
+        .eq('feature_key', 'security_login')
+        .single()
+
+      const policy      = (pol?.nilai || {}) as Record<string, unknown>
       const isCustomer  = role.toLowerCase() === 'customer'
-      const perluOTP    = !isCustomer && loginPolicy.require_otp
+      const perluOTP    = !isCustomer && policy['require_otp'] === true
 
       if (perluOTP) {
-        // Vendor / AdminTenant / SuperAdmin dengan require_otp = true
         await kirimOTP(
           uidUser, tid, role, waNumber, namaUser,
-          loginPolicy.otp_expiry_minutes,
-          loginPolicy.otp_max_attempts,
+          Number(policy['otp_expiry_minutes'] ?? 5),
+          Number(policy['otp_max_attempts'] ?? 3),
         )
       } else {
-        // Customer atau OTP tidak diwajibkan → langsung ke biometric
         setTahap('BIOMETRIC')
         setIsLoading(false)
       }
     } catch {
-      setError('Gagal memuat konfigurasi. Coba lagi.')
+      setError(m('login_error_gagal_config'))
       setTahap('KREDENSIAL')
       setIsLoading(false)
     }
   }
 
-  // ── TAHAP 4: Generate + simpan + kirim OTP via WhatsApp ──────────────────
   async function kirimOTP(
-    uidUser:      string,
-    tid:          string,
-    role:         string,
-    waNumber:     string,
-    namaUser:     string,
-    expiryMenit:  number,
-    maxAttempts:  number,
+    uidUser: string, tid: string, role: string, waNumber: string,
+    namaUser: string, expiryMenit: number, maxAttempts: number,
   ) {
     setIsLoading(true)
     setError('')
 
     const kodeOTP = generateOTP()
 
-    // Simpan OTP ke Firestore (/tenants/{tid}/otp_codes/{uid})
-    await saveOTPtoFirestore({
-      uid:           uidUser,
-      otpCode:       kodeOTP,
-      tenantId:      tid,
-      expiryMinutes: expiryMenit,
-    })
+    await saveOTPtoFirestore({ uid: uidUser, otpCode: kodeOTP, tenantId: tid, expiryMinutes: expiryMenit })
 
-    // Kirim OTP via WhatsApp Fonnte
-    const terkirim = await sendOTPviaWA({
-      phoneNumber: waNumber,
-      otpCode:     kodeOTP,
-      role,
-      tenantId:    tid,
-    })
+    const terkirim = await sendOTPviaWA({ phoneNumber: waNumber, otpCode: kodeOTP, role, tenantId: tid })
 
-    // Log OTP dikirim
     writeActivityLog(tid, {
       uid: uidUser, nama: namaUser, tenant_id: tid, session_id: '',
       role, action_type: 'API_CALL', module: 'AUTH',
       page: '/login', page_label: 'Halaman Login',
-      action_detail: terkirim
-        ? 'OTP berhasil dikirim via WhatsApp'
-        : 'OTP gagal dikirim via WhatsApp — pastikan nomor WA terdaftar',
-      result:   terkirim ? 'SUCCESS' : 'FAILED',
-      device:   getDeviceInfo(),
-      gps_kota: gps?.kota || '',
-    }).catch(() => {/* log gagal tidak crash UI */})
+      action_detail: terkirim ? 'OTP berhasil dikirim' : 'OTP gagal dikirim',
+      result: terkirim ? 'SUCCESS' : 'FAILED',
+      device: getDeviceInfo(), gps_kota: gps?.kota || '',
+    }).catch(() => {})
 
     setOtpExpiryMenit(expiryMenit)
     setMaxOtpPercobaan(maxAttempts)
@@ -506,21 +495,12 @@ function LoginForm() {
     setIsLoading(false)
   }
 
-  // ── Kirim ulang OTP (setelah hitung mundur selesai) ──────────────────────
   async function handleKirimUlangOTP() {
-    await kirimOTP(
-      uid, tenantId, roleDipilih, nomorWA, nama,
-      otpExpiryMenit, maxOtpPercobaan,
-    )
+    await kirimOTP(uid, tenantId, roleDipilih, nomorWA, nama, otpExpiryMenit, maxOtpPercobaan)
   }
 
-  // ── TAHAP 4: Verifikasi kode OTP yang diinput user ───────────────────────
   async function handleVerifikasiOTP() {
-    if (otpInput.length !== 6) {
-      setError('Masukkan 6 digit kode OTP.')
-      return
-    }
-
+    if (otpInput.length !== 6) { setError(m('otp_error_kurang_digit')); return }
     setIsLoading(true)
     setError('')
 
@@ -528,109 +508,86 @@ function LoginForm() {
       const hasil = await verifyOTP({ uid, inputCode: otpInput, tenantId })
 
       if (hasil === true) {
-        // Log OTP berhasil
         writeActivityLog(tenantId, {
           uid, nama, tenant_id: tenantId, session_id: '',
           role: roleDipilih, action_type: 'FORM_SUBMIT', module: 'AUTH',
           page: '/login', page_label: 'Halaman Login',
-          action_detail: 'Verifikasi OTP berhasil',
-          result: 'SUCCESS', device: getDeviceInfo(), gps_kota: gps?.kota || '',
+          action_detail: 'Verifikasi OTP berhasil', result: 'SUCCESS',
+          device: getDeviceInfo(), gps_kota: gps?.kota || '',
         }).catch(() => {})
-
-        // Lanjut ke tahap biometric
         setTahap('BIOMETRIC')
         setIsLoading(false)
-
       } else if (hasil === 'EXPIRED') {
-        setError('Kode OTP sudah kadaluarsa. Klik Kirim ulang.')
+        setError(m('otp_error_kadaluarsa'))
         setIsLoading(false)
-
       } else {
-        // OTP salah — hitung sisa percobaan
-        const percobaanBaru  = otpPercobaan + 1
-        const sisaPercobaan  = maxOtpPercobaan - percobaanBaru
+        const percobaanBaru = otpPercobaan + 1
+        const sisaPercobaan = maxOtpPercobaan - percobaanBaru
         setOtpPercobaan(percobaanBaru)
-
-        if (sisaPercobaan <= 0) {
-          setError('Batas percobaan OTP habis. Klik Kirim ulang untuk mendapatkan kode baru.')
-        } else {
-          setError(`Kode OTP salah. Sisa percobaan: ${sisaPercobaan}`)
-        }
+        setError(sisaPercobaan <= 0
+          ? m('otp_error_batas_habis')
+          : m('otp_error_salah', { sisa_percobaan: String(sisaPercobaan) }))
         setIsLoading(false)
       }
     } catch {
-      setError('Gagal memverifikasi OTP. Coba lagi.')
+      setError(m('otp_error_verifikasi_gagal'))
       setIsLoading(false)
     }
   }
 
-  // ── TAHAP 5: Aktifkan biometric (coba verifikasi dulu, lalu registrasi) ──
   async function handleAktifkanBiometric() {
     setIsLoading(true)
     setError('')
-
-    // Coba verifikasi biometric jika ada trusted device yang terdaftar
     const verified = await verifyBiometric({ uid, tenantId })
-    if (verified) {
-      // Trusted device valid dan biometric berhasil → langsung selesai
-      await selesaiLogin()
-      return
-    }
-
-    // Belum ada trusted device → daftarkan perangkat baru
+    if (verified) { await selesaiLogin(); return }
     await registerBiometric({ uid, tenantId })
-
-    // Lanjut ke login selesai terlepas registrasi berhasil atau tidak
     await selesaiLogin()
   }
 
-  // ── TAHAP 6: Tulis log sesi, update presence, lalu redirect ──────────────
+  // ── TAHAP 6: Selesaikan login ──────────────────────────────────────────────
   async function selesaiLogin() {
     setIsLoading(true)
     setTahap('SELESAI')
 
     try {
-      // Baca ulang status vendor — cegah redirect jika akun belum aktif
-      const userRef  = doc(db, 'tenants', tenantId, 'users', uid)
-      const userSnap = await getDoc(userRef)
+      const supabase = createBrowserSupabaseClient()
 
-      if (userSnap.exists()) {
-        const userData    = userSnap.data() as UserDoc
-        const isVendor    = roleDipilih.toLowerCase() === 'vendor'
-        const statusUpper = (userData.status || '').toUpperCase()
-        const belumAktif  = ['PENDING', 'REVIEW'].includes(statusUpper)
+      if (roleDipilih.toLowerCase() === 'vendor') {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('status')
+          .eq('id', uid)
+          .eq('tenant_id', tenantId)
+          .single()
 
-        if (isVendor && belumAktif) {
-          // Vendor belum diverifikasi — tampilkan pesan, JANGAN redirect
-          setError('Akun Anda belum diaktifkan. Tunggu verifikasi dari Admin.')
+        const status = (profile?.status || '').toUpperCase()
+        if (['PENDING', 'REVIEW'].includes(status)) {
+          setError(m('login_error_akun_belum_aktif'))
           setTahap('KREDENSIAL')
           setIsLoading(false)
           return
         }
       }
 
-      // Tulis session log → hasilkan sessionId unik
       const sessionId = await writeSessionLog({
-        uid,
-        tenantId,
-        email: userEmail,
-        role:  roleDipilih,
-        lat:   gps?.lat || 0,
-        lng:   gps?.lng || 0,
-        kota:  gps?.kota || '',
+        uid, tenantId, email: userEmail, role: roleDipilih,
+        lat:  gpsRef.current?.lat  ?? 0,
+        lng:  gpsRef.current?.lng  ?? 0,
+        kota: gpsRef.current?.kota ?? '',
       })
 
-      // Set cookie session (role + tenantId)
       setSessionCookies(roleDipilih, tenantId)
 
-      // Update presence user secara realtime
+      const loginAt = new Date().toISOString()
+      document.cookie = `gps_kota=${encodeURIComponent(gpsRef.current?.kota || 'Tidak Diketahui')}; path=/; max-age=${8 * 3600}`
+      document.cookie = `session_login_at=${encodeURIComponent(loginAt)}; path=/; max-age=${8 * 3600}`
+
       await updateUserPresence(
         uid, tenantId, sessionId, nama, roleDipilih,
-        getDeviceInfo(), gps?.kota || '',
+        getDeviceInfo(), gpsRef.current?.kota || '',
         { page: '/login', label: 'Halaman Login', module: 'AUTH' },
       )
 
-      // Log GPS berhasil (deferred dari TAHAP 0 — tenantId baru tersedia sekarang)
       if (gps) {
         writeActivityLog(tenantId, {
           uid, nama, tenant_id: tenantId, session_id: sessionId,
@@ -641,7 +598,6 @@ function LoginForm() {
         }).catch(() => {})
       }
 
-      // Log login berhasil
       writeActivityLog(tenantId, {
         uid, nama, tenant_id: tenantId, session_id: sessionId,
         role: roleDipilih, action_type: 'FORM_SUBMIT', module: 'AUTH',
@@ -650,57 +606,23 @@ function LoginForm() {
         result: 'SUCCESS', device: getDeviceInfo(), gps_kota: gps?.kota || '',
       }).catch(() => {})
 
-      // Redirect ke dashboard berdasarkan role
-      const tujuan =
-        (redirectTo && redirectTo.startsWith('/'))
-          ? redirectTo
-          : (ROLE_DASHBOARD[roleDipilih] || ROLE_DASHBOARD[roleDipilih.toUpperCase()] || '/dashboard')
+      const tujuan = (redirectTo && redirectTo.startsWith('/'))
+        ? redirectTo
+        : (ROLE_DASHBOARD[roleDipilih] || ROLE_DASHBOARD[roleDipilih.toUpperCase()] || '/dashboard')
 
       router.push(tujuan)
 
     } catch {
-      setError('Gagal menyelesaikan login. Coba lagi.')
+      setError(m('login_error_gagal_selesaikan'))
       setTahap('KREDENSIAL')
       setIsLoading(false)
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════
   // RENDER PER TAHAP
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════
 
-  // ── TAHAP 0: Loading GPS ──────────────────────────────────────────────────
-  if (tahap === 'LOADING_GPS') {
-    return (
-      <Wrapper>
-        <CardContent className="pt-6 pb-6 text-center">
-          <SpinnerBiru />
-          <p className="text-sm text-muted-foreground">Meminta izin lokasi...</p>
-        </CardContent>
-      </Wrapper>
-    )
-  }
-
-  // ── TAHAP 0 Gagal: GPS Ditolak ────────────────────────────────────────────
-  if (tahap === 'GPS_GAGAL') {
-    return (
-      <Wrapper>
-        <CardHeader>
-          <CardTitle className="text-center text-base">Izin Lokasi Diperlukan</CardTitle>
-        </CardHeader>
-        <CardContent className="pb-6 text-center space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Izin lokasi diperlukan. Aktifkan GPS di browser lalu muat ulang.
-          </p>
-          <Button className="w-full" onClick={() => window.location.reload()}>
-            Muat Ulang
-          </Button>
-        </CardContent>
-      </Wrapper>
-    )
-  }
-
-  // ── Transisi: Loading antar tahap ────────────────────────────────────────
   if (tahap === 'LOADING' || tahap === 'SELESAI') {
     return (
       <Wrapper>
@@ -714,30 +636,19 @@ function LoginForm() {
     )
   }
 
-  // ── TAHAP 2: Sesi Paralel Diblokir ───────────────────────────────────────
   if (tahap === 'SESI_PARALEL') {
     const device = sesiParalel?.device   || 'perangkat tidak diketahui'
     const kota   = sesiParalel?.gps_kota || 'lokasi tidak diketahui'
     const waktu  = formatWaktuLogin(sesiParalel?.login_at)
-
     return (
       <Wrapper>
-        <CardHeader>
-          <CardTitle className="text-center text-base">Sesi Aktif Terdeteksi</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="text-center text-base">Sesi Aktif Terdeteksi</CardTitle></CardHeader>
         <CardContent className="pb-6 space-y-4">
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-            Akun sedang digunakan di <strong>{device}</strong> ({kota}).
-            Login pada <strong>{waktu}</strong>.
+            Akun sedang digunakan di <strong>{device}</strong> ({kota}). Login pada <strong>{waktu}</strong>.
           </div>
-          <p className="text-sm text-muted-foreground text-center">
-            Hanya satu sesi aktif yang diizinkan. Logout dari perangkat lain terlebih dahulu.
-          </p>
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => { setTahap('KREDENSIAL'); setError('') }}
-          >
+          <p className="text-sm text-muted-foreground text-center">Hanya satu sesi aktif yang diizinkan.</p>
+          <Button variant="outline" className="w-full" onClick={() => { setTahap('KREDENSIAL'); setError('') }}>
             Kembali ke Login
           </Button>
         </CardContent>
@@ -745,48 +656,22 @@ function LoginForm() {
     )
   }
 
-  // ── TAHAP 3: Pilih Role ───────────────────────────────────────────────────
   if (tahap === 'ROLE') {
     return (
       <Wrapper>
-        <CardHeader>
-          <CardTitle className="text-center text-base">Masuk Sebagai</CardTitle>
-        </CardHeader>
-        {gps?.kota && (
-          <div className="flex justify-end px-6 -mt-2 mb-0">
-            <Badge variant="outline">📍 {gps.kota}</Badge>
-          </div>
-        )}
+        <CardHeader><CardTitle className="text-center text-base">Masuk Sebagai</CardTitle></CardHeader>
+        {gps?.kota && <div className="flex justify-end px-6 -mt-2 mb-0"><Badge variant="outline">📍 {gps.kota}</Badge></div>}
         <CardContent className="pb-6 space-y-4">
           {error && <KotakError pesan={error} />}
-
           <div>
-            <Label htmlFor="pilihRole" className="text-sm text-muted-foreground mb-1.5 block">
-              Pilih role untuk sesi ini
-            </Label>
-            <select
-              id="pilihRole"
-              value={roleDipilih}
-              onChange={e => setRoleDipilih(e.target.value)}
-              disabled={isLoading}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-gray-50 text-sm outline-none focus:border-blue-500 focus:bg-white transition-colors"
-            >
-              {daftarRole.map(r => (
-                <option key={r} value={r}>{r}</option>
-              ))}
+            <Label htmlFor="pilihRole" className="text-sm text-muted-foreground mb-1.5 block">Pilih role untuk sesi ini</Label>
+            <select id="pilihRole" value={roleDipilih} onChange={e => setRoleDipilih(e.target.value)} disabled={isLoading}
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-300 bg-gray-50 text-sm outline-none focus:border-blue-500 focus:bg-white transition-colors">
+              {daftarRole.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
-
-          <Button
-            className="w-full"
-            disabled={isLoading || !roleDipilih}
-            onClick={async () => {
-              setIsLoading(true)
-              setError('')
-              // Gunakan tenantId dari state yang sudah di-set di handleLogin
-              await lanjutSetelahRole(roleDipilih, tenantId, uid, nama, nomorWA)
-            }}
-          >
+          <Button className="w-full" disabled={isLoading || !roleDipilih}
+            onClick={async () => { setIsLoading(true); setError(''); await lanjutSetelahRole(roleDipilih, tenantId, uid, nama, nomorWA) }}>
             {isLoading ? 'Memproses...' : 'Lanjut'}
           </Button>
         </CardContent>
@@ -794,242 +679,121 @@ function LoginForm() {
     )
   }
 
-  // ── TAHAP 4: Input OTP ───────────────────────────────────────────────────
   if (tahap === 'OTP') {
     const batasPercobaan = otpPercobaan >= maxOtpPercobaan
-
     return (
       <Wrapper>
-        <CardHeader>
-          <CardTitle className="text-center text-base">Verifikasi OTP</CardTitle>
-        </CardHeader>
-        {gps?.kota && (
-          <div className="flex justify-end px-6 -mt-2 mb-0">
-            <Badge variant="outline">📍 {gps.kota}</Badge>
-          </div>
-        )}
+        <CardHeader><CardTitle className="text-center text-base">Verifikasi OTP</CardTitle></CardHeader>
+        {gps?.kota && <div className="flex justify-end px-6 -mt-2 mb-0"><Badge variant="outline">📍 {gps.kota}</Badge></div>}
         <CardContent className="pb-6 space-y-4">
-          <p className="text-sm text-muted-foreground text-center">
-            Kode OTP telah dikirim ke WhatsApp Anda. Masukkan 6 digit kode di bawah ini.
-          </p>
-
+          <p className="text-sm text-muted-foreground text-center">Kode OTP telah dikirim ke WhatsApp Anda.</p>
           {error && <KotakError pesan={error} />}
-
           <div>
-            <Label htmlFor="inputOTP" className="text-sm text-muted-foreground mb-1.5 block">
-              Kode OTP (6 digit)
-            </Label>
-            <Input
-              id="inputOTP"
-              type="text"
-              inputMode="numeric"
-              maxLength={6}
-              value={otpInput}
-              onChange={e => {
-                // Hanya izinkan angka
-                setOtpInput(e.target.value.replace(/\D/g, ''))
-                setError('')
-              }}
+            <Label htmlFor="inputOTP" className="text-sm text-muted-foreground mb-1.5 block">Kode OTP (6 digit)</Label>
+            <Input id="inputOTP" type="text" inputMode="numeric" maxLength={6} value={otpInput}
+              onChange={e => { setOtpInput(e.target.value.replace(/\D/g, '')); setError('') }}
               onKeyDown={e => e.key === 'Enter' && handleVerifikasiOTP()}
-              disabled={isLoading || batasPercobaan}
-              placeholder="000000"
-              className="text-center text-lg tracking-widest"
-            />
+              disabled={isLoading || batasPercobaan} placeholder="000000"
+              className="text-center text-lg tracking-widest" />
           </div>
-
-          <Button
-            className="w-full"
-            disabled={isLoading || otpInput.length !== 6 || batasPercobaan}
-            onClick={handleVerifikasiOTP}
-          >
+          <Button className="w-full" disabled={isLoading || otpInput.length !== 6 || batasPercobaan} onClick={handleVerifikasiOTP}>
             {isLoading ? 'Memverifikasi...' : 'Verifikasi OTP'}
           </Button>
-
-          {/* Hitung mundur / tombol kirim ulang */}
-          {otpHitunganMundur > 0 ? (
-            <p className="text-xs text-center text-muted-foreground">
-              Kirim ulang dalam {otpHitunganMundur} detik
-            </p>
-          ) : (
-            <Button
-              variant="ghost"
-              className="w-full text-sm"
-              disabled={isLoading}
-              onClick={handleKirimUlangOTP}
-            >
-              Kirim Ulang
-            </Button>
-          )}
+          {otpHitunganMundur > 0
+            ? <p className="text-xs text-center text-muted-foreground">Kirim ulang dalam {otpHitunganMundur} detik</p>
+            : <Button variant="ghost" className="w-full text-sm" disabled={isLoading} onClick={handleKirimUlangOTP}>Kirim Ulang</Button>
+          }
         </CardContent>
       </Wrapper>
     )
   }
 
-  // ── TAHAP 5: Tawaran Biometric ───────────────────────────────────────────
   if (tahap === 'BIOMETRIC') {
     return (
       <Wrapper>
-        <CardHeader>
-          <CardTitle className="text-center text-base">Aktifkan Biometric</CardTitle>
-        </CardHeader>
-        {gps?.kota && (
-          <div className="flex justify-end px-6 -mt-2 mb-0">
-            <Badge variant="outline">📍 {gps.kota}</Badge>
-          </div>
-        )}
+        <CardHeader><CardTitle className="text-center text-base">Aktifkan Biometric</CardTitle></CardHeader>
+        {gps?.kota && <div className="flex justify-end px-6 -mt-2 mb-0"><Badge variant="outline">📍 {gps.kota}</Badge></div>}
         <CardContent className="pb-6 space-y-4">
-          <p className="text-sm text-muted-foreground text-center">
-            Aktifkan biometric (sidik jari / Face ID) agar login berikutnya lebih cepat dan aman.
-          </p>
-
+          <p className="text-sm text-muted-foreground text-center">Aktifkan biometric untuk login berikutnya lebih cepat dan aman.</p>
           {error && <KotakError pesan={error} />}
-
-          <Button
-            className="w-full"
-            disabled={isLoading}
-            onClick={handleAktifkanBiometric}
-          >
+          <Button className="w-full" disabled={isLoading} onClick={handleAktifkanBiometric}>
             {isLoading ? 'Memproses...' : 'Aktifkan Biometric'}
           </Button>
-
-          {/* Tombol Lewati — langsung ke selesaiLogin tanpa biometric */}
-          <Button
-            variant="ghost"
-            className="w-full text-sm"
-            disabled={isLoading}
-            onClick={selesaiLogin}
-          >
-            Lewati
-          </Button>
+          <Button variant="ghost" className="w-full text-sm" disabled={isLoading} onClick={selesaiLogin}>Lewati</Button>
         </CardContent>
       </Wrapper>
     )
   }
 
-  // ── TAHAP 1 (default): Form Email + Password ──────────────────────────────
+  // TAHAP 1 (default): Form Email + Password
   return (
     <Wrapper>
       <CardHeader>
         <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-1">
           <span className="text-blue-700 font-semibold text-lg">M</span>
         </div>
-        <CardTitle className="text-center text-lg font-semibold text-gray-900">
-          Masuk ke akun Anda
-        </CardTitle>
-        <p className="text-sm text-muted-foreground text-center">
-          ERP Mediator Hyperlocal
-        </p>
+        <CardTitle className="text-center text-lg font-semibold text-gray-900">Masuk ke akun Anda</CardTitle>
+        <p className="text-sm text-muted-foreground text-center">ERP Mediator Hyperlocal</p>
       </CardHeader>
-
-      {gps?.kota && (
-        <div className="flex justify-end px-6 -mt-2 mb-0">
-          <Badge variant="outline">📍 {gps.kota}</Badge>
-        </div>
-      )}
-
-      <CardContent className="pb-6 space-y-4">
-        {/* Pesan akun dikunci karena terlalu banyak percobaan */}
+      <CardContent className="pb-0 space-y-4">
         {akunDikunci && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-            Terlalu banyak percobaan. Akun dikunci hingga pukul <strong>{waktuKunci}</strong>. Coba lagi nanti.
+            Akun dikunci hingga pukul <strong>{waktuKunci}</strong>. Coba lagi nanti.
           </div>
         )}
-
-        {/* Error umum (bukan error field) */}
         {!akunDikunci && error && <KotakError pesan={error} />}
-
-        {/* Field Email */}
         <div>
-          <Label htmlFor="email" className="text-sm text-gray-600 mb-1.5 block">
-            Alamat email
-          </Label>
-          <Input
-            id="email"
-            type="email"
-            value={email}
+          <Label htmlFor="email" className="text-sm text-gray-600 mb-1.5 block">Alamat email</Label>
+          <Input id="email" type="email" value={email}
             onChange={e => { setEmail(e.target.value); setErrorEmail('') }}
-            placeholder="contoh@email.com"
-            disabled={isLoading}
-            aria-invalid={!!errorEmail}
-            className={errorEmail ? 'border-red-400 bg-red-50' : ''}
-          />
-          {errorEmail && (
-            <p className="text-xs text-red-600 mt-1">{errorEmail}</p>
-          )}
+            placeholder="contoh@email.com" disabled={isLoading}
+            className={errorEmail ? 'border-red-400 bg-red-50' : ''} />
+          {errorEmail && <p className="text-xs text-red-600 mt-1">{errorEmail}</p>}
         </div>
-
-        {/* Field Password dengan toggle tampilkan/sembunyikan */}
         <div>
-          <Label htmlFor="password" className="text-sm text-gray-600 mb-1.5 block">
-            Password
-          </Label>
+          <Label htmlFor="password" className="text-sm text-gray-600 mb-1.5 block">Password</Label>
           <div className="relative">
-            <Input
-              id="password"
-              type={tampilPassword ? 'text' : 'password'}
-              value={password}
+            <Input id="password" type={tampilPassword ? 'text' : 'password'} value={password}
               onChange={e => { setPassword(e.target.value); setErrorPassword('') }}
-              placeholder="Masukkan password"
-              disabled={isLoading}
+              placeholder="Masukkan password" disabled={isLoading}
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              aria-invalid={!!errorPassword}
-              className={`pr-24 ${errorPassword ? 'border-red-400 bg-red-50' : ''}`}
-            />
-            {/* Tombol toggle show/hide — bukan input, tidak submit form */}
-            <button
-              type="button"
-              tabIndex={-1}
-              onClick={() => setTampilPassword(prev => !prev)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 select-none"
-              aria-label={tampilPassword ? 'Sembunyikan password' : 'Tampilkan password'}
-            >
+              className={`pr-24 ${errorPassword ? 'border-red-400 bg-red-50' : ''}`} />
+            <button type="button" tabIndex={-1} onClick={() => setTampilPassword(prev => !prev)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 select-none">
               {tampilPassword ? 'Sembunyikan' : 'Tampilkan'}
             </button>
           </div>
-          {errorPassword && (
-            <p className="text-xs text-red-600 mt-1">{errorPassword}</p>
-          )}
+          {errorPassword && <p className="text-xs text-red-600 mt-1">{errorPassword}</p>}
         </div>
-
-        {/* Link lupa password */}
         <div className="text-right">
-          <Link href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700">
-            Lupa password?
-          </Link>
+          <Link href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700">Lupa password?</Link>
         </div>
-
-        {/* Tombol Masuk */}
-        <Button
-          className="w-full"
-          disabled={isLoading}
-          onClick={handleLogin}
-        >
+        <Button className="w-full" disabled={isLoading} onClick={handleLogin}>
           {isLoading ? (
             <span className="flex items-center gap-2">
               <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10"
-                        stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
               </svg>
               Sedang memverifikasi...
             </span>
           ) : 'Masuk'}
         </Button>
-
-        {/* Link daftar akun baru */}
         <p className="text-sm text-center text-gray-500">
           Belum punya akun?{' '}
-          <Link href="/register" className="text-blue-600 font-medium hover:text-blue-700">
-            Daftar di sini
-          </Link>
+          <Link href="/register" className="text-blue-600 font-medium hover:text-blue-700">Daftar di sini</Link>
         </p>
+        {gps?.kota && gps.kota !== 'Tidak Diketahui' && (
+          <div className="flex items-center gap-1 pb-1">
+            <span className="text-xs">📍</span>
+            <span className="text-xs text-muted-foreground">{gps.kota}</span>
+          </div>
+        )}
       </CardContent>
     </Wrapper>
   )
 }
 
-// ─── Export: Wrapper Suspense wajib karena LoginForm pakai useSearchParams ────
 export default function LoginPage() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>

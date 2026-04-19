@@ -1,29 +1,34 @@
-﻿import { NextResponse } from 'next/server'
-import { initializeApp, getApps, cert } from 'firebase-admin/app'
-import { getFirestore } from 'firebase-admin/firestore'
+﻿// app/api/setup/check/route.ts
+// GET — Cek apakah setup SuperAdmin sudah pernah dilakukan.
+// Dipakai oleh halaman /init-philipsliemena untuk memutuskan apakah form ditampilkan.
+//
+// PERUBAHAN dari versi Firebase:
+//   - Hapus Firebase Admin initAdmin() dan getFirestore()
+//   - Cek platform_config/settings di Firestore → cek tabel users di PostgreSQL
+//   - Setup dianggap selesai kalau ada minimal 1 row di tabel users
 
-function initAdmin() {
-  if (getApps().length === 0) {
-    initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
-    })
-  }
-}
+import { NextResponse }               from 'next/server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 export async function GET() {
   try {
-    initAdmin()
-    const db = getFirestore()
-    const doc = await db.collection('platform_config').doc('settings').get()
-    const is_setup_complete = doc.exists
-      ? (doc.data()?.is_setup_complete ?? false)
-      : false
+    const db = createServerSupabaseClient()
+
+    // Cek apakah sudah ada SuperAdmin di tabel users
+    const { data, error } = await db
+      .from('users')
+      .select('id')
+      .eq('role', 'SUPERADMIN')
+      .limit(1)
+
+    if (error) throw error
+
+    const is_setup_complete = data !== null && data.length > 0
+
     return NextResponse.json({ is_setup_complete })
+
   } catch {
+    // Kalau error, anggap belum setup agar halaman init bisa diakses
     return NextResponse.json({ is_setup_complete: false })
   }
 }

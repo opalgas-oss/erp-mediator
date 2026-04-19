@@ -4,53 +4,40 @@
 // Dua skenario:
 //   method "auto"   → dipanggil server setelah login berhasil, reset counter
 //   method "manual" → dipanggil SuperAdmin dari dashboard (Sprint 2), butuh otorisasi JWT
+//
+// PERUBAHAN dari versi Firebase:
+//   - Hapus Firebase Admin initAdmin() dan getAuth()
+//   - Verifikasi JWT manual → Supabase auth.getUser() via createServerClient
 
-import { NextRequest, NextResponse }    from 'next/server'
-import { z }                            from 'zod'
-import { initializeApp, getApps, cert } from 'firebase-admin/app'
-import { getAuth }                      from 'firebase-admin/auth'
-import { unlockAccount }                from '@/lib/account-lock'
-
-// ─── Inisialisasi Firebase Admin ─────────────────────────────────────────────
-// Hanya inisialisasi sekali — getApps() mencegah duplikasi instance
-
-function initAdmin() {
-  if (getApps().length === 0) {
-    initializeApp({
-      credential: cert({
-        projectId:   process.env.FIREBASE_ADMIN_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-        privateKey:  process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
-    })
-  }
-}
+import { NextRequest, NextResponse } from 'next/server'
+import { z }                         from 'zod'
+import { createServerClient }        from '@supabase/ssr'
+import { cookies }                   from 'next/headers'
+import { unlockAccount }             from '@/lib/account-lock'
 
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
 
 const RequestSchema = z.object({
-  uid:              z.string().min(1, 'uid wajib diisi'),
-  tenant_id:        z.string().min(1, 'tenant_id wajib diisi'),
-  method:           z.enum(['auto', 'manual'] as const, {
+  uid:             z.string().min(1, 'uid wajib diisi'),
+  tenant_id:       z.string().min(1, 'tenant_id wajib diisi'),
+  method:          z.enum(['auto', 'manual'] as const, {
     message: 'method harus "auto" atau "manual"',
   }),
-  unlocked_by_uid:  z.string().optional(),
+  unlocked_by_uid: z.string().optional(),
 })
 
 // ─── Handler POST ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   try {
-    initAdmin()
-
-    // ── Validasi input dengan Zod ─────────────────────────────────────────────
+    // ── Validasi input ────────────────────────────────────────────────────────
     const body   = await request.json()
     const parsed = RequestSchema.safeParse(body)
 
     if (!parsed.success) {
       return NextResponse.json(
         { error: parsed.error.issues[0].message },
-        { status: 400 },
+        { status: 400 }
       )
     }
 
@@ -60,43 +47,44 @@ export async function POST(request: NextRequest) {
     if (method === 'manual' && !unlocked_by_uid) {
       return NextResponse.json(
         { error: 'unlocked_by_uid wajib ada untuk method manual' },
-        { status: 400 },
+        { status: 400 }
       )
     }
 
     // ── Otorisasi — hanya untuk method "manual" ───────────────────────────────
-    // method "auto" dipanggil dari server sendiri, tidak perlu verifikasi
     if (method === 'manual') {
-      const authHeader = request.headers.get('Authorization')
+      const cookieStore = await cookies()
 
-      // Wajib ada header Authorization: Bearer <token>
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
+      const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            getAll() { return cookieStore.getAll() },
+            setAll() { /* Route handler — diabaikan */ }
+          }
+        }
+      )
 
-      const token = authHeader.replace('Bearer ', '')
+      const { data: { user }, error } = await supabase.auth.getUser()
 
-      // Decode dan verifikasi JWT via Firebase Admin
-      let decodedToken
-      try {
-        decodedToken = await getAuth().verifyIdToken(token)
-      } catch {
+      if (error || !user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
 
       // Hanya SUPERADMIN yang boleh unlock manual
-      if (decodedToken.role !== 'SUPERADMIN') {
+      const role = user.app_metadata?.['app_role']
+      if (role !== 'SUPERADMIN') {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
     }
 
-    // ── Buka kunci akun via lib/account-lock ─────────────────────────────────
+    // ── Buka kunci akun ───────────────────────────────────────────────────────
     await unlockAccount(uid, tenant_id, method, unlocked_by_uid)
 
     return NextResponse.json({ success: true, method })
 
   } catch (error: unknown) {
-    // Tidak ekspos stack trace ke client — hanya pesan singkat
     const message = error instanceof Error ? error.message : 'Terjadi kesalahan server'
     return NextResponse.json({ error: message }, { status: 500 })
   }

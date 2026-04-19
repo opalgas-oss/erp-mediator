@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
-import { Settings } from 'lucide-react'
+import { Settings, MapPin } from 'lucide-react'
 
 const SUB_MENU = [
   { label: 'Login',               href: '/dashboard/superadmin/settings/config' },
@@ -22,12 +22,28 @@ export function SidebarNav() {
   const pathname = usePathname()
   const router   = useRouter()
   const [open, setOpen] = useState(() => pathname.includes('/settings'))
+  const [gpsInfo, setGpsInfo] = useState({ kota: '', loginAt: '' })
 
   useEffect(() => {
-    if (pathname.includes('/settings')) {
-      setOpen(true)
-    }
+    if (pathname.includes('/settings')) setOpen(true)
   }, [pathname])
+
+  // Baca info GPS + login_at dari cookie
+  useEffect(() => {
+    function getCookie(name: string) {
+      const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
+      return match ? decodeURIComponent(match[2]) : ''
+    }
+    const kota    = getCookie('gps_kota')
+    const loginAt = getCookie('session_login_at')
+    let waktu = ''
+    if (loginAt) {
+      try {
+        waktu = new Date(loginAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+      } catch { /* skip */ }
+    }
+    setGpsInfo({ kota: kota || 'Tidak Diketahui', loginAt: waktu })
+  }, [])
 
   function handleKonfigurasiClick() {
     if (open && pathname.includes('/settings')) {
@@ -47,7 +63,7 @@ export function SidebarNav() {
         <p className="text-sm font-bold text-slate-900 leading-tight">ERP Mediator</p>
         <p className="text-xs text-slate-400 mt-0.5">SuperAdmin Panel</p>
       </div>
-      <nav className="flex-1 overflow-y-auto overflow-x-auto px-2 py-3">
+      <nav className="flex-1 overflow-y-auto overflow-x-auto px-2 py-3 flex flex-col">
         <button
           onClick={handleKonfigurasiClick}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-blue-700 hover:bg-slate-100 transition-colors"
@@ -80,6 +96,18 @@ export function SidebarNav() {
           </div>
         )}
       </nav>
+      {/* Info GPS + waktu login — di bawah nav */}
+      <div className="px-4 py-3 border-t border-slate-100 shrink-0">
+        <div className="flex items-start gap-1.5">
+          <MapPin size={12} className="text-slate-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs text-slate-500 leading-tight">{gpsInfo.kota}</p>
+            {gpsInfo.loginAt && (
+              <p className="text-xs text-slate-400 leading-tight mt-0.5">Login {gpsInfo.loginAt}</p>
+            )}
+          </div>
+        </div>
+      </div>
     </aside>
   )
 }

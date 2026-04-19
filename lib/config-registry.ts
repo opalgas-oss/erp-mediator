@@ -1,47 +1,40 @@
 // lib/config-registry.ts
-// Membaca Dynamic Config Registry dari Firestore
-// Path Firestore: /platform_config/config_registry/{configId}
-// Dipakai untuk baca config yang sifatnya platform-wide (bukan policy per tenant)
-// TODO: Tambah cache setelah lib/cache.ts selesai (Sprint 0 Task 5)
+// Membaca Dynamic Config Registry dari PostgreSQL (Supabase)
+// Tabel: config_registry
+//
+// PERUBAHAN dari versi Firebase:
+//   - Import Firebase → Supabase server client
+//   - Schema berubah: dari nested fields per dokumen → flat row per item
+//   - Interface ConfigRegistryItem diupdate sesuai schema PostgreSQL baru
+//   - Hapus 3 TODO comment yang sudah kedaluarsa
+//   - Tambah unstable_cache untuk caching efektif di Vercel
+//   - Tambah import 'server-only'
 
-import { db } from '@/lib/firebase';
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-  limit,
-  Timestamp
-} from 'firebase/firestore';
+import { unstable_cache } from 'next/cache'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 // ============================================================
-// TYPE DEFINITIONS
+// TYPE DEFINITIONS — sesuai schema tabel config_registry PostgreSQL
 // ============================================================
 
-/** Setiap field di dalam satu item konfigurasi */
-export interface ConfigField {
-  key: string;
-  label: string;
-  type: 'string' | 'number' | 'boolean' | 'select';
-  value: unknown;
-  default_value: unknown;
-  options?: string[];           // hanya diisi kalau type = "select"
-  visible_to_admin: boolean;    // SuperAdmin tentukan apakah Admin bisa lihat
-  editable_by_admin: boolean;   // SuperAdmin tentukan apakah Admin bisa edit
-  description?: string;
-}
-
-/** Satu item konfigurasi lengkap di Config Registry */
-export interface ConfigRegistryItem {
-  config_id: string;
-  label: string;
-  description: string;
-  category: string;
-  fields: Record<string, ConfigField>;
-  created_at: Timestamp;
-  updated_at: Timestamp;
+/** Satu item konfigurasi dari tabel config_registry */
+export interface ConfigItem {
+  id:          string
+  feature_key: string
+  tenant_id:   string | null
+  label:       string
+  deskripsi:   string | null
+  kategori:    string
+  nilai:       string
+  tipe_data:   'string' | 'number' | 'boolean' | 'select'
+  terenkripsi: boolean
+  akses_baca:  string[]
+  akses_ubah:  string[]
+  nilai_min:   number | null
+  nilai_maks:  number | null
+  nilai_enum:  string[] | null
+  is_active:   boolean
+  updated_at:  string
 }
 
 // ============================================================
@@ -49,97 +42,112 @@ export interface ConfigRegistryItem {
 // ============================================================
 
 /**
- * Ambil nilai satu field dari Config Registry.
- * Mengembalikan nilai aktual (value), bukan default_value.
- *
- * TODO: Tambah cache setelah lib/cache.ts selesai (Sprint 0 Task 5)
- *
- * @param configId - ID item konfigurasi (contoh: "wa_provider")
- * @param fieldKey - Key field yang diminta (contoh: "api_key")
- * @returns Nilai field yang diminta
- * @throws Error jika configId atau fieldKey tidak ditemukan
+ * Ambil nilai satu item konfigurasi berdasarkan feature_key.
+ * Mengembalikan nilai aktual (nilai), bukan default.
  */
 export async function getConfigValue(
-  configId: string,
-  fieldKey: string
-): Promise<unknown> {
-  // Baca dokumen dari Firestore
-  const configRef = doc(db, 'platform_config', 'config_registry', configId);
-  const configSnap = await getDoc(configRef);
-
-  // Kalau item tidak ada di database
-  if (!configSnap.exists()) {
-    throw new Error(
-      `Konfigurasi '${configId}' tidak ditemukan di Config Registry`
-    );
-  }
-
-  const data = configSnap.data() as ConfigRegistryItem;
-
-  // Kalau field yang diminta tidak ada
-  if (!data.fields || !(fieldKey in data.fields)) {
-    throw new Error(
-      `Field '${fieldKey}' tidak ditemukan di konfigurasi '${configId}'`
-    );
-  }
-
-  return data.fields[fieldKey].value;
+  featureKey: string
+): Promise<string> {
+  const item = await getConfigItem(featureKey)
+  return item.nilai
 }
 
 /**
- * Ambil seluruh item konfigurasi berdasarkan configId.
- * Berguna saat halaman Settings perlu tampilkan semua field sekaligus.
- *
- * TODO: Tambah cache setelah lib/cache.ts selesai (Sprint 0 Task 5)
- *
- * @param configId - ID item konfigurasi (contoh: "wa_provider")
- * @returns ConfigRegistryItem lengkap beserta semua field-nya
- * @throws Error jika configId tidak ditemukan
+ * Ambil satu item konfigurasi lengkap berdasarkan feature_key.
  */
 export async function getConfigItem(
-  configId: string
-): Promise<ConfigRegistryItem> {
-  // Baca dokumen dari Firestore
-  const configRef = doc(db, 'platform_config', 'config_registry', configId);
-  const configSnap = await getDoc(configRef);
+  featureKey: string
+): Promise<ConfigItem> {
+  const cached = unstable_cache(
+    async () => {
+      const db = createServerSupabaseClient()
 
-  // Kalau item tidak ada di database
-  if (!configSnap.exists()) {
-    throw new Error(
-      `Konfigurasi '${configId}' tidak ditemukan di Config Registry`
-    );
-  }
+      const { data, error } = await db
+        .from('config_registry')
+        .select('*')
+        .eq('feature_key', featureKey)
+        .eq('is_active', true)
+        .single()
 
-  return configSnap.data() as ConfigRegistryItem;
+      if (error || !data) {
+        throw new Error(
+          `Konfigurasi '${featureKey}' tidak ditemukan di Config Registry`
+        )
+      }
+
+      return data as ConfigItem
+    },
+    [`config:item:${featureKey}`],
+    { revalidate: 15 * 60, tags: [`config:${featureKey}`] }
+  )
+
+  return cached()
 }
 
 /**
  * Ambil semua item konfigurasi berdasarkan kategori.
  * Dipakai untuk render halaman Settings yang dikelompokkan per kategori.
- *
- * TODO: Tambah cache setelah lib/cache.ts selesai (Sprint 0 Task 5)
- *
- * @param category - Nama kategori (contoh: "INTEGRATION", "SECURITY")
- * @param maxResults - Jumlah maksimal item yang diambil (default: 50)
- * @returns Array ConfigRegistryItem yang sesuai kategori
  */
 export async function getAllConfigsByCategory(
-  category: string,
+  kategori: string,
   maxResults: number = 50
-): Promise<ConfigRegistryItem[]> {
-  // Query Firestore dengan filter kategori dan batas jumlah hasil
-  const configQuery = query(
-    collection(db, 'platform_config', 'config_registry'),
-    where('category', '==', category),
-    limit(maxResults)
-  );
+): Promise<ConfigItem[]> {
+  const cached = unstable_cache(
+    async () => {
+      const db = createServerSupabaseClient()
 
-  const querySnap = await getDocs(configQuery);
+      const { data, error } = await db
+        .from('config_registry')
+        .select('*')
+        .eq('kategori', kategori)
+        .eq('is_active', true)
+        .order('feature_key', { ascending: true })
+        .limit(maxResults)
 
-  // Kalau tidak ada hasil, kembalikan array kosong
-  if (querySnap.empty) {
-    return [];
-  }
+      if (error) {
+        throw new Error(
+          `Gagal ambil konfigurasi kategori '${kategori}': ${error.message}`
+        )
+      }
 
-  return querySnap.docs.map(d => d.data() as ConfigRegistryItem);
+      return (data ?? []) as ConfigItem[]
+    },
+    [`config:kategori:${kategori}`],
+    { revalidate: 15 * 60, tags: [`config:kategori:${kategori}`] }
+  )
+
+  return cached()
+}
+
+/**
+ * Ambil semua item konfigurasi berdasarkan feature_key prefix.
+ * Contoh: feature_key = 'security_login' → ambil semua item security_login.*
+ */
+export async function getConfigsByFeatureKey(
+  featureKey: string
+): Promise<ConfigItem[]> {
+  const cached = unstable_cache(
+    async () => {
+      const db = createServerSupabaseClient()
+
+      const { data, error } = await db
+        .from('config_registry')
+        .select('*')
+        .eq('feature_key', featureKey)
+        .eq('is_active', true)
+        .order('label', { ascending: true })
+
+      if (error) {
+        throw new Error(
+          `Gagal ambil konfigurasi '${featureKey}': ${error.message}`
+        )
+      }
+
+      return (data ?? []) as ConfigItem[]
+    },
+    [`config:feature:${featureKey}`],
+    { revalidate: 15 * 60, tags: [`config:${featureKey}`] }
+  )
+
+  return cached()
 }

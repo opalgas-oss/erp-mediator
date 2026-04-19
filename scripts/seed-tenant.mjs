@@ -1,502 +1,383 @@
-﻿// scripts/seed-tenant.mjs
-// Script untuk membuat struktur Firestore dan mengisi data tenant pertama
-// Jalankan sekali: node scripts/seed-tenant.mjs
-// Diperbarui: Sesi #018 â€” tambah security_login item 9-14, 142-145, 171-174 + message_library item 126-170
+// scripts/seed-tenant.mjs
+// Script seed untuk PostgreSQL via Supabase
+// Jalankan: node scripts/seed-tenant.mjs
+//
+// PRASYARAT: Jalankan scripts/setup-all-tables.sql di Supabase Dashboard dulu
+//
+// Yang di-seed:
+//   1. Tenant
+//   2. Platform Policies
+//   3. Config Registry (16 item security_login)
+//   4. Message Library (23 pesan: login_ui + otp_ui + notif_wa)
+//   5. Service Providers (8 provider API)
+//   6. Provider Field Definitions (33 field total)
 
-import { createRequire } from 'module';
-import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { createClient } from '@supabase/supabase-js'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+import { readFileSync } from 'fs'
 
-// Baca service account key â€” wajib ada di scripts/serviceAccountKey.json
-const require = createRequire(import.meta.url);
-const serviceAccount = require('./serviceAccountKey.json');
+const __dirname  = dirname(fileURLToPath(import.meta.url))
+const envPath    = join(__dirname, '..', '.env.development.local')
+const envContent = readFileSync(envPath, 'utf-8')
 
-initializeApp({ credential: cert(serviceAccount) });
-const db = getFirestore();
+const env = {}
+for (const line of envContent.split('\n')) {
+  const trimmed = line.trim()
+  if (!trimmed || trimmed.startsWith('#')) continue
+  const idx = trimmed.indexOf('=')
+  if (idx === -1) continue
+  const key = trimmed.slice(0, idx).trim()
+  const val = trimmed.slice(idx + 1).trim()
+  env[key] = val
+}
+
+const SUPABASE_URL         = env['NEXT_PUBLIC_SUPABASE_URL']
+const SUPABASE_SERVICE_KEY = env['SUPABASE_SERVICE_ROLE_KEY']
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  console.error('❌ NEXT_PUBLIC_SUPABASE_URL atau SUPABASE_SERVICE_ROLE_KEY tidak ditemukan')
+  process.exit(1)
+}
+
+const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false }
+})
+
+const TENANT_ID = 'aaaaaaaa-0000-0000-0000-000000000001'
 
 // ============================================================
-// DATA TENANT PERTAMA â€” Bisnis Anda Sendiri
+// BAGIAN 1: TENANT
 // ============================================================
-const TENANT_ID = 'tenant_erpmediator'; // ID unik tenant Anda
 
 async function seedTenant() {
-  console.log('Mulai setup database...');
-
-  // 1. Dokumen konfigurasi utama tenant
-  await db.doc(`tenants/${TENANT_ID}/config/main`).set({
-    tenant_id: TENANT_ID,
-    brand: {
-      name: 'ERP Mediator',
-      tagline: 'Platform Jasa Terpercaya',
-      primary_color: '#2E6DA4',
-      logo_url: '',
-    },
-    commission: {
-      percentage: 10,
-      minimum_amount: 50000,
-      charged_to: 'vendor', // 'vendor' atau 'customer'
-    },
-    timers: {
-      t1_minutes: 15,  // Durasi auction vendor
-      t2_minutes: 60,  // Batas waktu bayar customer
-      t3_minutes: 120, // Batas waktu konfirmasi customer
-    },
-    wa_templates: {
-      new_order_blast: 'Halo {vendor_name}! Ada order baru kategori {category}. Klik link untuk bid: {link}',
-      order_confirmed: 'Selamat {vendor_name}! Anda terpilih untuk order #{order_id}.',
-      payment_received: 'Dana sudah masuk escrow. Silakan mulai bekerja!',
-    },
-    operational_hours: {
-      is_24_hours: false,
-      open: '08:00',
-      close: '21:00',
-    },
-    is_active: true,
-    created_at: new Date().toISOString(),
-  }, { merge: true });
-  console.log('âœ… Config tenant berhasil dibuat');
-
-  // 2. Kategori jasa (contoh awal â€” bisa ditambah dari dashboard)
-  const categories = [
-    { id: 'cat_001', name: 'Servis AC', icon: 'â„ï¸', is_active: true },
-    { id: 'cat_002', name: 'Instalasi Listrik', icon: 'âš¡', is_active: true },
-    { id: 'cat_003', name: 'Perbaikan Plumbing', icon: 'ðŸ”§', is_active: true },
-  ];
-  for (const cat of categories) {
-    await db.doc(`tenants/${TENANT_ID}/categories/${cat.id}`).set(
-      { ...cat, tenant_id: TENANT_ID, created_at: new Date().toISOString() },
-      { merge: true }
-    );
-  }
-  console.log('âœ… 3 kategori berhasil dibuat');
-
-  // 3. Kota coverage (contoh awal)
-  const cities = [
-    { id: 'city_001', name: 'Jakarta Selatan', is_active: true },
-    { id: 'city_002', name: 'Jakarta Barat', is_active: true },
-    { id: 'city_003', name: 'Tangerang Selatan', is_active: true },
-  ];
-  for (const city of cities) {
-    await db.doc(`tenants/${TENANT_ID}/cities/${city.id}`).set(
-      { ...city, tenant_id: TENANT_ID, created_at: new Date().toISOString() },
-      { merge: true }
-    );
-  }
-  console.log('âœ… 3 kota berhasil dibuat');
-
-  console.log('');
-  console.log('âœ… Tenant pertama selesai.');
+  const { error } = await db
+    .from('tenants')
+    .upsert({
+      id:            TENANT_ID,
+      nama_brand:    'ERP Mediator',
+      domain:        'erpmediator.com',
+      status:        'aktif',
+      token_version: 1,
+      created_at:    new Date().toISOString(),
+      updated_at:    new Date().toISOString(),
+    }, { onConflict: 'id' })
+  if (error) throw new Error(`seedTenant: ${error.message}`)
+  console.log('  ✅ Tenant: ERP Mediator')
 }
 
 // ============================================================
-// BAGIAN 1: PLATFORM POLICIES
+// BAGIAN 2: PLATFORM POLICIES
 // ============================================================
 
 async function seedPolicies() {
-  // ----------------------------------------------------------
-  // security_login â€” Kebijakan keamanan login
-  // Item 1-8   : dari Sprint 0 (sudah ada sebelumnya)
-  // Item 9-14  : BARU Sesi #017 v6 â€” reset counter + progressive lockout + notif superadmin
-  // Item 142-145: BARU Sesi #017 v7 â€” GPS mode, GPS timeout, OTP digits, OTP resend cooldown
-  // Item 171-174: BARU Sesi #017 v8 â€” password rules
-  // ----------------------------------------------------------
-  await db.doc('platform_config/policies/security_login/config').set({
-
-    // --- Item 1-8: sudah ada, tidak berubah ---
-    require_otp: true,
-    require_otp_tenant_can_override: true,
-    require_biometric_offer: true,
-    require_biometric_offer_tenant_can_override: true,
-    max_login_attempts: 5,
-    max_login_attempts_tenant_can_override: true,
-    lock_duration_minutes: 15,
-    lock_duration_minutes_tenant_can_override: true,
-    otp_expiry_minutes: 5,
-    otp_expiry_minutes_tenant_can_override: false,
-    otp_max_attempts: 3,
-    otp_max_attempts_tenant_can_override: false,
-    trusted_device_days: 30,
-    trusted_device_days_tenant_can_override: true,
-    session_timeout_minutes: 480,
-    session_timeout_minutes_tenant_can_override: true,
-
-    // --- Item 9-14: BARU â€” Reset Counter + Progressive Lockout + Notif SuperAdmin ---
-    // Item 9: Aktifkan reset counter login otomatis berdasarkan waktu idle
-    login_attempts_reset_enabled: true,
-    login_attempts_reset_enabled_tenant_can_override: true,
-
-    // Item 10: Berapa jam idle sebelum counter percobaan login di-reset ke 0
-    login_attempts_reset_hours: 24,
-    login_attempts_reset_hours_tenant_can_override: true,
-
-    // Item 11: Aktifkan durasi kunci yang makin lama setiap kunci berulang
-    progressive_lockout_enabled: false,
-    progressive_lockout_enabled_tenant_can_override: true,
-
-    // Item 12: Pengali durasi kunci per kunci berulang (lock ke-2 = lock_duration x multiplier)
-    lock_duration_multiplier: 2,
-    lock_duration_multiplier_tenant_can_override: true,
-
-    // Item 13: Batas maksimum durasi kunci meskipun progressive terus naik (dalam jam)
-    max_lock_duration_hours: 24,
-    max_lock_duration_hours_tenant_can_override: true,
-
-    // Item 14: Kirim notifikasi WA ke SuperAdmin setiap ada akun yang dikunci
-    notify_superadmin_on_lock: true,
-    notify_superadmin_on_lock_tenant_can_override: false,
-
-    // --- Item 142-145: BARU â€” GPS + OTP Config ---
-    // Item 142: Mode GPS saat login (required / optional / disabled)
-    gps_mode: 'required',
-    gps_mode_tenant_can_override: false,
-
-    // Item 143: Timeout GPS dalam detik â€” sebelum dianggap gagal
-    gps_timeout_seconds: 10,
-    gps_timeout_seconds_tenant_can_override: true,
-
-    // Item 144: Panjang kode OTP yang dikirim ke WA (4, 6, atau 8 digit)
-    otp_digits: 6,
-    otp_digits_tenant_can_override: false,
-
-    // Item 145: Jeda detik sebelum user boleh kirim ulang OTP
-    otp_resend_cooldown_seconds: 60,
-    otp_resend_cooldown_seconds_tenant_can_override: true,
-
-    // --- Item 171-174: BARU â€” Password Rules ---
-    // Nilai default mengikuti implementasi yang sudah berjalan (min 8, tanpa kombinasi).
-    // Perubahan ke min 12 + kombinasi dicatat sebagai Issue Tertunda â€” diupdate setelah semua TC + RBAC lulus.
-
-    // Item 171: Panjang minimum password (karakter)
-    password_min_length: 8,
-    password_min_length_tenant_can_override: false,
-
-    // Item 172: Password wajib mengandung huruf besar
-    password_require_uppercase: false,
-    password_require_uppercase_tenant_can_override: false,
-
-    // Item 173: Password wajib mengandung angka
-    password_require_number: false,
-    password_require_number_tenant_can_override: false,
-
-    // Item 174: Password wajib mengandung simbol
-    password_require_symbol: false,
-    password_require_symbol_tenant_can_override: false,
-
-  }, { merge: true });
-  console.log('  âœ… security_login â€” 26 field (14 baru: item 9-14, 142-145, 171-174)');
-
-  // ----------------------------------------------------------
-  // concurrent_session â€” Kebijakan sesi paralel
-  // ----------------------------------------------------------
-  await db.doc('platform_config/policies/concurrent_session/config').set({
-    scope: 'per_tenant',
-    scope_tenant_can_override: false,
-    default_rule: 'different_role_only',
-    default_rule_tenant_can_override: true,
-  }, { merge: true });
-  console.log('  âœ… concurrent_session');
-
-  // ----------------------------------------------------------
-  // commission â€” Kebijakan komisi transaksi
-  // ----------------------------------------------------------
-  await db.doc('platform_config/policies/commission/config').set({
-    default_type: 'percent',
-    default_type_tenant_can_override: true,
-    default_rate: 10,
-    default_rate_tenant_can_override: true,
-    minimum_amount_rp: 50000,
-    minimum_amount_rp_tenant_can_override: false,
-    max_per_transaction_rp: 0,
-    max_per_transaction_rp_tenant_can_override: true,
-    flat_fee_per_order_rp: 0,
-    flat_fee_per_order_rp_tenant_can_override: true,
-    charged_to: 'customer',
-    charged_to_tenant_can_override: true,
-  }, { merge: true });
-  console.log('  âœ… commission');
-
-  // ----------------------------------------------------------
-  // timers â€” Kebijakan durasi setiap tahap reverse auction
-  // ----------------------------------------------------------
-  await db.doc('platform_config/policies/timers/config').set({
-    t_bid_minutes: 15,
-    t_bid_minutes_tenant_can_override: true,
-    t_approval_minutes: 60,
-    t_approval_minutes_tenant_can_override: true,
-    t_payment_minutes: 60,
-    t_payment_minutes_tenant_can_override: true,
-    t_work_minutes: 1440,
-    t_work_minutes_tenant_can_override: true,
-    t_review_minutes: 120,
-    t_review_minutes_tenant_can_override: true,
-    t_dispute_minutes: 1440,
-    t_dispute_minutes_tenant_can_override: true,
-    t_vendor_approval_minutes: 2880,
-    t_vendor_approval_minutes_tenant_can_override: true,
-    t_otp_minutes: 5,
-    t_otp_minutes_tenant_can_override: false,
-  }, { merge: true });
-  console.log('  âœ… timers');
-
-  // ----------------------------------------------------------
-  // activity_logging â€” Kebijakan pencatatan aktivitas
-  // ----------------------------------------------------------
-  await db.doc('platform_config/policies/activity_logging/config').set({
-    log_page_views: true,
-    log_page_views_tenant_can_override: true,
-    log_button_clicks: false,
-    log_button_clicks_tenant_can_override: true,
-    log_form_submits: true,
-    log_form_submits_tenant_can_override: false,
-    log_errors: true,
-    log_errors_tenant_can_override: false,
-    retention_days: 365,
-    retention_days_tenant_can_override: true,
-    max_retention_days: 730,
-  }, { merge: true });
-  console.log('  âœ… activity_logging');
+  const policies = [
+    {
+      feature_key: 'security_login',
+      nilai: {
+        require_otp: true, require_otp_tenant_can_override: true,
+        require_biometric_offer: true, require_biometric_offer_tenant_can_override: true,
+        max_login_attempts: 5, max_login_attempts_tenant_can_override: true,
+        lock_duration_minutes: 15, lock_duration_minutes_tenant_can_override: true,
+        otp_expiry_minutes: 5, otp_expiry_minutes_tenant_can_override: false,
+        otp_max_attempts: 3, otp_max_attempts_tenant_can_override: false,
+        trusted_device_days: 30, trusted_device_days_tenant_can_override: true,
+        session_timeout_minutes: 480, session_timeout_minutes_tenant_can_override: true,
+        login_attempts_reset_enabled: true, login_attempts_reset_hours: 24,
+        progressive_lockout_enabled: false, lock_duration_multiplier: 2,
+        max_lock_duration_hours: 24, notify_superadmin_on_lock: true,
+        gps_mode: 'required', gps_timeout_seconds: 10,
+        otp_digits: 6, otp_resend_cooldown_seconds: 60,
+        password_min_length: 8, password_require_uppercase: false,
+        password_require_number: false, password_require_symbol: false,
+      }
+    },
+    {
+      feature_key: 'concurrent_session',
+      nilai: {
+        scope: 'per_tenant', scope_tenant_can_override: false,
+        rule: 'different_role_only', rule_tenant_can_override: true,
+      }
+    },
+    {
+      feature_key: 'commission',
+      nilai: {
+        percentage: 10, minimum_amount: 50000, charged_to: 'customer',
+        charged_to_tenant_can_override: true, percentage_tenant_can_override: true,
+        minimum_amount_tenant_can_override: false,
+      }
+    },
+    {
+      feature_key: 'timers',
+      nilai: {
+        t1_minutes: 15, t1_minutes_tenant_can_override: true,
+        t2_minutes: 60, t2_minutes_tenant_can_override: true,
+        t3_minutes: 120, t3_minutes_tenant_can_override: true,
+      }
+    },
+    {
+      feature_key: 'activity_logging',
+      nilai: {
+        log_page_views: true, log_page_views_tenant_can_override: true,
+        log_button_clicks: false, log_button_clicks_tenant_can_override: true,
+        log_form_submits: true, log_form_submits_tenant_can_override: false,
+        log_errors: true, log_errors_tenant_can_override: false,
+        retention_days: 365, retention_days_tenant_can_override: true,
+      }
+    },
+  ]
+  for (const policy of policies) {
+    const { error } = await db.from('platform_policies')
+      .upsert({ feature_key: policy.feature_key, nilai: policy.nilai, updated_at: new Date().toISOString() }, { onConflict: 'feature_key' })
+    if (error) throw new Error(`seedPolicies ${policy.feature_key}: ${error.message}`)
+    console.log(`  ✅ Policy: ${policy.feature_key}`)
+  }
 }
 
 // ============================================================
-// BAGIAN 2: CONFIG REGISTRY â€” MESSAGE LIBRARY
+// BAGIAN 3: CONFIG REGISTRY
 // ============================================================
 
 async function seedConfigRegistry() {
-  // ----------------------------------------------------------
-  // message_library â€” Semua template pesan platform
-  //
-  // Item 120-125 : Vendor registration flow (sudah ada)
-  // Item 126     : OTP login WA
-  // Item 127-128 : Account lock â€” notif WA ke user + SuperAdmin
-  // Item 146     : Account lock â€” pesan UI browser
-  // Item 147-150 : GPS denied messages
-  // Item 151-159 : Login flow messages
-  // Item 160-166 : Login UI text (header, footer, loading)
-  // Item 167-170 : Label role di dropdown selector
-  // ----------------------------------------------------------
-  await db.doc('platform_config/config_registry/items/message_library').set({
-    config_id: 'message_library',
-    label: 'Perpustakaan Pesan',
-    category: 'komunikasi',
-    sprint: 1,
-    updated_at: new Date().toISOString(),
+  const { error: delError } = await db
+    .from('config_registry').delete().eq('feature_key', 'security_login').is('tenant_id', null)
+  if (delError) throw new Error(`seedConfigRegistry delete: ${delError.message}`)
 
-    // --- Item 120-125: Vendor Registration Flow ---
-    vendor_register_pending: 'Terima kasih {{nama}}, pendaftaran Vendor Anda sudah kami terima. Tunggu verifikasi dari Admin. Hubungi: admin@mediator.com',
-    admin_vendor_pending_notif: 'Ada pendaftaran Vendor baru. Lakukan verifikasi di Dashboard â†’ Menu Pendaftaran Vendor.',
-    vendor_register_review: 'Pendaftaran Anda sedang di-review Admin. Pastikan No WA aktif agar Admin dapat verifikasi. Hubungi: admin@mediator.com',
-    vendor_approved_wa: 'Pendaftaran disetujui. Buka email Anda untuk aktivasi akun. Login dengan akun yang didaftarkan. Hubungi: admin@mediator.com',
-    vendor_approved_email: 'Pendaftaran disetujui. Lakukan aktivasi akun. Login dengan akun dan password yang didaftarkan. Hubungi: admin@mediator.com',
-    vendor_rejected: 'Maaf {{nama}}, pendaftaran Vendor Anda belum dapat kami setujui saat ini. Hubungi kami untuk informasi lebih lanjut.',
+  const items = [
+    { label: 'Maks percobaan login',                kategori: 'Keamanan Login',       nilai: '5',                   tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { label: 'Durasi kunci akun (menit)',            kategori: 'Keamanan Login',       nilai: '30',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { label: 'Reset counter gagal setelah idle',     kategori: 'Keamanan Login',       nilai: '24',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { label: 'Progressive lockout',                  kategori: 'Keamanan Login',       nilai: 'true',                tipe_data: 'boolean', akses_baca: ['superadmin'],         akses_ubah: ['superadmin'],         nilai_enum: null },
+    { label: 'Batas maksimal durasi kunci (jam)',    kategori: 'Keamanan Login',       nilai: '24',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { label: 'OTP via WhatsApp aktif',               kategori: 'OTP',                  nilai: 'true',                tipe_data: 'boolean', akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { label: 'Durasi OTP expired (menit)',           kategori: 'OTP',                  nilai: '5',                   tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { label: 'Panjang kode OTP',                     kategori: 'OTP',                  nilai: '6',                   tipe_data: 'select',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: ['4','6','8'] },
+    { label: 'Maks percobaan OTP salah',             kategori: 'OTP',                  nilai: '3',                   tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { label: 'Jeda sebelum kirim ulang OTP (detik)', kategori: 'OTP',                  nilai: '60',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { label: 'Tawarkan biometric saat login',        kategori: 'Biometric',            nilai: 'true',                tipe_data: 'boolean', akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { label: 'Durasi trusted device (hari)',         kategori: 'Biometric',            nilai: '30',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { label: 'Durasi session timeout (menit)',       kategori: 'Session & Concurrent', nilai: '480',                 tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { label: 'Session timeout tidak aktif (menit)', kategori: 'Session & Concurrent', nilai: '30',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { label: 'Aturan login bersamaan',               kategori: 'Session & Concurrent', nilai: 'different_role_only', tipe_data: 'select',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: ['none','different_role_only','always'] },
+    { label: 'Notif WA ke SuperAdmin saat dikunci',  kategori: 'Session & Concurrent', nilai: 'true',                tipe_data: 'boolean', akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+  ]
 
-    // --- Item 126: OTP Login WA ---
-    // Dikirim ke Vendor & Admin saat login â€” Customer TIDAK mendapat OTP
-    // Variables: {{kode}}, {{role}}, {{jam}}, {{tanggal}}
-    otp_login: 'OTP Anda {{kode}} untuk akses masuk sebagai Role: {{role}}. JANGAN BERIKAN OTP KEPADA SIAPAPUN. Gunakan sebelum Jam: {{jam}} Tanggal {{tanggal}}',
+  const rows = items.map(item => ({
+    feature_key: 'security_login', tenant_id: null, label: item.label,
+    kategori: item.kategori, nilai: item.nilai, tipe_data: item.tipe_data,
+    akses_baca: item.akses_baca, akses_ubah: item.akses_ubah,
+    nilai_enum: item.nilai_enum, is_active: true, updated_at: new Date().toISOString(),
+  }))
 
-    // --- Item 127: Notifikasi WA ke User saat Akun Dikunci ---
-    // Variables: {{nama}}, {{jam_unlock}}, {{jumlah_percobaan}}, {{email_superadmin}}
-    account_locked_user: `Halo {{nama}},
-
-Akun Anda di ERP Mediator dikunci karena terlalu banyak percobaan login yang gagal ({{jumlah_percobaan}} percobaan).
-
-Akun akan terbuka kembali pada pukul {{jam_unlock}} WIB.
-
-Jika bukan Anda yang mencoba login, segera hubungi kami:
-{{email_superadmin}}
-
-Abaikan pesan ini jika ini memang Anda.`,
-
-    // --- Item 128: Notifikasi WA ke SuperAdmin saat Ada Akun Dikunci ---
-    // Variables: {{nama_user}}, {{email_user}}, {{waktu_kejadian}}, {{jumlah_percobaan}}, {{jam_unlock}}
-    account_locked_superadmin: `[ALERT KEAMANAN] Akun Dikunci
-
-Nama user  : {{nama_user}}
-Email      : {{email_user}}
-Waktu      : {{waktu_kejadian}} WIB
-Percobaan  : {{jumlah_percobaan}} kali gagal
-Dikunci s/d: {{jam_unlock}} WIB
-
-Cek dashboard untuk detail dan unlock manual jika diperlukan.`,
-
-    // --- Item 146: Pesan UI Browser saat Akun Dikunci ---
-    // Variables: {{jam_unlock}}
-    account_locked_ui: 'Terlalu banyak percobaan. Akun dikunci hingga pukul {{jam_unlock}} WIB. Coba lagi nanti.',
-
-    // --- Item 147-150: GPS Denied Messages ---
-    gps_checking_text: 'Sedang memeriksa lokasi Anda...',
-    gps_denied_title: 'Izin Lokasi Diperlukan',
-    gps_denied_body: 'Platform ini memerlukan akses lokasi untuk keamanan akun Anda. Aktifkan izin lokasi di browser, lalu muat ulang halaman.',
-    gps_denied_button: 'Muat Ulang Halaman',
-
-    // --- Item 151-159: Login Flow Messages ---
-    // Item 151: Vendor belum approved â€” Variables: {{email_superadmin}}
-    vendor_pending_login: 'Akun Anda sedang menunggu verifikasi dari Admin. Kami akan menghubungi Anda via WhatsApp setelah proses selesai. Pertanyaan? Hubungi: {{email_superadmin}}',
-
-    // Item 152: Concurrent session warning â€” Variables: {{device}}, {{gps_kota}}, {{login_time}}
-    concurrent_session_warning: 'Akun Anda sedang digunakan di perangkat {{device}} ({{gps_kota}}). Login pada: {{login_time}} WIB. Pastikan Anda yang menggunakannya, silakan minta pengguna tersebut logout terlebih dahulu agar Anda dapat login kembali.',
-
-    // Item 153: Kredensial salah
-    login_error_credentials: 'Email atau password yang Anda masukkan salah.',
-
-    // Item 154: Kode OTP salah â€” Variables: {{sisa_percobaan}}
-    login_error_otp_wrong: 'Kode OTP salah. Sisa percobaan: {{sisa_percobaan}}',
-
-    // Item 155: OTP kadaluarsa
-    login_error_otp_expired: 'Kode OTP sudah kadaluarsa. Klik Kirim ulang.',
-
-    // Item 156: Koneksi gagal
-    login_error_connection: 'Gagal terhubung. Periksa koneksi internet Anda.',
-
-    // Item 157: OTP berhasil dikirim ulang
-    login_otp_resend_sent: 'Kode OTP baru telah dikirim ke WhatsApp Anda.',
-
-    // Item 158: Error global â€” judul
-    login_error_global_title: 'Terjadi Kesalahan',
-
-    // Item 159: Error global â€” isi
-    login_error_global_body: 'Gagal terhubung. Periksa koneksi internet Anda.',
-
-    // --- Item 160-166: Login UI Text (teks statis halaman login) ---
-    login_header_title: 'Selamat Datang Kembali',
-    login_header_subtitle: 'Masuk untuk melanjutkan',
-    login_footer_text: 'Belum punya akun?',
-    login_footer_link: 'Daftar Sekarang',
-    login_loading_otp: 'Mengirim kode OTP...',
-    login_loading_verify: 'Memverifikasi...',
-    login_loading_connect: 'Menghubungkan...',
-
-    // --- Item 167-170: Label Role di Dropdown Selector ---
-    role_label_customer: 'Pelanggan',
-    role_label_vendor: 'Mitra / Vendor',
-    role_label_admin_tenant: 'Admin',
-    role_label_superadmin: 'Super Admin',
-
-  }, { merge: true });
-  console.log('  âœ… message_library â€” 35 item (item 120-128, 146-170)');
+  const { error } = await db.from('config_registry').insert(rows)
+  if (error) throw new Error(`seedConfigRegistry insert: ${error.message}`)
+  console.log(`  ✅ Config Registry: 16 item security_login`)
 }
 
 // ============================================================
-// BAGIAN 3: TENANT DEFAULT CONFIG
+// BAGIAN 4: MESSAGE LIBRARY
 // ============================================================
 
-async function seedTenantConfig() {
-  // Konfigurasi utama tenant â€” policies kosong, diisi oleh Tenant Admin via dashboard
-  await db.doc(`tenants/${TENANT_ID}/config/main`).set({
-    tenant_id: TENANT_ID,
-    brand_name: 'ERP Mediator',
-    token_version: 1,
-    policies: {},
-    setup: {
-      concurrent_session_configured: false,
-      commission_configured: false,
-      timers_configured: false,
-    },
-    created_at: new Date().toISOString(),
-  }, { merge: true });
-  console.log('  âœ… tenant config default');
-}
+async function seedMessageLibrary() {
+  // Hapus semua data lama agar idempotent
+  await db.from('message_library').delete().neq('id', '00000000-0000-0000-0000-000000000000')
 
-// ============================================================
+  const messages = [
+    // ── login_ui: 17 pesan error + validasi form login ──────────────────────
+    { key: 'login_error_credentials_salah',       kategori: 'login_ui', channel: 'ui', teks: 'Email atau password yang Anda masukkan salah.',         variabel: [], keterangan: 'Supabase error: Invalid login credentials / User not found' },
+    { key: 'login_error_email_belum_konfirmasi',  kategori: 'login_ui', channel: 'ui', teks: 'Email belum dikonfirmasi. Hubungi admin.',               variabel: [], keterangan: 'Supabase error: Email not confirmed' },
+    { key: 'login_error_terlalu_banyak_percobaan',kategori: 'login_ui', channel: 'ui', teks: 'Terlalu banyak percobaan. Coba lagi beberapa menit.',    variabel: [], keterangan: 'Supabase rate limit (bukan account_locks platform)' },
+    { key: 'login_error_koneksi_gagal',           kategori: 'login_ui', channel: 'ui', teks: 'Gagal terhubung. Periksa koneksi internet.',             variabel: [], keterangan: 'Network error saat request ke Supabase' },
+    { key: 'login_error_umum',                    kategori: 'login_ui', channel: 'ui', teks: 'Terjadi kesalahan. Coba lagi.',                          variabel: [], keterangan: 'Fallback generik saat tidak ada pesan spesifik' },
+    { key: 'login_error_gps_diperlukan',          kategori: 'login_ui', channel: 'ui', teks: 'Aktifkan GPS di browser untuk melanjutkan. Klik ikon lokasi di address bar, lalu izinkan akses lokasi.', variabel: [], keterangan: 'User klik Masuk tapi GPS belum diizinkan (gps_mode = required)' },
+    { key: 'login_error_config_belum_lengkap',    kategori: 'login_ui', channel: 'ui', teks: 'Konfigurasi akun belum lengkap. Hubungi admin.',         variabel: [], keterangan: 'JWT tidak memiliki tenant_id (bukan SUPERADMIN)' },
+    { key: 'login_error_role_tidak_ditemukan',    kategori: 'login_ui', channel: 'ui', teks: 'Role akun tidak ditemukan. Hubungi admin.',              variabel: [], keterangan: 'user_profiles tidak punya role atau JWT tidak ada app_role' },
+    { key: 'login_error_akun_belum_aktif',        kategori: 'login_ui', channel: 'ui', teks: 'Akun Anda belum diaktifkan. Tunggu verifikasi dari Admin.',variabel: [], keterangan: 'Vendor dengan status PENDING atau REVIEW' },
+    { key: 'login_error_gagal_muat_data',         kategori: 'login_ui', channel: 'ui', teks: 'Gagal memuat data akun. Coba lagi.',                     variabel: [], keterangan: 'Query user_profiles ke Supabase gagal' },
+    { key: 'login_error_gagal_config',            kategori: 'login_ui', channel: 'ui', teks: 'Gagal memuat konfigurasi. Coba lagi.',                   variabel: [], keterangan: 'Query platform_policies setelah login berhasil gagal' },
+    { key: 'login_error_gagal_selesaikan',        kategori: 'login_ui', channel: 'ui', teks: 'Gagal menyelesaikan login. Coba lagi.',                  variabel: [], keterangan: 'selesaiLogin() gagal (session log, cookie, presence)' },
+    { key: 'login_error_akun_dikunci',            kategori: 'login_ui', channel: 'ui', teks: 'Terlalu banyak percobaan. Akun dikunci hingga pukul {lock_until_wib}.', variabel: ['lock_until_wib'], keterangan: 'check-lock atau lock-account return locked: true' },
+    { key: 'login_validasi_email_kosong',         kategori: 'login_ui', channel: 'ui', teks: 'Email wajib diisi.',                                     variabel: [], keterangan: 'Validasi client-side: field email kosong' },
+    { key: 'login_validasi_email_format',         kategori: 'login_ui', channel: 'ui', teks: 'Format email tidak valid.',                              variabel: [], keterangan: 'Validasi client-side: email tidak mengandung @ atau domain' },
+    { key: 'login_validasi_password_kosong',      kategori: 'login_ui', channel: 'ui', teks: 'Password wajib diisi.',                                  variabel: [], keterangan: 'Validasi client-side: field password kosong' },
+    { key: 'login_validasi_password_min',         kategori: 'login_ui', channel: 'ui', teks: 'Password minimal 8 karakter.',                           variabel: [], keterangan: 'Validasi client-side: password < 8 karakter' },
 
-// ============================================================
-// BAGIAN 4: CONFIG SCHEMA
-// ============================================================
+    // ── otp_ui: 5 pesan tahap verifikasi OTP ────────────────────────────────
+    { key: 'otp_error_kurang_digit',      kategori: 'otp_ui', channel: 'ui', teks: 'Masukkan 6 digit kode OTP.',                      variabel: [], keterangan: 'Input OTP kurang dari 6 digit' },
+    { key: 'otp_error_kadaluarsa',        kategori: 'otp_ui', channel: 'ui', teks: 'Kode OTP sudah kadaluarsa. Klik Kirim ulang.',    variabel: [], keterangan: 'verifyOTP() return EXPIRED' },
+    { key: 'otp_error_salah',             kategori: 'otp_ui', channel: 'ui', teks: 'Kode OTP salah. Sisa percobaan: {sisa_percobaan}.', variabel: ['sisa_percobaan'], keterangan: 'OTP salah, masih ada sisa percobaan' },
+    { key: 'otp_error_batas_habis',       kategori: 'otp_ui', channel: 'ui', teks: 'Batas percobaan OTP habis. Klik Kirim ulang.',    variabel: [], keterangan: 'Percobaan OTP mencapai otp_max_attempts' },
+    { key: 'otp_error_verifikasi_gagal',  kategori: 'otp_ui', channel: 'ui', teks: 'Gagal memverifikasi OTP. Coba lagi.',             variabel: [], keterangan: 'verifyOTP() throw error (network atau server)' },
 
-async function seedConfigSchema() {
-  const groups = [
+    // ── notif_wa: 1 template WhatsApp via Fonnte ─────────────────────────────
     {
-      title: 'Keamanan Login',
-      feature_key: 'keamanan_login',
-      items: [
-        { id: 'max_login_attempts',           label: 'Maks percobaan login',             type: 'number-unit', value: 5,    unit: 'Kali',  units: [],             options: [],                             adminCanChange: true, enabled: true },
-        { id: 'lock_duration_minutes',        label: 'Durasi kunci akun',                type: 'number-unit', value: 30,   unit: 'Menit', units: ['Menit','Jam'], options: [],                             adminCanChange: true, enabled: true },
-        { id: 'login_attempts_reset_enabled', label: 'Reset counter gagal setelah idle', type: 'number-unit', value: 24,   unit: 'Jam',   units: ['Jam','Hari'],  options: [],                             adminCanChange: true, enabled: true },
-        { id: 'progressive_lockout_enabled',  label: 'Progressive lockout',              type: 'toggle',      value: true, unit: '',      units: [],             options: [],                             adminCanChange: false, enabled: true },
-        { id: 'max_lock_duration_hours',      label: 'Batas maksimal durasi kunci',      type: 'number-unit', value: 24,   unit: 'Jam',   units: [],             options: [],                             adminCanChange: true, enabled: true },
-      ],
-    },
-    {
-      title: 'OTP',
-      feature_key: 'otp',
-      items: [
-        { id: 'require_otp',                 label: 'OTP via WhatsApp aktif',        type: 'toggle',      value: true,      unit: '',      units: [],                options: [],                             adminCanChange: true, enabled: true },
-        { id: 'otp_expiry_minutes',          label: 'Durasi OTP expired',            type: 'number-unit', value: 5,         unit: 'Menit', units: ['Menit','Detik'], options: [],                             adminCanChange: true, enabled: true },
-        { id: 'otp_digits',                  label: 'Panjang kode OTP',              type: 'select-only', value: '6 Digit', unit: '',      units: [],                options: ['6 Digit','4 Digit','8 Digit'], adminCanChange: true, enabled: true },
-        { id: 'otp_max_attempts',            label: 'Maks percobaan OTP salah',      type: 'number-unit', value: 3,         unit: 'Kali',  units: [],                options: [],                             adminCanChange: true, enabled: true },
-        { id: 'otp_resend_cooldown_seconds', label: 'Jeda sebelum kirim ulang OTP',  type: 'number-unit', value: 60,        unit: 'Detik', units: ['Detik','Menit'], options: [],                             adminCanChange: true, enabled: true },
-      ],
-    },
-    {
-      title: 'Biometric',
-      feature_key: 'biometric',
-      items: [
-        { id: 'require_biometric_offer', label: 'Tawarkan biometric saat login', type: 'toggle',      value: true, unit: '',     units: [],                       options: [], adminCanChange: true, enabled: true },
-        { id: 'trusted_device_days',     label: 'Durasi trusted device',         type: 'number-unit', value: 30,   unit: 'Hari', units: ['Hari','Minggu','Bulan'], options: [], adminCanChange: true, enabled: true },
-      ],
-    },
-    {
-      title: 'Session & Concurrent',
-      feature_key: 'session_concurrent',
-      items: [
-        { id: 'session_timeout_minutes',   label: 'Durasi JWT token',                    type: 'number-unit', value: 60,      unit: 'Menit', units: ['Menit','Jam'], options: [],                          adminCanChange: true, enabled: true },
-        { id: 'session_timeout_inactive',  label: 'Session timeout tidak aktif',         type: 'number-unit', value: 30,      unit: 'Menit', units: ['Menit','Jam'], options: [],                          adminCanChange: true, enabled: true },
-        { id: 'concurrent_session_rule',   label: 'Aturan login bersamaan',              type: 'select-only', value: 'Bebas', unit: '',      units: [],             options: ['Bebas','Beda Role','Blokir'], adminCanChange: true, enabled: true },
-        { id: 'notify_superadmin_on_lock', label: 'Notif WA ke SuperAdmin saat dikunci', type: 'toggle',      value: true,    unit: '',      units: [],             options: [],                          adminCanChange: true, enabled: true },
-      ],
+      key:        'notif_wa_akun_dikunci',
+      kategori:   'notif_wa',
+      channel:    'wa',
+      teks:       'Halo {nama},\n\nAkun Anda di {nama_platform} dikunci karena terlalu banyak percobaan login yang gagal ({max_login_attempts} percobaan).\n\nAkun akan terbuka kembali pada pukul {lock_until_wib} WIB.\n\nJika bukan Anda yang mencoba login, segera hubungi SuperAdmin:\n{superadmin_email}\n\nAbaikan pesan ini jika ini memang Anda.',
+      variabel:   ['nama', 'nama_platform', 'max_login_attempts', 'lock_until_wib', 'superadmin_email'],
+      keterangan: 'Dikirim via Fonnte saat akun user dikunci karena percobaan login gagal berulang',
     },
   ]
-  await db.doc('platform_config/config_registry/items/security_login').set({
-    config_id: 'security_login',
-    module_label: 'Keamanan Login',
-    groups: groups,
-    updated_at: new Date().toISOString(),
-  }, { merge: true })
-  console.log('  ✅ config_schema — security_login (16 item, 4 group — sesuai HTML approved)')
+
+  const rows = messages.map(m => ({
+    key: m.key, kategori: m.kategori, channel: m.channel,
+    teks: m.teks, variabel: m.variabel, keterangan: m.keterangan,
+    is_active: true, updated_at: new Date().toISOString(),
+  }))
+
+  const { error } = await db.from('message_library').insert(rows)
+  if (error) throw new Error(`seedMessageLibrary: ${error.message}`)
+  console.log(`  ✅ Message Library: 23 pesan (login_ui: 17, otp_ui: 5, notif_wa: 1)`)
 }
 
+// ============================================================
+// BAGIAN 5: SERVICE PROVIDERS (Katalog semua API)
+// ============================================================
 
-// RUNNER UTAMA â€” jalankan semua fungsi seed secara berurutan
+async function seedServiceProviders() {
+  // Upsert berdasarkan kode — idempotent
+  const providers = [
+    { kode: 'supabase',   nama: 'Supabase',          kategori: 'database',  deskripsi: 'Database PostgreSQL + Auth + Realtime + Storage utama platform',  docs_url: 'https://supabase.com/dashboard',       status_url: 'https://status.supabase.com',      tag: 'wajib',      sort_order: 1 },
+    { kode: 'upstash',    nama: 'Upstash Redis',      kategori: 'cache',     deskripsi: 'Cache data panas dan rate limiting di Vercel Edge Runtime',        docs_url: 'https://console.upstash.com',          status_url: 'https://status.upstash.com',       tag: 'disarankan', sort_order: 2 },
+    { kode: 'typesense',  nama: 'Typesense',          kategori: 'search',    deskripsi: 'Search engine hyperlocal — vendor, jasa, dan lokasi',              docs_url: 'https://cloud.typesense.org',          status_url: 'https://cloud.typesense.org',      tag: 'disarankan', sort_order: 3 },
+    { kode: 'cloudinary', nama: 'Cloudinary',         kategori: 'media',     deskripsi: 'Storage CDN untuk foto profil, portofolio, dan video vendor',      docs_url: 'https://cloudinary.com/console',       status_url: 'https://status.cloudinary.com',    tag: 'wajib',      sort_order: 4 },
+    { kode: 'xendit',     nama: 'Xendit',             kategori: 'payment',   deskripsi: 'Payment gateway Indonesia — QRIS, Virtual Account, e-wallet',      docs_url: 'https://dashboard.xendit.co',          status_url: 'https://status.xendit.co',         tag: 'wajib',      sort_order: 5 },
+    { kode: 'fonnte',     nama: 'Fonnte WhatsApp',    kategori: 'messaging', deskripsi: 'WhatsApp API untuk OTP login dan notifikasi transaksi',            docs_url: 'https://app.fonnte.com',               status_url: 'https://app.fonnte.com',           tag: 'wajib',      sort_order: 6 },
+    { kode: 'smtp',       nama: 'SMTP Email',         kategori: 'email',     deskripsi: 'Email untuk notifikasi dan reset password cadangan',               docs_url: null,                                   status_url: null,                               tag: 'opsional',   sort_order: 7 },
+    { kode: 'cloudflare', nama: 'Cloudflare',         kategori: 'cdn',       deskripsi: 'CDN dan WAF untuk keamanan, performa, dan DDoS protection',        docs_url: 'https://dash.cloudflare.com',          status_url: 'https://www.cloudflarestatus.com', tag: 'disarankan', sort_order: 8 },
+  ]
+
+  for (const p of providers) {
+    const { error } = await db.from('service_providers')
+      .upsert({ ...p, is_aktif: true, created_at: new Date().toISOString() }, { onConflict: 'kode' })
+    if (error) throw new Error(`seedServiceProviders [${p.kode}]: ${error.message}`)
+    console.log(`  ✅ Provider: ${p.nama} (${p.kategori}) — ${p.tag}`)
+  }
+}
+
+// ============================================================
+// BAGIAN 6: PROVIDER FIELD DEFINITIONS
+// ============================================================
+
+async function seedProviderFieldDefinitions() {
+  // Ambil semua provider ID sekali
+  const { data: providers, error: pErr } = await db
+    .from('service_providers').select('id, kode')
+  if (pErr) throw new Error(`Gagal ambil provider IDs: ${pErr.message}`)
+
+  const pid = {}
+  for (const p of providers) pid[p.kode] = p.id
+
+  // Hapus field definitions lama — akan di-insert ulang
+  const { error: delErr } = await db
+    .from('provider_field_definitions').delete()
+    .in('provider_id', Object.values(pid))
+  if (delErr) throw new Error(`seedProviderFieldDefinitions delete: ${delErr.message}`)
+
+  const fields = [
+    // ── SUPABASE ──────────────────────────────────────────────────────────────
+    { kode: 'supabase', field_key: 'project_url',      label: 'URL Project',         tipe: 'url',    is_required: true,  is_secret: false, placeholder: 'https://xxx.supabase.co',      deskripsi: 'URL project Supabase kamu',                     deep_link_url: 'https://supabase.com/dashboard/project/_/settings/api', sort_order: 1 },
+    { kode: 'supabase', field_key: 'anon_key',         label: 'Anon / Public Key',   tipe: 'text',   is_required: true,  is_secret: false, placeholder: 'eyJhbGci...',                  deskripsi: 'Public key — aman dipakai di browser',          deep_link_url: 'https://supabase.com/dashboard/project/_/settings/api', sort_order: 2 },
+    { kode: 'supabase', field_key: 'service_role_key', label: 'Service Role Key',    tipe: 'secret', is_required: true,  is_secret: true,  placeholder: 'eyJhbGci...',                  deskripsi: 'Key akses penuh — JANGAN expose ke browser',    deep_link_url: 'https://supabase.com/dashboard/project/_/settings/api', sort_order: 3 },
+    { kode: 'supabase', field_key: 'jwt_secret',       label: 'JWT Secret',          tipe: 'secret', is_required: true,  is_secret: true,  placeholder: null,                           deskripsi: 'Secret untuk verifikasi JWT',                   deep_link_url: 'https://supabase.com/dashboard/project/_/settings/api', sort_order: 4 },
+
+    // ── UPSTASH REDIS ─────────────────────────────────────────────────────────
+    { kode: 'upstash',  field_key: 'rest_url',   label: 'REST URL',   tipe: 'url',    is_required: true, is_secret: false, placeholder: 'https://xxx.upstash.io', deskripsi: 'URL endpoint REST Redis Upstash',        deep_link_url: 'https://console.upstash.com', sort_order: 1 },
+    { kode: 'upstash',  field_key: 'rest_token', label: 'REST Token', tipe: 'secret', is_required: true, is_secret: true,  placeholder: 'AYxxxxxx...',            deskripsi: 'Token autentikasi REST API Upstash',     deep_link_url: 'https://console.upstash.com', sort_order: 2 },
+
+    // ── TYPESENSE ─────────────────────────────────────────────────────────────
+    { kode: 'typesense', field_key: 'host',           label: 'Host / IP Server',    tipe: 'text',   is_required: true, is_secret: false, placeholder: 'xxx.typesense.net',    deskripsi: 'Alamat server Typesense',               deep_link_url: null, sort_order: 1 },
+    { kode: 'typesense', field_key: 'port',           label: 'Port',                tipe: 'number', is_required: true, is_secret: false, placeholder: '8108',                 deskripsi: 'Port server Typesense',                 deep_link_url: null, nilai_default: '8108', sort_order: 2 },
+    { kode: 'typesense', field_key: 'protocol',       label: 'Protokol',            tipe: 'select', is_required: true, is_secret: false, placeholder: null,                   deskripsi: 'Gunakan https untuk production',        deep_link_url: null, nilai_default: 'https', options: JSON.stringify([{value:'https',label:'HTTPS (Aman)'},{value:'http',label:'HTTP'}]), sort_order: 3 },
+    { kode: 'typesense', field_key: 'admin_api_key',  label: 'Admin API Key',       tipe: 'secret', is_required: true, is_secret: true,  placeholder: 'xyz123...',            deskripsi: 'Key akses penuh — untuk server saja',   deep_link_url: null, sort_order: 4 },
+    { kode: 'typesense', field_key: 'search_api_key', label: 'Search-Only API Key', tipe: 'text',   is_required: true, is_secret: false, placeholder: 'abc456...',            deskripsi: 'Key hanya untuk pencarian — aman di browser', deep_link_url: null, sort_order: 5 },
+
+    // ── CLOUDINARY ────────────────────────────────────────────────────────────
+    { kode: 'cloudinary', field_key: 'cloud_name', label: 'Cloud Name', tipe: 'text',   is_required: true, is_secret: false, placeholder: 'erp-mediator',       deskripsi: 'Nama unik cloud Cloudinary',        deep_link_url: 'https://cloudinary.com/console', sort_order: 1 },
+    { kode: 'cloudinary', field_key: 'api_key',    label: 'API Key',    tipe: 'text',   is_required: true, is_secret: false, placeholder: '123456789012345',    deskripsi: 'API Key Cloudinary',                deep_link_url: 'https://cloudinary.com/console', sort_order: 2 },
+    { kode: 'cloudinary', field_key: 'api_secret', label: 'API Secret', tipe: 'secret', is_required: true, is_secret: true,  placeholder: 'abcdef123...',       deskripsi: 'API Secret — JANGAN expose ke browser', deep_link_url: 'https://cloudinary.com/console', sort_order: 3 },
+
+    // ── XENDIT ────────────────────────────────────────────────────────────────
+    { kode: 'xendit', field_key: 'mode',          label: 'Mode',                          tipe: 'select', is_required: true, is_secret: false, placeholder: null,                        deskripsi: 'Sandbox untuk testing, Production untuk transaksi nyata', deep_link_url: 'https://dashboard.xendit.co/settings/developers', nilai_default: 'sandbox', options: JSON.stringify([{value:'sandbox',label:'Sandbox (Testing)'},{value:'production',label:'Production (Live)'}]), sort_order: 1 },
+    { kode: 'xendit', field_key: 'secret_key',    label: 'Secret Key',                    tipe: 'secret', is_required: true, is_secret: true,  placeholder: 'xnd_production_...',        deskripsi: 'Secret key — gunakan sesuai mode', deep_link_url: 'https://dashboard.xendit.co/settings/developers', prefix_sandbox: 'xnd_development_', prefix_production: 'xnd_production_', sort_order: 2 },
+    { kode: 'xendit', field_key: 'public_key',    label: 'Public Key',                    tipe: 'text',   is_required: true, is_secret: false, placeholder: 'xnd_public_production_...',  deskripsi: 'Public key untuk client-side',    deep_link_url: 'https://dashboard.xendit.co/settings/developers', sort_order: 3 },
+    { kode: 'xendit', field_key: 'webhook_token', label: 'Webhook Verification Token',    tipe: 'secret', is_required: true, is_secret: true,  placeholder: 'token-webhook-xxx',         deskripsi: 'Token verifikasi callback dari Xendit', deep_link_url: 'https://dashboard.xendit.co/settings/developers', sort_order: 4 },
+
+    // ── FONNTE ────────────────────────────────────────────────────────────────
+    { kode: 'fonnte', field_key: 'api_token',     label: 'API Token',             tipe: 'secret', is_required: true, is_secret: true,  placeholder: 'abcdef123456...', deskripsi: 'Token dari dashboard Fonnte — TANPA kata Bearer', deep_link_url: 'https://app.fonnte.com/profile', sort_order: 1 },
+    { kode: 'fonnte', field_key: 'device_number', label: 'Nomor WhatsApp Device', tipe: 'text',   is_required: true, is_secret: false, placeholder: '6281234567890',   deskripsi: 'Nomor WA yang sudah di-scan di Fonnte — format 62xxx', deep_link_url: 'https://app.fonnte.com/device', sort_order: 2 },
+
+    // ── SMTP ──────────────────────────────────────────────────────────────────
+    { kode: 'smtp', field_key: 'host',       label: 'SMTP Host',      tipe: 'text',   is_required: true, is_secret: false, placeholder: 'smtp.gmail.com',    deskripsi: 'Alamat server SMTP',               deep_link_url: null, sort_order: 1 },
+    { kode: 'smtp', field_key: 'port',       label: 'Port',           tipe: 'number', is_required: true, is_secret: false, placeholder: '587',               deskripsi: '587 untuk TLS, 465 untuk SSL',     deep_link_url: null, nilai_default: '587', sort_order: 2 },
+    { kode: 'smtp', field_key: 'encryption', label: 'Enkripsi',       tipe: 'select', is_required: true, is_secret: false, placeholder: null,                deskripsi: 'Gunakan TLS untuk keamanan terbaik', deep_link_url: null, nilai_default: 'tls', options: JSON.stringify([{value:'tls',label:'TLS (Disarankan)'},{value:'ssl',label:'SSL'},{value:'none',label:'Tidak Ada Enkripsi'}]), sort_order: 3 },
+    { kode: 'smtp', field_key: 'username',   label: 'Username',       tipe: 'email',  is_required: true, is_secret: false, placeholder: 'noreply@domain.com',deskripsi: 'Email pengirim',                   deep_link_url: null, sort_order: 4 },
+    { kode: 'smtp', field_key: 'password',   label: 'Password',       tipe: 'secret', is_required: true, is_secret: true,  placeholder: null,                deskripsi: 'Password atau App Password email', deep_link_url: null, sort_order: 5 },
+    { kode: 'smtp', field_key: 'from_name',  label: 'Nama Pengirim',  tipe: 'text',   is_required: true, is_secret: false, placeholder: 'ERP Mediator',      deskripsi: 'Nama yang tampil di kotak masuk penerima', deep_link_url: null, sort_order: 6 },
+    { kode: 'smtp', field_key: 'from_email', label: 'Email Pengirim', tipe: 'email',  is_required: true, is_secret: false, placeholder: 'noreply@domain.com',deskripsi: 'Email yang tampil sebagai pengirim', deep_link_url: null, sort_order: 7 },
+
+    // ── CLOUDFLARE ────────────────────────────────────────────────────────────
+    { kode: 'cloudflare', field_key: 'zone_id',    label: 'Zone ID',    tipe: 'text',   is_required: true, is_secret: false, placeholder: 'abc123def456...', deskripsi: 'Zone ID domain di Cloudflare',        deep_link_url: 'https://dash.cloudflare.com', sort_order: 1 },
+    { kode: 'cloudflare', field_key: 'api_token',  label: 'API Token',  tipe: 'secret', is_required: true, is_secret: true,  placeholder: 'xyz789...',        deskripsi: 'API Token dengan permission Zone:Edit', deep_link_url: 'https://dash.cloudflare.com/profile/api-tokens', sort_order: 2 },
+    { kode: 'cloudflare', field_key: 'account_id', label: 'Account ID', tipe: 'text',   is_required: true, is_secret: false, placeholder: 'acc123...',        deskripsi: 'Account ID Cloudflare',                deep_link_url: 'https://dash.cloudflare.com', sort_order: 3 },
+  ]
+
+  const rows = fields.map(f => ({
+    provider_id:       pid[f.kode],
+    field_key:         f.field_key,
+    label:             f.label,
+    tipe:              f.tipe,
+    is_required:       f.is_required,
+    is_secret:         f.is_secret,
+    options:           f.options ? JSON.parse(f.options) : null,
+    placeholder:       f.placeholder || null,
+    deskripsi:         f.deskripsi || null,
+    deep_link_url:     f.deep_link_url || null,
+    prefix_sandbox:    f.prefix_sandbox || null,
+    prefix_production: f.prefix_production || null,
+    nilai_default:     f.nilai_default || null,
+    sort_order:        f.sort_order,
+  }))
+
+  const { error } = await db.from('provider_field_definitions').insert(rows)
+  if (error) throw new Error(`seedProviderFieldDefinitions: ${error.message}`)
+  console.log(`  ✅ Provider Field Definitions: ${rows.length} field (8 provider)`)
+}
+
+// ============================================================
+// RUNNER UTAMA
 // ============================================================
 
 async function main() {
-  console.log('ðŸš€ Mulai seeding database ERP Mediator...');
-  console.log('   Versi seed: Sesi #018 â€” security_login + message_library lengkap');
-  console.log('');
+  console.log('🚀 Seeding database ERP Mediator...')
+  console.log('─────────────────────────────────────────')
 
-  await seedTenant();
+  console.log('\n[1/6] Tenant...')
+  await seedTenant()
 
-  console.log('Seeding platform policies...');
-  await seedPolicies();
-  console.log('âœ… Policies selesai (5 dokumen)');
-  console.log('');
+  console.log('\n[2/6] Platform Policies...')
+  await seedPolicies()
 
-  console.log('Seeding config registry...');
-  await seedConfigRegistry();
+  console.log('\n[3/6] Config Registry...')
+  await seedConfigRegistry()
 
-  console.log('Seeding config schema...');
-  await seedConfigSchema();
-  console.log('✅ Config schema selesai (22 item)');
-  console.log('âœ… Config registry selesai (1 dokumen â€” message_library)');
-  console.log('');
+  console.log('\n[4/6] Message Library...')
+  await seedMessageLibrary()
 
-  console.log('Seeding tenant config...');
-  await seedTenantConfig();
-  console.log('âœ… Tenant config selesai');
-  console.log('');
+  console.log('\n[5/6] Service Providers (Katalog API)...')
+  await seedServiceProviders()
 
-  console.log('ðŸŽ‰ SELESAI! Seluruh database sudah siap.');
-  console.log('Tenant ID:', TENANT_ID);
-  process.exit(0);
+  console.log('\n[6/6] Provider Field Definitions...')
+  await seedProviderFieldDefinitions()
+
+  console.log('\n─────────────────────────────────────────')
+  console.log('🎉 SELESAI! Semua data berhasil di-seed.')
+  console.log('Tenant ID:', TENANT_ID)
+  process.exit(0)
 }
 
 main().catch(err => {
-  console.error('âŒ Error:', err.message);
-  process.exit(1);
-});
-
-
-
-
-
-
+  console.error('\n❌ Error:', err.message)
+  process.exit(1)
+})

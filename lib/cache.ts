@@ -1,190 +1,200 @@
 /**
  * lib/cache.ts
- * Abstraksi layer cache in-memory untuk platform ERP Mediator Hyperlocal.
- * Mendukung TTL per item, LRU eviction, dan stampede prevention.
- * TIDAK ada dependency ke Firebase/Firestore — pure in-memory.
+ * Abstraksi layer cache untuk platform ERP Mediator Hyperlocal.
+ *
+ * PERUBAHAN dari versi sebelumnya:
+ *   - Tambah withUnstableCache() — wrapper unstable_cache dari next/cache
+ *   - Tambah withRequestCache() — wrapper react.cache() untuk dedup per request
+ *   - MemoryCache tetap ada sebagai utility (development + testing)
+ *   - Komentar diperjelas: MemoryCache tidak efektif di production Vercel
+ *     karena setiap serverless invocation punya memory terpisah
  */
+
+import { unstable_cache } from 'next/cache'
+import { cache } from 'react'
 
 // ---------------------------------------------------------------------------
 // Interface
 // ---------------------------------------------------------------------------
 
-/** Struktur data tiap item yang disimpan di cache */
 export interface CacheEntry<T> {
-  value: T;
+  value: T
   /** Timestamp (ms) saat item kadaluarsa */
-  expiresAt: number;
-  /** Timestamp (ms) saat item terakhir diakses — digunakan untuk LRU eviction */
-  lastAccessed: number;
+  expiresAt: number
+  /** Timestamp (ms) saat item terakhir diakses — untuk LRU eviction */
+  lastAccessed: number
 }
 
-/** Opsi yang diberikan saat menyimpan item ke cache */
 export interface CacheOptions {
   /** Durasi cache dalam milidetik */
-  ttlMs: number;
+  ttlMs: number
   /** Override jumlah maksimum item dalam cache (opsional) */
-  maxSize?: number;
+  maxSize?: number
 }
 
 // ---------------------------------------------------------------------------
 // Preset TTL
 // ---------------------------------------------------------------------------
 
-/** Preset durasi TTL yang umum dipakai di seluruh aplikasi */
 export const TTL_PRESETS = {
-  FIVE_MINUTES: 5 * 60 * 1000,
+  FIVE_MINUTES:    5  * 60 * 1000,
   FIFTEEN_MINUTES: 15 * 60 * 1000,
-  ONE_HOUR: 60 * 60 * 1000,
-  SIX_HOURS: 6 * 60 * 60 * 1000,
-  ONE_DAY: 24 * 60 * 60 * 1000,
-} as const;
+  ONE_HOUR:        60 * 60 * 1000,
+  SIX_HOURS:       6  * 60 * 60 * 1000,
+  ONE_DAY:         24 * 60 * 60 * 1000,
+} as const
+
+// ---------------------------------------------------------------------------
+// Helper 1: withUnstableCache
+// ---------------------------------------------------------------------------
+
+/**
+ * Wrapper unstable_cache dari next/cache.
+ * Dipakai untuk cache lintas request di Vercel serverless — efektif di production.
+ * TTL dalam detik (bukan ms — berbeda dari TTL_PRESETS).
+ *
+ * Contoh pakai:
+ *   const getData = withUnstableCache(fetchFn, ['key'], { revalidate: 900, tags: ['tag'] })
+ *   const result = await getData()
+ */
+export function withUnstableCache<T>(
+  fn: () => Promise<T>,
+  keys: string[],
+  options: { revalidate?: number; tags?: string[] }
+): () => Promise<T> {
+  return unstable_cache(fn, keys, options)
+}
+
+// ---------------------------------------------------------------------------
+// Helper 2: withRequestCache
+// ---------------------------------------------------------------------------
+
+/**
+ * Wrapper react.cache() — deduplication per request.
+ * Fungsi yang sama dipanggil berkali-kali dalam satu request → hanya eksekusi sekali.
+ * Tidak persisten lintas request.
+ *
+ * Contoh pakai:
+ *   export const getUser = withRequestCache(async (id: string) => fetchUser(id))
+ */
+export function withRequestCache<TArgs extends unknown[], TReturn>(
+  fn: (...args: TArgs) => Promise<TReturn>
+): (...args: TArgs) => Promise<TReturn> {
+  return cache(fn)
+}
 
 // ---------------------------------------------------------------------------
 // Class MemoryCache
 // ---------------------------------------------------------------------------
 
 /**
- * Cache in-memory generik dengan dukungan TTL, LRU eviction, dan stampede prevention.
- * @template T Tipe data yang disimpan di cache
+ * Cache in-memory generik dengan TTL, LRU eviction, dan stampede prevention.
+ *
+ * ⚠️ CATATAN PRODUCTION:
+ * MemoryCache hanya efektif di development (satu proses Node.js).
+ * Di production Vercel, setiap serverless invocation punya memory terpisah —
+ * cache ini tidak shared antar invocation.
+ * Untuk production, gunakan withUnstableCache() atau withRequestCache().
  */
 export class MemoryCache<T> {
-  private store: Map<string, CacheEntry<T>>;
-  private maxSize: number;
-  /** Map untuk mencegah duplicate fetch saat cache miss terjadi bersamaan */
-  private pendingFetches: Map<string, Promise<T>>;
+  private store: Map<string, CacheEntry<T>>
+  private maxSize: number
+  private pendingFetches: Map<string, Promise<T>>
 
   constructor(maxSize: number = 500) {
-    this.store = new Map();
-    this.maxSize = maxSize;
-    this.pendingFetches = new Map();
+    this.store = new Map()
+    this.maxSize = maxSize
+    this.pendingFetches = new Map()
   }
 
-  /**
-   * Ambil item dari cache.
-   * @returns Nilai item jika ada dan belum expired, null jika tidak ada atau sudah expired
-   */
   get(key: string): T | null {
-    const entry = this.store.get(key);
-    if (entry === undefined) return null;
+    const entry = this.store.get(key)
+    if (entry === undefined) return null
 
     if (Date.now() > entry.expiresAt) {
-      // Item sudah expired — hapus dari store
-      this.store.delete(key);
-      return null;
+      this.store.delete(key)
+      return null
     }
 
-    // Update lastAccessed untuk keperluan LRU
-    entry.lastAccessed = Date.now();
-    return entry.value;
+    entry.lastAccessed = Date.now()
+    return entry.value
   }
 
-  /**
-   * Simpan item ke cache.
-   * Jika store sudah penuh, LRU eviction dijalankan terlebih dahulu.
-   */
   set(key: string, value: T, options: CacheOptions): void {
-    const effectiveMaxSize = options.maxSize ?? this.maxSize;
+    const effectiveMaxSize = options.maxSize ?? this.maxSize
 
     if (this.store.size >= effectiveMaxSize && !this.store.has(key)) {
-      this.evictLRU();
+      this.evictLRU()
     }
 
-    const now = Date.now();
+    const now = Date.now()
     this.store.set(key, {
       value,
-      expiresAt: now + options.ttlMs,
+      expiresAt:    now + options.ttlMs,
       lastAccessed: now,
-    });
+    })
   }
 
-  /**
-   * Hapus satu item dari cache berdasarkan key.
-   */
   delete(key: string): void {
-    this.store.delete(key);
+    this.store.delete(key)
   }
 
-  /**
-   * Kosongkan seluruh isi cache.
-   */
   clear(): void {
-    this.store.clear();
+    this.store.clear()
   }
 
-  /**
-   * Cek apakah key ada di cache dan belum expired.
-   * Jika expired, item dihapus dari store dan return false.
-   */
   has(key: string): boolean {
-    const entry = this.store.get(key);
-    if (entry === undefined) return false;
+    const entry = this.store.get(key)
+    if (entry === undefined) return false
 
     if (Date.now() > entry.expiresAt) {
-      this.store.delete(key);
-      return false;
+      this.store.delete(key)
+      return false
     }
 
-    return true;
+    return true
   }
 
-  /**
-   * Hapus item dengan nilai lastAccessed paling kecil (paling lama tidak diakses).
-   * Dipanggil secara otomatis saat store penuh.
-   */
   private evictLRU(): void {
-    let oldestKey: string | null = null;
-    let oldestTime = Infinity;
+    let oldestKey: string | null = null
+    let oldestTime = Infinity
 
     for (const [key, entry] of this.store) {
       if (entry.lastAccessed < oldestTime) {
-        oldestTime = entry.lastAccessed;
-        oldestKey = key;
+        oldestTime = entry.lastAccessed
+        oldestKey  = key
       }
     }
 
     if (oldestKey !== null) {
-      this.store.delete(oldestKey);
+      this.store.delete(oldestKey)
     }
   }
 
-  /**
-   * Ambil item dari cache atau fetch dari sumber data jika tidak ada.
-   * Stampede prevention: jika ada fetch yang sedang berjalan untuk key yang sama,
-   * return Promise yang sama — tidak membuat request duplikat ke database.
-   *
-   * @param key Key cache
-   * @param fetcher Fungsi async yang dipanggil untuk mengambil data dari sumber
-   * @param options Opsi TTL dan maxSize
-   * @returns Data dari cache atau hasil fetch
-   */
   async getOrFetch<U extends T>(
     key: string,
     fetcher: () => Promise<U>,
     options: CacheOptions
   ): Promise<U> {
-    // Cek cache terlebih dahulu
-    const cached = this.get(key);
-    if (cached !== null) return cached as U;
+    const cached = this.get(key)
+    if (cached !== null) return cached as U
 
-    // Cek apakah fetch untuk key ini sedang berjalan
-    const pending = this.pendingFetches.get(key);
-    if (pending !== undefined) return pending as Promise<U>;
+    const pending = this.pendingFetches.get(key)
+    if (pending !== undefined) return pending as Promise<U>
 
-    // Buat fetch baru dan daftarkan ke pendingFetches
     const fetchPromise = fetcher()
       .then((result: U) => {
-        this.set(key, result, options);
-        this.pendingFetches.delete(key);
-        return result;
+        this.set(key, result, options)
+        this.pendingFetches.delete(key)
+        return result
       })
       .catch((error: unknown) => {
-        // Hapus dari pendingFetches agar caller berikutnya bisa retry
-        this.pendingFetches.delete(key);
-        throw error;
-      });
+        this.pendingFetches.delete(key)
+        throw error
+      })
 
-    this.pendingFetches.set(key, fetchPromise as Promise<T>);
-    return fetchPromise;
+    this.pendingFetches.set(key, fetchPromise as Promise<T>)
+    return fetchPromise
   }
 }
 
@@ -193,10 +203,10 @@ export class MemoryCache<T> {
 // ---------------------------------------------------------------------------
 
 /** Cache untuk Config Registry — maksimum 200 item */
-export const configCache = new MemoryCache<unknown>(200);
+export const configCache = new MemoryCache<unknown>(200)
 
 /** Cache untuk Policy data — maksimum 200 item */
-export const policyCache = new MemoryCache<unknown>(200);
+export const policyCache = new MemoryCache<unknown>(200)
 
 /** Cache untuk data session user — maksimum 1000 item */
-export const sessionCache = new MemoryCache<unknown>(1000);
+export const sessionCache = new MemoryCache<unknown>(1000)

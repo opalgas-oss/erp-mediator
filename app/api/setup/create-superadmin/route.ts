@@ -1,78 +1,112 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
-import { initializeApp, getApps, cert } from 'firebase-admin/app'
-import { getAuth } from 'firebase-admin/auth'
-import { getFirestore, FieldValue } from 'firebase-admin/firestore'
+﻿// app/api/setup/create-superadmin/route.ts
+// POST — Buat akun SuperAdmin pertama saat platform baru disetup.
+// Hanya bisa dipanggil sekali — setelah ada SuperAdmin, endpoint ini ditolak.
+//
+// PERUBAHAN dari versi Firebase:
+//   - Hapus Firebase Admin initAdmin(), getAuth(), getFirestore()
+//   - Buat user → Supabase Auth admin.createUser()
+//   - Simpan profil → tabel users PostgreSQL
+//   - Custom claims (role SUPERADMIN) → otomatis via Edge Function inject-custom-claims
+//   - Cek setup_complete → cek tabel users (ada SuperAdmin atau tidak)
 
-function initAdmin() {
-  if (getApps().length === 0) {
-    initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
-    })
-  }
-}
+import { NextRequest, NextResponse }  from 'next/server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 export async function POST(request: NextRequest) {
   try {
-    initAdmin()
-    const db = getFirestore()
-    const auth = getAuth()
+    const db = createServerSupabaseClient()
 
-    const settingsDoc = await db.collection('platform_config').doc('settings').get()
-    if (settingsDoc.exists && settingsDoc.data()?.is_setup_complete === true) {
-      return NextResponse.json({ message: 'Setup sudah selesai. Akses ditolak.' }, { status: 403 })
+    // Cek apakah setup sudah pernah dilakukan
+    const { data: existing } = await db
+      .from('users')
+      .select('id')
+      .eq('role', 'SUPERADMIN')
+      .limit(1)
+
+    if (existing && existing.length > 0) {
+      return NextResponse.json(
+        { message: 'Setup sudah selesai. Akses ditolak.' },
+        { status: 403 }
+      )
     }
 
+    // Ambil dan validasi input
     const { nama, email, password, setupKey } = await request.json()
 
     if (!nama || !email || !password || !setupKey) {
-      return NextResponse.json({ message: 'Semua field wajib diisi.' }, { status: 400 })
+      return NextResponse.json(
+        { message: 'Semua field wajib diisi.' },
+        { status: 400 }
+      )
     }
 
     if (setupKey !== process.env.SETUP_KEY) {
-      return NextResponse.json({ message: 'Setup key tidak valid.' }, { status: 401 })
+      return NextResponse.json(
+        { message: 'Setup key tidak valid.' },
+        { status: 401 }
+      )
     }
 
     if (password.length < 8) {
-      return NextResponse.json({ message: 'Password minimal 8 karakter.' }, { status: 400 })
+      return NextResponse.json(
+        { message: 'Password minimal 8 karakter.' },
+        { status: 400 }
+      )
     }
 
-    const user = await auth.createUser({
+    // Buat user di Supabase Auth via Admin API
+    // email_confirm: true → langsung aktif tanpa perlu konfirmasi email
+    // app_metadata.app_role wajib diisi di sini — getUser() di middleware membaca dari database,
+    // bukan dari JWT payload. Edge Function inject-custom-claims hanya menambahkan ke JWT payload.
+    const { data: authData, error: authError } = await db.auth.admin.createUser({
       email,
       password,
-      displayName: nama,
-      emailVerified: true,
+      email_confirm: true,
+      user_metadata: { nama },
+      app_metadata:  { app_role: 'SUPERADMIN' },
     })
 
-    await auth.setCustomUserClaims(user.uid, {
-      role: 'SUPERADMIN',
-      tenant_id: null,
-    })
-
-    await db.collection('users').doc(user.uid).set({
-      uid: user.uid,
-      nama,
-      email,
-      role: 'SUPERADMIN',
-      tenant_id: null,
-      created_at: FieldValue.serverTimestamp(),
-    })
-
-    await db.collection('platform_config').doc('settings').set(
-      { is_setup_complete: true, setup_completed_at: FieldValue.serverTimestamp() },
-      { merge: true }
-    )
-
-    return NextResponse.json({ success: true, message: 'Akun SuperAdmin berhasil dibuat.' })
-
-  } catch (error: any) {
-    if (error.code === 'auth/email-already-exists') {
-      return NextResponse.json({ message: 'Email sudah digunakan. Gunakan email lain.' }, { status: 400 })
+    if (authError || !authData.user) {
+      if (authError?.message?.includes('already been registered')) {
+        return NextResponse.json(
+          { message: 'Email sudah digunakan. Gunakan email lain.' },
+          { status: 400 }
+        )
+      }
+      throw authError ?? new Error('Gagal membuat user Supabase Auth')
     }
+
+    const userId = authData.user.id
+
+    // Simpan data SuperAdmin ke tabel users
+    // Role SUPERADMIN di app_metadata akan diisi otomatis
+    // oleh Edge Function inject-custom-claims saat JWT diterbitkan
+    const { error: insertError } = await db
+      .from('users')
+      .insert({
+        id:               userId,
+        email,
+        nama,
+        role:             'SUPERADMIN',
+        is_platform_owner: true,
+        created_at:       new Date().toISOString(),
+        updated_at:       new Date().toISOString(),
+      })
+
+    if (insertError) {
+      // Kalau insert gagal, hapus user Auth agar tidak orphan
+      await db.auth.admin.deleteUser(userId)
+      throw insertError
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Akun SuperAdmin berhasil dibuat.',
+    })
+
+  } catch (error: unknown) {
     console.error('[setup] Error:', error)
-    return NextResponse.json({ message: 'Terjadi kesalahan server.' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Terjadi kesalahan server.'
+    return NextResponse.json({ message }, { status: 500 })
   }
 }

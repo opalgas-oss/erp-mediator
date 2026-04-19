@@ -1,41 +1,42 @@
 // lib/policy.ts
 // Membaca dan merge policy dari 2 level: Platform Owner + Tenant Admin
-// Path Platform: /platform_config/policies/{featureKey}
-// Path Tenant:   /tenants/{tenantId}/config/main → policies.{featureKey}
+// Tabel PostgreSQL: platform_policies (platform level)
 //
-// Fungsi utama: getEffectivePolicy(tenantId, featureKey)
-// Dipakai SEMUA modul — ini fondasi paling penting di seluruh platform
-//
-// Cache aktif via lib/cache.ts — TTL 15 menit per policy
+// PERUBAHAN dari versi Firebase:
+//   - Import Firebase → Supabase server client
+//   - Query Firestore → query tabel platform_policies PostgreSQL
+//   - policyCache (in-memory) → unstable_cache dari next/cache
+//   - Tambah import 'server-only'
 
-import { db } from '@/lib/firebase'
-import { doc, getDoc } from 'firebase/firestore'
-import { policyCache, TTL_PRESETS } from '@/lib/cache'
+import 'server-only'
+import { unstable_cache } from 'next/cache'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 // ============================================================
 // TYPE DEFINITIONS — POLICY PER FITUR
+// TIDAK BERUBAH — caller tidak perlu diupdate
 // ============================================================
 
 export interface SecurityLoginPolicy {
-  max_login_attempts: number
-  lock_duration_minutes: number
-  require_otp: boolean
+  max_login_attempts:      number
+  lock_duration_minutes:   number
+  require_otp:             boolean
   require_biometric_offer: boolean
   session_timeout_minutes: number
-  otp_expiry_minutes: number
-  otp_max_attempts: number
-  trusted_device_days: number
+  otp_expiry_minutes:      number
+  otp_max_attempts:        number
+  trusted_device_days:     number
 }
 
 export interface ConcurrentSessionPolicy {
   scope: 'all_tenant' | 'per_tenant'
-  rule: 'none' | 'different_role_only' | 'always'
+  rule:  'none' | 'different_role_only' | 'always'
 }
 
 export interface CommissionPolicy {
-  percentage: number
+  percentage:     number
   minimum_amount: number
-  charged_to: 'vendor' | 'customer'
+  charged_to:     'vendor' | 'customer'
 }
 
 export interface TimersPolicy {
@@ -45,11 +46,11 @@ export interface TimersPolicy {
 }
 
 export interface ActivityLoggingPolicy {
-  log_page_views: boolean
+  log_page_views:   boolean
   log_button_clicks: boolean
   log_form_submits: boolean
-  log_errors: boolean
-  retention_days: number
+  log_errors:       boolean
+  retention_days:   number
 }
 
 export interface PolicyMap {
@@ -61,17 +62,6 @@ export interface PolicyMap {
 }
 
 // ============================================================
-// TIPE INTERNAL — DOKUMEN FIRESTORE
-// ============================================================
-
-type PlatformPolicyDoc = Record<string, unknown>
-
-interface TenantConfigDoc {
-  policies?: Record<string, Record<string, unknown>>
-  [key: string]: unknown
-}
-
-// ============================================================
 // FUNGSI UTAMA
 // ============================================================
 
@@ -79,54 +69,45 @@ export async function getEffectivePolicy<K extends keyof PolicyMap>(
   tenantId: string,
   featureKey: K
 ): Promise<PolicyMap[K]> {
-  // ── Cache key unik per kombinasi tenant + feature ─────────────────────────
-  const cacheKey = `policy:${tenantId}:${featureKey}`
-
-  return policyCache.getOrFetch(
-    cacheKey,
+  // unstable_cache: cache berlaku lintas request di Vercel serverless
+  // TTL 15 menit — revalidate saat admin update config via revalidateTag()
+  const cached = unstable_cache(
     async () => {
-      // ── Langkah 1: Baca platform policy ──────────────────────────────────
-      const platformRef  = doc(db, 'platform_config', 'policies', featureKey, 'config')
-      const platformSnap = await getDoc(platformRef)
+      const db = createServerSupabaseClient()
 
-      if (!platformSnap.exists()) {
+      // Baca platform policy dari tabel platform_policies
+      const { data, error } = await db
+        .from('platform_policies')
+        .select('nilai')
+        .eq('feature_key', featureKey)
+        .single()
+
+      if (error || !data) {
         throw new Error(
-          `Policy platform untuk fitur '${featureKey}' tidak ditemukan di Firestore. ` +
-          `Pastikan dokumen /platform_config/policies/${featureKey} sudah ada.`
+          `Policy platform untuk fitur '${featureKey}' tidak ditemukan. ` +
+          `Pastikan tabel platform_policies sudah di-seed.`
         )
       }
 
-      const platformData = platformSnap.data() as PlatformPolicyDoc
+      const platformData = data.nilai as Record<string, unknown>
 
-      // ── Langkah 2: Baca tenant policy ────────────────────────────────────
-      const tenantConfigRef  = doc(db, 'tenants', tenantId, 'config', 'main')
-      const tenantConfigSnap = await getDoc(tenantConfigRef)
-
-      const tenantOverrides: Record<string, unknown> =
-        tenantConfigSnap.exists()
-          ? ((tenantConfigSnap.data() as TenantConfigDoc).policies?.[featureKey] ?? {})
-          : {}
-
-      // ── Langkah 3: Merge nilai per field ─────────────────────────────────
+      // Merge logika: platform policy adalah sumber utama
+      // Tenant override akan diimplementasikan di Sprint berikutnya
+      // saat tabel tenant_policies dibuat
       const merged: Record<string, unknown> = {}
 
       for (const fieldName of Object.keys(platformData)) {
         if (fieldName.endsWith('_tenant_can_override')) continue
-
-        const overrideKey      = `${fieldName}_tenant_can_override`
-        const tenantCanOverride = platformData[overrideKey] === true
-
-        if (tenantCanOverride && fieldName in tenantOverrides) {
-          merged[fieldName] = tenantOverrides[fieldName]
-        } else {
-          merged[fieldName] = platformData[fieldName]
-        }
+        merged[fieldName] = platformData[fieldName]
       }
 
       return merged as unknown as PolicyMap[K]
     },
-    { ttlMs: TTL_PRESETS.FIFTEEN_MINUTES }
-  ) as Promise<PolicyMap[K]>
+    [`policy:${tenantId}:${featureKey}`],
+    { revalidate: 15 * 60, tags: [`policy:${featureKey}`] }
+  )
+
+  return cached()
 }
 
 export async function getConcurrentSessionRule(

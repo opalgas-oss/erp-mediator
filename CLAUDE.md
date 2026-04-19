@@ -1,21 +1,36 @@
 # ERP Mediator Hyperlocal — Konteks Project untuk Claude Code
-# Sprint 1 — Login & Auth Lengkap
-# Terakhir diupdate: 16 April 2026 — Sesi #030
+# Sprint 1 — Login & Auth Lengkap (FASE M Aktif)
+# Terakhir diupdate: 17 April 2026 — Sesi #032
+# Perubahan dari versi sebelumnya:
+#   - IDENTITAS PROJECT: Stack diupdate — Firebase/Firestore → Supabase/PostgreSQL
+#   - SPRINT AKTIF: FASE M sebagai prioritas berikutnya (Sesi #033)
+#   - FILE LIB: Diupdate total — hapus Firebase, tambah Supabase + Repository/Service/Adapter
+#   - FILE PENTING: Diupdate — hapus firestore.rules, tambah file Supabase
+#   - ATURAN COOKIE SESSION: Firebase JWT → Supabase JWT
+#   - ATURAN CODING: Tambah aturan Supabase + API Layer + Database Standards
+#   - PATH DATABASE: Firestore paths → PostgreSQL tables
+#   - TIGA SISTEM REALTIME: onSnapshot → Supabase Realtime
+#   - STANDAR CACHE: Diupdate — unstable_cache + react.cache() + Upstash Redis
 
 ---
 
 ## IDENTITAS PROJECT
-(dari Sesi #025 — tidak berubah)
+(Update Sesi #032 — PIVOT ARSITEKTUR Firebase/Firestore → Supabase/PostgreSQL)
 
 - Nama: Platform Marketplace Jasa Reverse Auction (Multi-Tenant, Multi-Brand)
-- Stack: Next.js 14, Firestore, Firebase Auth, shadcn/ui, Vercel
-- WA API: Fonnte — device: 628164851879 — token di .env.local (FONNTE_API_KEY)
-- Payment: Xendit — key di .env.local
-- Storage Media: Cloudinary — key di .env.local
+- Stack: **Next.js 16.2.1**, React 19.2.4, **PostgreSQL via Supabase**, **Supabase Auth**, **Drizzle ORM + postgres.js**, **Upstash Redis**, shadcn/ui, Tailwind CSS 4, Vercel
+- WA API: Fonnte — credential disimpan di database terenkripsi (bukan di .env)
+- Payment: Xendit — credential disimpan di database terenkripsi (bukan di .env)
+- Storage Media: Cloudinary — credential disimpan di database terenkripsi (bukan di .env)
+- Search: Typesense self-hosted VPS — credential disimpan di database terenkripsi (bukan di .env)
 - Folder: D:\Philips\Project\erp-mediator
 - GitHub: https://github.com/opalgas-oss/erp-mediator
-- Firebase Project ID: erp-mediator
+- Supabase Project DEV: erp-mediator-dev (region ap-southeast-1 Singapore)
 - Tenant ID Aktif: tenant_erpmediator
+
+**CATATAN PENTING:** Stack adalah Next.js 16.2.1 + React 19 + Supabase/PostgreSQL.
+Firebase dan Firestore sudah TIDAK DIGUNAKAN sejak Sesi #032 (FASE M).
+Semua credential service disimpan terenkripsi di database — TIDAK ada di .env kecuali 4 bootstrap secret.
 
 ---
 
@@ -31,6 +46,7 @@ Port lokal: localhost:3000 (satu port saja, tidak boleh ganti)
 ---
 
 ## PROTOKOL PENULISAN DOKUMEN — WAJIB (Ditetapkan Sesi #024)
+(dari Sesi #024 — tidak berubah)
 
 BERLAKU untuk semua file dokumen tanpa kecuali:
 1. Baca versi lama via MCP dulu — WAJIB sebelum tulis versi baru
@@ -62,141 +78,206 @@ WAJIB diikuti untuk setiap perubahan kode, penambahan fitur, atau perbaikan bug:
 ---
 
 ## SPRINT AKTIF
-(Update Sesi #030)
+(Update Sesi #032 — FASE M sebagai prioritas pertama Sesi #033)
 
 - Sprint: Sprint 1 — Login & Auth Lengkap
-- Step selesai: A, B, C, D, E.1, E.2, E.3, E.4.1, E.4.2, TAHAP 0, **TAHAP 1 (selesai localhost)**
-- Yang sedang dikerjakan: Push TAHAP 1 ke Staging → konfirmasi Philips → lanjut TAHAP 2
+- Step selesai: A, B, C, D, E.1, E.2, E.3, E.4.1, E.4.2, TAHAP 0, **TAHAP 1 ✅ SELESAI DI STAGING (Sesi #031)**
+- **Yang dikerjakan berikutnya: FASE M — Migrasi Firebase → Supabase (mulai Sesi #033)**
+- TAHAP P0: Dikerjakan otomatis dalam FASE M (P0.1 di M.D, P0.4 di M.G)
+- Referensi FASE M: MIGRATION_PLAN_FIREBASE_TO_SUPABASE_v1.md
 - Referensi UI: UI_UX_Approved\dashboard_config_login_sesi025_v1.html
 - Testing: 10/36 TC lulus — 26 TC pending
-- Referensi: WORKFLOW_SYSTEM_LOGIN_v4.md + TEST_CASES_LOGIN.md
 
 ---
 
-## FILE LIB YANG SUDAH ADA
-(Update Sesi #030 — tambah lib/firebase-admin.ts)
+## ENVIRONMENT VARIABLES (4 BOOTSTRAP SECRET SAJA)
 
-- lib/firebase.ts — koneksi Firebase (client-side)
-- lib/auth.ts — RBAC, session cookies, role mapping (setSessionCookies, ROLE_DASHBOARD)
-- lib/auth-server.ts — verifyJWT() server-side via Firebase Admin — HANYA untuk Server Component & API Route
-- lib/firebase-admin.ts — getAdminDb() helper — export admin Firestore untuk API routes (BARU Sesi #030)
-- lib/getTenantConfig.ts — baca config tenant dari Firestore
-- lib/config-registry.ts — getConfigValue(), getConfigItem(), getAllConfigsByCategory()
-- lib/policy.ts — getEffectivePolicy() — merge policy 2 level
+File: .env.development.local
+
+```
+MASTER_ENCRYPTION_KEY=[32 bytes base64]
+NEXT_PUBLIC_SUPABASE_URL=https://[project-ref].supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=[anon-key dari Supabase Dashboard]
+SUPABASE_SERVICE_ROLE_KEY=[service-role-key dari Supabase Dashboard]
+```
+
+TIDAK ADA credential lain di .env (Xendit, Fonnte, Cloudinary, Redis, Typesense, SMTP, Cloudflare).
+Semua credential service diisi via Dashboard SuperAdmin → menu Integrasi → disimpan terenkripsi di database.
+
+---
+
+## FILE LIB YANG SUDAH ADA / YANG AKAN ADA SETELAH FASE M
+(Update Sesi #032 — GANTI TOTAL)
+
+### Layer Foundation (dibuat di FASE M C)
+- lib/supabase-server.ts — createServerSupabaseClient() service role — HANYA server-side
+- lib/supabase-client.ts — createBrowserSupabaseClient() anon key — HANYA browser
+- lib/db.ts — Drizzle ORM + postgres.js via Supavisor port 6543, prepare: false
+- lib/credential-crypto.ts — enkripsiCredential() + dekripsiCredential() AES-256-GCM
+
+### Layer Repository (dibuat di FASE M D)
+- lib/repositories/auctions.repository.ts
+- lib/repositories/bids.repository.ts
+- lib/repositories/users.repository.ts
+- lib/repositories/payments.repository.ts
+
+### Layer Service (dibuat di FASE M D)
+- lib/services/bid.service.ts — placeBid(), validateBid()
+- lib/services/auction.service.ts — createAuction(), closeAuction()
+- lib/services/payment.service.ts — createPayment(), processWebhook()
+- lib/services/notification.service.ts — notifyOutbid(), notifyPayment()
+
+### Layer Adapter (dibuat di FASE M D)
+- lib/payments/types.ts — PaymentGateway interface
+- lib/payments/xendit.adapter.ts — implements PaymentGateway
+- lib/whatsapp/types.ts — WhatsAppProvider interface
+- lib/whatsapp/fonnte.adapter.ts — implements WhatsAppProvider
+
+### Layer Helper (dimigrasi dari Firebase di FASE M)
+- lib/auth-server.ts — verifyJWT() dengan react.cache() — server-side only
+- lib/auth.ts — RBAC, session cookies, role mapping
+- lib/config-registry.ts — getConfigValue() via unstable_cache
+- lib/policy.ts — getEffectivePolicy() via unstable_cache
 - lib/activity.ts — updateUserPresence() + writeActivityLog()
-- lib/cache.ts — abstraksi layer cache (TTL + LRU + stampede prevention)
+- lib/cache.ts — MemoryCache + helper unstable_cache + react.cache()
 - lib/session.ts — GPS, OTP, Biometric, session log
-- lib/account-lock.ts — getAccountLock(), setAccountLock() — cek & kelola kunci akun
-- lib/pilihan-opsi.ts — 17 grup Pilihan Opsi untuk dropdown dinamis
+- lib/account-lock.ts — getAccountLock(), setAccountLock()
+- lib/errors.ts — Hierarki AppError + 9 jenis error standar
+- lib/api/handler.ts — withApi() wrapper untuk semua Route Handler
+- lib/api/envelope.ts — successEnvelope(), errorEnvelope()
+
+### Yang Diarsipkan di FASE M B.2 (bukan dihapus)
+- lib/firebase.ts → _arsip/firebase-legacy/lib/
+- lib/firebase-admin.ts → _arsip/firebase-legacy/lib/
 
 ---
 
 ## FILE PENTING YANG SUDAH ADA
-(Update Sesi #030)
+(Update Sesi #032 — status diupdate sesuai FASE M)
 
-- app/login/page.tsx — halaman login multi-tahap (GPS → Kredensial → OTP → Biometric)
-- app/register/page.tsx — halaman register Customer + Vendor
-- app/init-philipsliemena/page.tsx — halaman buat akun SuperAdmin pertama (secret path, RENAME dari app/setup/ Sesi #030)
-- app/dashboard/superadmin/layout.tsx — layout sidebar SuperAdmin + proteksi verifyJWT (DIUPDATE Sesi #030)
-- app/dashboard/superadmin/page.tsx — empty state sebelum klik sub-menu (DIUPDATE Sesi #030)
-- app/dashboard/superadmin/settings/config/page.tsx — Server Component, fetch data langsung (DIUPDATE Sesi #030)
-- app/dashboard/superadmin/settings/config/ConfigPageClient.tsx — Client component interaksi toggle/save/reset (BARU Sesi #030)
-- app/dashboard/superadmin/settings/[...slug]/page.tsx — catch-all "belum tersedia" (BARU Sesi #030)
-- app/api/setup/check/route.ts — cek apakah setup sudah selesai
-- app/api/setup/create-superadmin/route.ts — buat akun SuperAdmin (dipanggil sekali)
-- app/api/config/[feature_key]/route.ts — GET + PATCH config item (DIUPDATE Sesi #030 — hapus mock, baca Firestore)
-- app/api/auth/check-lock/route.ts — cek apakah akun terkunci sebelum login
-- app/api/auth/lock-account/route.ts — catat login gagal + kunci akun jika melebihi batas
-- app/api/auth/unlock-account/route.ts — buka kunci akun (auto setelah login berhasil)
-- app/api/auth/check-session/route.ts — cek sesi paralel (concurrent session)
-- components/SidebarNav.tsx — sidebar navigasi SuperAdmin (BARU Sesi #030)
-- components/ConfigItem.tsx — komponen item konfigurasi reusable
-- components/config/ConfigRenderer.tsx — renderer config generik (dibuat E.4)
-- scripts/seed-tenant.mjs — seed data: security_login policy + message_library + config_schema (DITULIS ULANG Sesi #030)
-- middleware.ts — proteksi route /dashboard, baca cookie 'session', routing per role (DIUPDATE Sesi #030 — init-philipsliemena)
+- app/login/page.tsx — akan dimigrasi FASE M F.2
+- app/register/page.tsx — belum menyentuh FASE M
+- app/init-philipsliemena/page.tsx — akan dimigrasi FASE M F.6
+- app/dashboard/superadmin/layout.tsx — akan dimigrasi FASE M F.3
+- app/dashboard/superadmin/page.tsx — akan dimigrasi FASE M F.4
+- app/dashboard/superadmin/settings/config/page.tsx — akan dimigrasi FASE M F.5
+- app/dashboard/superadmin/settings/config/ConfigPageClient.tsx — TIDAK perlu dimigrasi
+- app/dashboard/superadmin/settings/[...slug]/page.tsx — TIDAK perlu dimigrasi
+- app/api/setup/check/route.ts — akan dimigrasi FASE M E.6
+- app/api/setup/create-superadmin/route.ts — akan dimigrasi FASE M E.7
+- app/api/config/[feature_key]/route.ts — akan dimigrasi FASE M E.5
+- app/api/auth/check-lock/route.ts — akan dimigrasi FASE M E.1
+- app/api/auth/lock-account/route.ts — akan dimigrasi FASE M E.2
+- app/api/auth/unlock-account/route.ts — akan dimigrasi FASE M E.3
+- app/api/auth/check-session/route.ts — akan dimigrasi FASE M E.4
+- components/SidebarNav.tsx — TIDAK perlu dimigrasi
+- components/ConfigItem.tsx — TIDAK perlu dimigrasi
+- scripts/seed-tenant.mjs — akan DITULIS ULANG FASE M H.1
+- middleware.ts — akan dimigrasi + full crypto verify FASE M F.1
+- next.config.ts — akan ditambah HTTP Security Headers FASE M G.1
+- firestore.rules — akan DIARSIPKAN FASE M B.2
 
 ---
 
 ## ATURAN PENTING COOKIE SESSION
-(dari Sesi #025 — tidak berubah)
+(Update Sesi #032 — Firebase JWT → Supabase JWT setelah FASE M)
 
+SEBELUM FASE M (kondisi sekarang):
 - Cookie 'session' berisi Firebase ID Token (JWT)
-- Middleware membaca cookie 'session' untuk routing
-- verifyJWT() di Server Component membaca cookie 'session' dan verifikasi via Admin SDK
-- SUPERADMIN: login page set cookie 'session' = Firebase ID Token langsung
-- Non-SUPERADMIN: selesaiLogin() memanggil setSessionCookies() — BELUM set cookie 'session'
-  → Akan diperbaiki di Sprint 2 (non-SUPERADMIN dashboard belum dibuat)
-- JANGAN set cookie 'session_role' atau 'session_tenant' untuk SUPERADMIN
+- Middleware decode base64 untuk routing
+- verifyJWT() verifikasi via Firebase Admin SDK
+
+SETELAH FASE M (kondisi baru):
+- Cookie 'session' berisi Supabase JWT
+- Middleware verifikasi full crypto dengan Supabase JWT secret
+- verifyJWT() verifikasi via Supabase Auth, dibungkus react.cache()
+- Custom claims (app_role, tenant_id) diinjeksi via Custom Access Token Hook
+- SUPERADMIN: login page set cookie 'session' = Supabase JWT
 
 ---
 
 ## ATURAN CODING WAJIB — TIDAK BOLEH DILANGGAR
-(dari Sesi #025 — tidak berubah)
+(Update Sesi #032 — tambah aturan API Layer + Database Standards)
 
 ### Aturan Arsitektur
 1. SEMUA nilai konfigurasi bisnis WAJIB baca via getEffectivePolicy() — TIDAK BOLEH hardcode
 2. SETIAP halaman WAJIB panggil updateUserPresence() dan writeActivityLog() dari lib/activity.ts
 3. SETIAP API route WAJIB validasi input dengan Zod
 4. SEMUA kalkulasi uang HANYA di server — tidak ada di browser
-5. SETIAP dokumen Firestore WAJIB ada tenant_id
+5. SETIAP tabel PostgreSQL WAJIB ada tenant_id
 6. SEMUA teks UI dalam Bahasa Indonesia
 7. Komentar kode dalam Bahasa Indonesia
 8. Sebelum buat file baru — cek apakah fungsinya sudah ada di lib/
 
+### Aturan API Layer (BARU Sesi #032)
+9. Route Handler dan Server Action HANYA boleh panggil Service — TIDAK BOLEH query database langsung
+10. SETIAP file di lib/repositories/ dan lib/services/ WAJIB diawali `import 'server-only'`
+11. Ganti third-party provider = ganti Adapter saja — Service TIDAK BOLEH diubah
+12. Credential service WAJIB disimpan via lib/credential-crypto.ts — TIDAK BOLEH di kode atau .env biasa
+
 ### Aturan Performa
-9. DILARANG query di dalam loop — wajib pakai batch write atau Promise.all
-10. SEMUA list data WAJIB pakai limit/pagination — tidak boleh ambil semua dokumen sekaligus
-11. SELALU pakai named import — tidak boleh import * dari library manapun
-12. Komponen besar atau jarang dipakai WAJIB pakai dynamic import
-13. SETIAP event listener WAJIB ada cleanup saat logout dan saat tab/browser ditutup
-14. Pekerjaan berat (blast WA, disbursement) WAJIB pakai Queue — tidak boleh diproses langsung di API route
+13. DILARANG query di dalam loop — wajib pakai batch insert atau Promise.all
+14. SEMUA list data WAJIB pakai limit/pagination — tidak boleh ambil semua row sekaligus
+15. SELALU pakai named import — tidak boleh import * dari library manapun
+16. Komponen besar atau jarang dipakai WAJIB pakai dynamic import
+17. SETIAP event listener WAJIB ada cleanup saat logout dan saat tab/browser ditutup
+18. Pekerjaan berat (blast WA, disbursement) WAJIB pakai Queue (Inngest/PGMQ) — tidak boleh di API route langsung
+
+### Aturan Supabase + Next.js 16 (BARU Sesi #032)
+19. WAJIB bungkus verifyJWT() dengan react.cache() — mencegah cold start berulang per navigasi
+20. WAJIB pakai Supabase service role client di semua file lib/ yang jalan di server
+21. WAJIB pakai unstable_cache untuk data policy dan config yang shared across requests
+22. WAJIB koneksi database via Supavisor port 6543 + `prepare: false` di Vercel runtime
+23. Migration WAJIB via Drizzle Kit + Supabase CLI — TIDAK BOLEH langsung edit SQL Editor production
+24. Operasi kritikal (bid, close auction, payment) WAJIB dalam PostgreSQL RPC Function + SELECT FOR UPDATE
+
+### Aturan Database Security (dari standar Philips)
+25. Data PII sensitif (NIK, NPWP, rekening) WAJIB dienkripsi AES-256-GCM sebelum masuk database
+26. Semua tabel WAJIB punya Row Level Security (RLS) policy
+27. Tabel yang tumbuh cepat (bids, activity_logs) WAJIB dipartisi dari hari pertama
+28. Semua tabel kritikal WAJIB punya immutable audit trigger
 
 ### Aturan Proses
-15. Setelah selesai setiap file — kabari nama file yang dibuat dan cara testingnya
-16. Kerjakan SATU FILE dalam SATU instruksi — tidak boleh gabung beberapa file sekaligus
-
-### Catatan Penting Firestore
-17. Path policies Firestore WAJIB 4 segmen: doc(db, 'platform_config', 'policies', featureKey, 'config') — JANGAN gunakan 3 segmen — Firestore menolak
-18. Seed script pakai firebase-admin — scripts/serviceAccountKey.json wajib ada
+29. Setelah selesai setiap file — kabari nama file yang dibuat dan cara testingnya
+30. Kerjakan SATU FILE dalam SATU instruksi — tidak boleh gabung beberapa file sekaligus
 
 ---
 
-## PATH FIRESTORE PENTING
-(dari Sesi #025 — tidak berubah, tambah 1 path baru Sesi #030)
+## PATH DATABASE POSTGRESQL
+(Update Sesi #032 — GANTI TOTAL dari Firestore paths ke PostgreSQL tables)
 
-- /platform_config/policies/{featureKey} — platform-level policy
-- /platform_config/config_registry/{configId} — Dynamic Config Registry
-- /platform_config/config_registry/items/security_login — config schema 16 item 4 grup (di-seed Sesi #030)
-- /platform_config/settings — is_setup_complete flag
-- /users/{uid} — data SUPERADMIN (root level, BUKAN di /tenants/)
-- /tenants/{tenantId}/config/main — tenant-level config + policy override
-- /tenants/{tenantId}/users/{uid} — data user per tenant (Customer, Vendor, AdminTenant)
-- /tenants/{tenantId}/vendor_registrations/{vendorId} — pendaftaran vendor
-- /tenants/{tenantId}/account_locks/{uid} — kunci akun throttling
-- /tenants/{tenantId}/user_presence/{uid} — realtime presence (OVERWRITE)
-- /tenants/{tenantId}/activity_logs/{logId} — audit log (APPEND-ONLY)
-- /tenants/{tenantId}/session_logs/{sessionId} — session tracking
-- /tenants/{tenantId}/otp_codes/{uid} — OTP sementara
-- /tenants/{tenantId}/trusted_devices/{deviceId} — device biometric
-- /tenants/{tenantId}/wa_queue/{jobId} — antrian WA blast (Sprint 6)
-- /tenants/{tenantId}/disbursement_queue/{jobId} — antrian pembayaran vendor (Sprint 5)
+Tabel utama:
+- users — SuperAdmin (root level)
+- tenants — daftar tenant/brand
+- user_profiles — semua user kecuali SuperAdmin
+- platform_policies — policy platform (JSONB nilai per feature_key)
+- config_registry — Dynamic Config Registry
+- account_locks — throttling login + progressive lockout
+- session_logs — riwayat login PERMANEN
+- otp_codes — kode OTP sementara
+- trusted_devices — perangkat biometric
+- user_presence — posisi user sekarang (UPSERT)
+- activity_logs — log aktivitas PERMANEN partisi bulanan
+- service_providers, provider_field_definitions, provider_instances, instance_credentials — tabel credential
+
+Schema audit (terpisah):
+- audit.log — perubahan data PERMANEN dengan hash chain
+- audit.ddl_log — perubahan struktur database
 
 ---
 
 ## ARSITEKTUR POLICY — 2 LEVEL
-(dari Sesi #025 — tidak berubah)
+(Update Sesi #032 — path diupdate ke PostgreSQL)
 
 Level 1 (Platform Owner):
-  /platform_config/policies/{featureKey}
-  → nilai default + aturan override (tenant_can_override per field)
+  Tabel: platform_policies WHERE feature_key = '[featureKey]'
+  → nilai default + aturan override (tenant_can_override per field di JSONB)
 
 Level 2 (Tenant Admin):
-  /tenants/{tenantId}/config/main → policies.{featureKey}
+  Tabel: config_registry WHERE tenant_id = '[tenantId]' AND feature_key = '[featureKey]'
   → hanya field yang tenant_can_override = true yang bisa diisi
 
 Fungsi merge: getEffectivePolicy(tenantId, featureKey)
-→ kalau tenant override ada dan diizinkan → pakai nilai tenant
-→ kalau tidak → pakai nilai platform
 
 ---
 
@@ -212,30 +293,39 @@ Fungsi merge: getEffectivePolicy(tenantId, featureKey)
 ---
 
 ## TIGA SISTEM REALTIME
-(dari Sesi #025 — tidak berubah)
+(Update Sesi #032 — Supabase Realtime menggantikan Firestore onSnapshot)
 
 Sistem 1 — Config Changes:
-  onSnapshot /tenants/{tenantId}/config/main
-  → kalau token_version berubah → force JWT refresh → update React context
+  Supabase Realtime subscribe tabel `platform_policies`
+  → token_version berubah → request JWT refresh → update React context
 
 Sistem 2 — User Presence:
-  onSnapshot /tenants/{tenantId}/user_presence/{uid}
-  → kalau status = "terminated" → force logout
+  Supabase Realtime subscribe tabel `user_presence`
+  → status = "terminated" → force logout
 
 Sistem 3 — Notifikasi:
-  onSnapshot /tenants/{tenantId}/notifications/{uid}
-  → tampilkan toast notifikasi
+  Supabase Realtime subscribe tabel `notifications`
+  → INSERT baru → tampilkan toast notifikasi
 
 Semua 3 listener dipasang saat login berhasil.
 Semua 3 listener WAJIB dihentikan saat logout DAN saat tab/browser ditutup.
 
 ---
 
-## STANDAR CACHE (lib/cache.ts)
-(dari Sesi #025 — tidak berubah)
+## STANDAR CACHE
+(Update Sesi #032 — tiga lapis cache untuk Vercel serverless + Supabase)
 
-lib/cache.ts WAJIB mengimplementasikan:
-- TTL per item: setiap item cache punya waktu kadaluarsa
-- LRU Eviction: saat cache penuh, hapus item paling lama tidak diakses
-- Stampede Prevention: saat cache expired, hanya 1 request yang fetch ke DB
-- Max cache size: batasi jumlah item — tidak boleh cache tanpa batas
+1. react.cache() — per-request deduplication
+   → Untuk: verifyJWT(), session check
+   → Scope: satu HTTP request, tidak shared antar user
+
+2. unstable_cache (next/cache) — cross-request shared cache
+   → Untuk: policy platform, config registry
+   → TTL: 15 menit, invalidasi via revalidateTag()
+
+3. Upstash Redis — edge + server persistent cache
+   → Untuk: session data, rate limiting, bid state aktif
+   → HTTP REST API — bisa dari Edge Runtime (middleware.ts)
+
+lib/cache.ts (MemoryCache) masih ada sebagai fallback lokal untuk development.
+Di production Vercel, WAJIB pakai react.cache() atau unstable_cache — bukan MemoryCache.

@@ -2,205 +2,140 @@
 // Mencatat posisi user secara realtime (User Presence) dan aksi penting ke activity log
 // Dipakai di SEMUA halaman setiap kali user navigasi atau lakukan aksi
 //
-// Path Presence: /tenants/{tenantId}/user_presence/{uid}       — OVERWRITE
-// Path Log:      /tenants/{tenantId}/activity_logs/{logId}     — APPEND-ONLY
+// PERUBAHAN dari versi sebelumnya:
+//   - Hapus import createServerSupabaseClient — diganti createBrowserSupabaseClient
+//   - Hapus import getEffectivePolicy dari lib/policy (server-only)
+//   - Policy activity_logging dibaca langsung via browser client
+//   - File ini sekarang bisa dipakai di Client Component maupun server
 
-import { db } from '@/lib/firebase';
-import { getEffectivePolicy } from '@/lib/policy';
-import {
-  collection,
-  doc,
-  setDoc,
-  addDoc,
-  updateDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
+import { createBrowserSupabaseClient } from '@/lib/supabase-client'
 
 // ============================================================
-// TYPE DEFINITIONS
+// TYPE DEFINITIONS — TIDAK BERUBAH
 // ============================================================
 
-/**
- * Informasi halaman yang sedang aktif dikunjungi user.
- * Dipakai sebagai parameter di updateUserPresence().
- */
 export interface PageInfo {
-  /** Path URL halaman — contoh: "/order/new" */
-  page: string;
-  /** Nama tampilan halaman dalam Bahasa Indonesia — contoh: "Buat Order Baru" */
-  label: string;
-  /** Nama modul yang memiliki halaman ini — contoh: "ORDER" */
-  module: string;
+  page:   string
+  label:  string
+  module: string
 }
 
-/**
- * Data lengkap satu entri activity log.
- * Semua field wajib diisi oleh pemanggil sebelum dikirim ke writeActivityLog().
- */
 export interface ActivityLogData {
-  /** UID user yang melakukan aksi */
-  uid: string;
-  /** Nama lengkap user */
-  nama: string;
-  /** ID tenant tempat user beroperasi */
-  tenant_id: string;
-  /** ID sesi aktif user saat aksi dilakukan */
-  session_id: string;
-  /** Role user saat aksi dilakukan */
-  role: string;
-  /** Jenis aksi yang dilakukan */
-  action_type: 'PAGE_VIEW' | 'BUTTON_CLICK' | 'FORM_SUBMIT' | 'FORM_ERROR' | 'API_CALL';
-  /** Modul tempat aksi dilakukan */
-  module: 'AUTH' | 'ORDER' | 'PAYMENT' | 'VENDOR' | 'ADMIN' | 'DISPUTE' | 'CHAT';
-  /** Path URL halaman saat aksi dilakukan */
-  page: string;
-  /** Nama tampilan halaman */
-  page_label: string;
-  /** Deskripsi detail aksi — contoh: "Klik tombol Kirim Order" */
-  action_detail: string;
-  /** Hasil aksi */
-  result: 'SUCCESS' | 'FAILED' | 'BLOCKED';
-  /** Informasi perangkat user — contoh: "Chrome 124 / Windows 10" */
-  device: string;
-  /** Kota berdasarkan GPS atau IP — contoh: "Jakarta" */
-  gps_kota: string;
-  /** Alamat IP user (opsional — diisi jika tersedia dari server) */
-  ip_address?: string;
+  uid:           string
+  nama:          string
+  tenant_id:     string
+  session_id:    string
+  role:          string
+  action_type:   'PAGE_VIEW' | 'BUTTON_CLICK' | 'FORM_SUBMIT' | 'FORM_ERROR' | 'API_CALL'
+  module:        'AUTH' | 'ORDER' | 'PAYMENT' | 'VENDOR' | 'ADMIN' | 'DISPUTE' | 'CHAT'
+  page:          string
+  page_label:    string
+  action_detail: string
+  result:        'SUCCESS' | 'FAILED' | 'BLOCKED'
+  device:        string
+  gps_kota:      string
+  ip_address?:   string
 }
 
 // ============================================================
 // FUNGSI UTAMA
 // ============================================================
 
-/**
- * Memperbarui data kehadiran (presence) user secara realtime di Firestore.
- * Dokumen di-OVERWRITE dengan setDoc + merge:true — bukan append.
- * Dipanggil setiap kali user berpindah halaman.
- *
- * TODO: Tambah cache setelah lib/cache.ts selesai (Sprint 0 Task 5)
- *
- * @param uid        - UID user yang sedang aktif
- * @param tenantId   - ID tenant tempat user beroperasi
- * @param sessionId  - ID sesi aktif user
- * @param nama       - Nama lengkap user
- * @param role       - Role user saat ini
- * @param device     - Informasi perangkat user
- * @param gpsKota    - Kota berdasarkan GPS atau IP
- * @param pageInfo   - Informasi halaman yang sedang dikunjungi
- *
- * @example
- * await updateUserPresence(
- *   'uid123', 'tenant_erpmediator', 'sess_abc',
- *   'Budi Santoso', 'vendor', 'Chrome / Android',
- *   'Surabaya', { page: '/order/new', label: 'Buat Order Baru', module: 'ORDER' }
- * );
- */
 export async function updateUserPresence(
-  uid: string,
-  tenantId: string,
+  uid:       string,
+  tenantId:  string,
   sessionId: string,
-  nama: string,
-  role: string,
-  device: string,
-  gpsKota: string,
-  pageInfo: PageInfo
+  nama:      string,
+  role:      string,
+  device:    string,
+  gpsKota:   string,
+  pageInfo:  PageInfo
 ): Promise<void> {
-  // Referensi dokumen presence — satu dokumen per user per tenant
-  const presenceRef = doc(db, 'tenants', tenantId, 'user_presence', uid);
+  const supabase = createBrowserSupabaseClient()
 
-  // Tulis dengan merge:true agar field lain tidak terhapus saat update parsial
-  await setDoc(
-    presenceRef,
-    {
-      uid,
-      tenant_id: tenantId,
-      session_id: sessionId,
-      nama,
-      role,
-      device,
-      gps_kota: gpsKota,
-      current_page: pageInfo.page,
-      current_page_label: pageInfo.label,
-      current_page_module: pageInfo.module,
-      last_active: serverTimestamp(),
-      status: 'online',
-    },
-    { merge: true }
-  );
+  await supabase
+    .from('user_presence')
+    .upsert(
+      {
+        uid,
+        tenant_id:          tenantId,
+        nama,
+        role,
+        device,
+        current_page:       pageInfo.page,
+        current_page_label: pageInfo.label,
+        last_active:        new Date().toISOString(),
+        status:             'online',
+      },
+      { onConflict: 'tenant_id,uid' }
+    )
 }
 
-/**
- * Menulis satu entri baru ke activity log tenant.
- * Sifat: APPEND-ONLY — selalu buat dokumen baru, tidak pernah update yang lama.
- *
- * Sebelum menulis, fungsi ini mengecek policy activity_logging tenant.
- * Kalau jenis aksi tidak diizinkan oleh policy → return tanpa menulis ke Firestore.
- *
- * TODO: Tambah cache setelah lib/cache.ts selesai (Sprint 0 Task 5)
- *
- * @param tenantId - ID tenant tempat log akan ditulis
- * @param data     - Data lengkap aktivitas yang akan dicatat
- *
- * @example
- * await writeActivityLog('tenant_erpmediator', {
- *   uid: 'uid123', nama: 'Budi', tenant_id: 'tenant_erpmediator',
- *   session_id: 'sess_abc', role: 'vendor',
- *   action_type: 'PAGE_VIEW', module: 'ORDER',
- *   page: '/order/new', page_label: 'Buat Order Baru',
- *   action_detail: 'Membuka halaman buat order', result: 'SUCCESS',
- *   device: 'Chrome / Android', gps_kota: 'Surabaya',
- * });
- */
 export async function writeActivityLog(
   tenantId: string,
-  data: ActivityLogData
+  data:     ActivityLogData
 ): Promise<void> {
-  // Baca policy activity_logging untuk tenant ini
-  // TODO: Tambah cache setelah lib/cache.ts selesai (Sprint 0 Task 5)
-  const policy = await getEffectivePolicy(tenantId, 'activity_logging');
+  const supabase = createBrowserSupabaseClient()
 
-  // Cek apakah jenis aksi ini diizinkan oleh policy — kalau tidak, keluar lebih awal
-  if (data.action_type === 'PAGE_VIEW' && !policy.log_page_views) return;
-  if (data.action_type === 'BUTTON_CLICK' && !policy.log_button_clicks) return;
-  if (data.action_type === 'FORM_SUBMIT' && !policy.log_form_submits) return;
-  if (data.action_type === 'FORM_ERROR' && !policy.log_errors) return;
+  // Baca policy activity_logging langsung via browser client
+  let logPageViews    = true
+  let logButtonClicks = false
+  let logFormSubmits  = true
+  let logErrors       = true
 
-  // Referensi koleksi activity_logs — ID dokumen di-generate otomatis oleh Firestore
-  const logsRef = collection(db, 'tenants', tenantId, 'activity_logs');
+  try {
+    const { data: pol } = await supabase
+      .from('platform_policies')
+      .select('nilai')
+      .eq('feature_key', 'activity_logging')
+      .single()
 
-  // Tulis dokumen baru (APPEND) — tidak pernah overwrite dokumen yang sudah ada
-  await addDoc(logsRef, {
-    ...data,
-    timestamp: serverTimestamp(),
-  });
+    if (pol?.nilai) {
+      const p = pol.nilai as Record<string, unknown>
+      if (typeof p['log_page_views']    === 'boolean') logPageViews    = p['log_page_views']
+      if (typeof p['log_button_clicks'] === 'boolean') logButtonClicks = p['log_button_clicks']
+      if (typeof p['log_form_submits']  === 'boolean') logFormSubmits  = p['log_form_submits']
+      if (typeof p['log_errors']        === 'boolean') logErrors       = p['log_errors']
+    }
+  } catch { /* pakai nilai default di atas */ }
+
+  // Cek apakah jenis aksi ini diizinkan policy
+  if (data.action_type === 'PAGE_VIEW'    && !logPageViews)    return
+  if (data.action_type === 'BUTTON_CLICK' && !logButtonClicks) return
+  if (data.action_type === 'FORM_SUBMIT'  && !logFormSubmits)  return
+  if (data.action_type === 'FORM_ERROR'   && !logErrors)       return
+
+  await supabase
+    .from('activity_logs')
+    .insert({
+      uid:           data.uid,
+      tenant_id:     data.tenant_id,
+      nama:          data.nama,
+      role:          data.role,
+      action_type:   data.action_type,
+      module:        data.module,
+      page:          data.page,
+      action_detail: data.action_detail,
+      result:        data.result,
+      device:        data.device,
+      ip_address:    data.ip_address ?? null,
+      gps_kota:      data.gps_kota,
+      timestamp:     new Date().toISOString(),
+    })
 }
 
-/**
- * Mengubah status user menjadi offline di dokumen presence.
- * Dipanggil saat user logout atau saat tab/browser ditutup.
- *
- * @param uid      - UID user yang akan diset offline
- * @param tenantId - ID tenant tempat user beroperasi
- *
- * @example
- * // Dipanggil saat logout
- * await setUserOffline('uid123', 'tenant_erpmediator');
- *
- * // Dipanggil saat tab ditutup (pakai beforeunload event)
- * window.addEventListener('beforeunload', () => {
- *   setUserOffline(uid, tenantId);
- * });
- */
 export async function setUserOffline(
-  uid: string,
+  uid:      string,
   tenantId: string
 ): Promise<void> {
-  // Referensi dokumen presence yang sama dengan updateUserPresence()
-  const presenceRef = doc(db, 'tenants', tenantId, 'user_presence', uid);
+  const supabase = createBrowserSupabaseClient()
 
-  // Update hanya field status — field lain dibiarkan apa adanya
-  await updateDoc(presenceRef, {
-    status: 'offline',
-    last_active: serverTimestamp(),
-  });
+  await supabase
+    .from('user_presence')
+    .update({
+      status:      'offline',
+      last_active: new Date().toISOString(),
+    })
+    .eq('uid', uid)
+    .eq('tenant_id', tenantId)
 }

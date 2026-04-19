@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { signInWithEmailAndPassword } from 'firebase/auth'
-import { auth } from '@/lib/firebase'
+import { createBrowserSupabaseClient } from '@/lib/supabase-client'
 
 function PasswordInput({ value, onChange, placeholder }: { value: string, onChange: (v: string) => void, placeholder: string }) {
   const [show, setShow] = useState(false)
@@ -88,7 +87,8 @@ export default function SetupPage() {
         setError(data.message || 'Gagal membuat akun SuperAdmin.')
         return
       }
-      await signInWithEmailAndPassword(auth, form.email, form.password)
+      const supabase = createBrowserSupabaseClient()
+      await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
       setSuccess(true)
       setTimeout(() => router.push('/dashboard/superadmin'), 1500)
     } catch (err: any) {
