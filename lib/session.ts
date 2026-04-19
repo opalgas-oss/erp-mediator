@@ -189,92 +189,21 @@ export function generateOTP(): string {
 }
 
 // ---------------------------------------------------------------------------
-// 5. sendOTPviaWA — policy dibaca dari tabel platform_policies
+// 5. verifyOTP — Firestore getDoc → tabel otp_codes
+// CATATAN: Generate + simpan + kirim OTP sekarang dilakukan server-side
+// via POST /api/auth/send-otp — credential dan template dibaca dari DB
 // ---------------------------------------------------------------------------
 
-export async function sendOTPviaWA(params: {
-  phoneNumber: string
-  otpCode:     string
-  role:        string
-  tenantId:    string
-}): Promise<boolean> {
-  if (params.role === 'customer') return true
-
-  const fonnteKey = process.env.FONNTE_API_KEY
-  if (!fonnteKey) {
-    console.log('FONNTE_API_KEY tidak ada, skip OTP')
-    return true
-  }
-
-  // Baca otp_expiry_minutes dari platform_policies
-  let expiryMinutes = 5 // default fallback
-  try {
-    const supabase = createBrowserSupabaseClient()
-    const { data } = await supabase
-      .from('platform_policies')
-      .select('nilai')
-      .eq('feature_key', 'security_login')
-      .single()
-    if (data?.nilai) {
-      const policy = data.nilai as Record<string, unknown>
-      if (typeof policy['otp_expiry_minutes'] === 'number') {
-        expiryMinutes = policy['otp_expiry_minutes']
-      }
-    }
-  } catch { /* pakai default 5 menit */ }
-
-  const waktuKadaluarsa = new Date(Date.now() + expiryMinutes * 60 * 1000)
-  const jam    = waktuKadaluarsa.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false })
-  const tanggal = waktuKadaluarsa.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
-
-  const pesan =
-    `OTP Anda ${params.otpCode} untuk akses masuk sebagai Role: ${params.role}. ` +
-    `JANGAN BERIKAN OTP KEPADA SIAPAPUN. ` +
-    `Gunakan sebelum Jam: ${jam} Tanggal ${tanggal}`
-
-  try {
-    const response = await fetch('https://api.fonnte.com/send', {
-      method:  'POST',
-      headers: { Authorization: fonnteKey, 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ target: params.phoneNumber, message: pesan }),
-    })
-    return response.ok
-  } catch (error) {
-    console.error('Gagal mengirim OTP via Fonnte:', error)
-    return false
-  }
-}
+// [sendOTPviaWA dan saveOTPtoFirestore DIHAPUS Sesi #038]
+// Alasan: melanggar aturan H3 TECHNICAL_STANDARDS — credential Fonnte
+// dan template pesan hardcode/env langsung di client.
+// Diganti dengan server-side route /api/auth/send-otp yang membaca:
+//   - Credential Fonnte dari instance_credentials (credential-reader)
+//   - Template pesan dari message_library
+//   - Config OTP dari platform_policies
 
 // ---------------------------------------------------------------------------
-// 6. saveOTPtoDatabase — Firestore setDoc → tabel otp_codes
-// ---------------------------------------------------------------------------
-
-export async function saveOTPtoFirestore(params: {
-  uid:           string
-  otpCode:       string
-  tenantId:      string
-  expiryMinutes: number
-}): Promise<void> {
-  const supabase  = createBrowserSupabaseClient()
-  const expiredAt = new Date(Date.now() + params.expiryMinutes * 60 * 1000).toISOString()
-
-  await supabase
-    .from('otp_codes')
-    .upsert(
-      {
-        uid:        params.uid,
-        tenant_id:  params.tenantId,
-        kode:       params.otpCode,
-        expired_at: expiredAt,
-        dipakai:    false,
-        created_at: new Date().toISOString(),
-      },
-      { onConflict: 'tenant_id,uid' }
-    )
-}
-
-// ---------------------------------------------------------------------------
-// 7. verifyOTP — Firestore getDoc → tabel otp_codes
+// 6. verifyOTP — tabel otp_codes
 // ---------------------------------------------------------------------------
 
 export async function verifyOTP(params: {

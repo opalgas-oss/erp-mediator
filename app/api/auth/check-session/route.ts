@@ -9,8 +9,7 @@
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { z }                          from 'zod'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { getEffectivePolicy }         from '@/lib/policy'
+import { getConfigValue }             from '@/lib/config-registry'
 
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
 
@@ -45,15 +44,17 @@ export async function POST(request: NextRequest) {
 
     const { uid, tenant_id } = parsed.data
 
-    // ── Baca policy concurrent_session ───────────────────────────────────────
-    const policy = await getEffectivePolicy(tenant_id, 'concurrent_session')
+    // ── Baca concurrent_rule dari Modul Konfigurasi (config_registry) ────────
+    // Nilai ini bisa diubah SuperAdmin dari Dashboard Modul Konfigurasi
+    const rule = await getConfigValue('security_login', 'concurrent_rule', 'different_role_only')
 
     // ── Rule 'none' → izinkan langsung tanpa cek sesi ────────────────────────
-    if (policy.rule === 'none') {
+    if (rule === 'none') {
       return NextResponse.json({ hasActiveSession: false, blocked: false })
     }
 
     // ── Query tabel session_logs — cari sesi aktif untuk uid ini ─────────────
+    const { createServerSupabaseClient } = await import('@/lib/supabase-server')
     const db = createServerSupabaseClient()
 
     const { data: sessions, error } = await db
@@ -81,12 +82,12 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Rule 'always' → blokir jika ada sesi aktif apapun ────────────────────
-    if (policy.rule === 'always') {
+    if (rule === 'always') {
       return NextResponse.json({ hasActiveSession: true, blocked: true, sessionData })
     }
 
     // ── Rule 'different_role_only' → blokir karena satu uid = satu role ──────
-    if (policy.rule === 'different_role_only') {
+    if (rule === 'different_role_only') {
       return NextResponse.json({ hasActiveSession: true, blocked: true, sessionData })
     }
 

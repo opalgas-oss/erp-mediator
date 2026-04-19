@@ -27,9 +27,6 @@ import { setSessionCookies, ROLE_DASHBOARD }      from '@/lib/auth'
 import {
   getGPSLocation,
   writeSessionLog,
-  generateOTP,
-  sendOTPviaWA,
-  saveOTPtoFirestore,
   verifyOTP,
   registerBiometric,
   verifyBiometric,
@@ -306,12 +303,50 @@ function LoginForm() {
       const claimRole     = claims['app_role']    as string || ''
       const claimTenantId = claims['tenant_id']   as string || ''
 
-      // SUPERADMIN — tidak punya tenant_id, langsung redirect
+      // SUPERADMIN — tidak punya tenant_id
       if (claimRole === 'SUPERADMIN') {
-        setSessionCookies(claimRole, '')
-        const loginAt = new Date().toISOString()
-        document.cookie = `gps_kota=${encodeURIComponent(gpsRef.current?.kota || 'Tidak Diketahui')}; path=/; max-age=${8 * 3600}`
-        document.cookie = `session_login_at=${encodeURIComponent(loginAt)}; path=/; max-age=${8 * 3600}`
+        // Baca session_timeout_minutes dari Modul Konfigurasi via API
+        let sessionTimeoutMinutes = 480
+        try {
+          const resCfg  = await fetch('/api/config/security_login')
+          const dataCfg = await resCfg.json()
+          const allItems = dataCfg.data?.flatMap((g: { items: Array<{ policy_key?: string; nilai?: string }> }) => g.items) ?? []
+          const item     = allItems.find((i: { policy_key?: string }) => i.policy_key === 'session_timeout_minutes')
+          if (item?.nilai) sessionTimeoutMinutes = Number(item.nilai) || 480
+        } catch (error) {
+          console.error('[login] Gagal baca session_timeout_minutes:', error)
+        }
+
+        const maxAgeSec = sessionTimeoutMinutes * 60
+        const loginAt   = new Date().toISOString()
+
+        setSessionCookies(claimRole, '', maxAgeSec)
+        document.cookie = `gps_kota=${encodeURIComponent(gpsRef.current?.kota || 'Tidak Diketahui')}; path=/; max-age=${maxAgeSec}`
+        document.cookie = `session_login_at=${encodeURIComponent(loginAt)}; path=/; max-age=${maxAgeSec}`
+
+        // Tulis session log ke Supabase (dibutuhkan TC-I01)
+        let sessionId = ''
+        try {
+          sessionId = await writeSessionLog({
+            uid:      data.user.id,
+            tenantId: '',
+            email,
+            role:     claimRole,
+            lat:      gpsRef.current?.lat  ?? 0,
+            lng:      gpsRef.current?.lng  ?? 0,
+            kota:     gpsRef.current?.kota ?? '',
+          })
+        } catch (error) {
+          console.error('[login] Gagal tulis session log SUPERADMIN:', error)
+        }
+
+        // Update user presence (dibutuhkan TC-I04)
+        updateUserPresence(
+          data.user.id, '', sessionId, '', claimRole,
+          getDeviceInfo(), gpsRef.current?.kota || '',
+          { page: '/login', label: 'Halaman Login', module: 'AUTH' },
+        ).catch((error) => console.error('[login] Gagal update presence SUPERADMIN:', error))
+
         router.push('/dashboard/superadmin')
         return
       }
@@ -325,14 +360,6 @@ function LoginForm() {
       setUid(data.user.id)
       setUserEmail(data.user.email || email)
       setTenantId(claimTenantId)
-
-      const resPol    = await fetch(`/api/config/security_login`)
-      const dataPol   = await resPol.json()
-      const firstGroup = dataPol.data?.[0]?.items ?? []
-      const maxOtp    = Number(firstGroup.find((i: {feature_key: string}) => i.feature_key === 'otp_max_attempts')?.nilai ?? 3)
-      const expiryOtp = Number(firstGroup.find((i: {feature_key: string}) => i.feature_key === 'otp_expiry_minutes')?.nilai ?? 5)
-      setMaxOtpPercobaan(maxOtp)
-      setOtpExpiryMenit(expiryOtp)
 
       fetch('/api/auth/unlock-account', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -443,15 +470,28 @@ function LoginForm() {
         .eq('feature_key', 'security_login')
         .single()
 
-      const policy      = (pol?.nilai || {}) as Record<string, unknown>
+      const policy     = (pol?.nilai || {}) as Record<string, unknown>
       const isCustomer  = role.toLowerCase() === 'customer'
-      const perluOTP    = !isCustomer && policy['require_otp'] === true
+
+      // Baca require_otp dari Modul Konfigurasi via API
+      // (tidak bisa import lib/config-registry langsung karena ini client component)
+      let requireOtp = false
+      try {
+        const resOtp  = await fetch('/api/config/security_login')
+        const dataOtp = await resOtp.json()
+        const allItems = dataOtp.data?.flatMap((g: { items: Array<{ policy_key?: string; nilai?: string }> }) => g.items) ?? []
+        const otpItem  = allItems.find((i: { policy_key?: string }) => i.policy_key === 'require_otp')
+        requireOtp = otpItem?.nilai === 'true'
+      } catch {
+        // Fallback ke platform_policies jika config_registry gagal
+        requireOtp = policy['require_otp'] === true
+      }
+
+      const perluOTP = !isCustomer && requireOtp
 
       if (perluOTP) {
         await kirimOTP(
           uidUser, tid, role, waNumber, namaUser,
-          Number(policy['otp_expiry_minutes'] ?? 5),
-          Number(policy['otp_max_attempts'] ?? 3),
         )
       } else {
         setTahap('BIOMETRIC')
@@ -465,38 +505,54 @@ function LoginForm() {
   }
 
   async function kirimOTP(
-    uidUser: string, tid: string, role: string, waNumber: string,
-    namaUser: string, expiryMenit: number, maxAttempts: number,
+    uidUser: string, tid: string, role: string, waNumber: string, namaUser: string,
   ) {
     setIsLoading(true)
     setError('')
 
-    const kodeOTP = generateOTP()
+    try {
+      // Semua config OTP (expiry, max attempts, resend cooldown, panjang digit)
+      // dibaca dari platform_policies via server route — tidak ada hardcode di client
+      const res = await fetch('/api/auth/send-otp', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          uid:      uidUser,
+          tenant_id: tid,
+          role,
+          nomor_wa: waNumber,
+          nama:     namaUser,
+        }),
+      })
 
-    await saveOTPtoFirestore({ uid: uidUser, otpCode: kodeOTP, tenantId: tid, expiryMinutes: expiryMenit })
+      const resData = await res.json()
 
-    const terkirim = await sendOTPviaWA({ phoneNumber: waNumber, otpCode: kodeOTP, role, tenantId: tid })
+      writeActivityLog(tid, {
+        uid: uidUser, nama: namaUser, tenant_id: tid, session_id: '',
+        role, action_type: 'API_CALL', module: 'AUTH',
+        page: '/login', page_label: 'Halaman Login',
+        action_detail: resData.success ? 'OTP berhasil dikirim' : 'OTP gagal dikirim',
+        result: resData.success ? 'SUCCESS' : 'FAILED',
+        device: getDeviceInfo(), gps_kota: gps?.kota || '',
+      }).catch(() => {})
 
-    writeActivityLog(tid, {
-      uid: uidUser, nama: namaUser, tenant_id: tid, session_id: '',
-      role, action_type: 'API_CALL', module: 'AUTH',
-      page: '/login', page_label: 'Halaman Login',
-      action_detail: terkirim ? 'OTP berhasil dikirim' : 'OTP gagal dikirim',
-      result: terkirim ? 'SUCCESS' : 'FAILED',
-      device: getDeviceInfo(), gps_kota: gps?.kota || '',
-    }).catch(() => {})
-
-    setOtpExpiryMenit(expiryMenit)
-    setMaxOtpPercobaan(maxAttempts)
-    setOtpHitunganMundur(60)
-    setOtpInput('')
-    setOtpPercobaan(0)
-    setTahap('OTP')
-    setIsLoading(false)
+      // Gunakan nilai dari DB — bukan hardcode
+      setOtpExpiryMenit(resData.otp_expiry_minutes     ?? 5)
+      setMaxOtpPercobaan(resData.otp_max_attempts       ?? 3)
+      setOtpHitunganMundur(resData.resend_cooldown_seconds ?? 60)
+      setOtpInput('')
+      setOtpPercobaan(0)
+      setTahap('OTP')
+    } catch (error) {
+      console.error('[kirimOTP] error:', error)
+      setError(m('otp_error_verifikasi_gagal'))
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   async function handleKirimUlangOTP() {
-    await kirimOTP(uid, tenantId, roleDipilih, nomorWA, nama, otpExpiryMenit, maxOtpPercobaan)
+    await kirimOTP(uid, tenantId, roleDipilih, nomorWA, nama)
   }
 
   async function handleVerifikasiOTP() {
@@ -576,11 +632,24 @@ function LoginForm() {
         kota: gpsRef.current?.kota ?? '',
       })
 
-      setSessionCookies(roleDipilih, tenantId)
+      // Baca session_timeout_minutes dari Modul Konfigurasi via API
+      let sessionTimeoutMinutes = 480
+      try {
+        const resCfg  = await fetch('/api/config/security_login')
+        const dataCfg = await resCfg.json()
+        const allItems = dataCfg.data?.flatMap((g: { items: Array<{ policy_key?: string; nilai?: string }> }) => g.items) ?? []
+        const item     = allItems.find((i: { policy_key?: string }) => i.policy_key === 'session_timeout_minutes')
+        if (item?.nilai) sessionTimeoutMinutes = Number(item.nilai) || 480
+      } catch (error) {
+        console.error('[selesaiLogin] Gagal baca session_timeout_minutes:', error)
+      }
 
-      const loginAt = new Date().toISOString()
-      document.cookie = `gps_kota=${encodeURIComponent(gpsRef.current?.kota || 'Tidak Diketahui')}; path=/; max-age=${8 * 3600}`
-      document.cookie = `session_login_at=${encodeURIComponent(loginAt)}; path=/; max-age=${8 * 3600}`
+      const maxAgeSec = sessionTimeoutMinutes * 60
+      const loginAt   = new Date().toISOString()
+
+      setSessionCookies(roleDipilih, tenantId, maxAgeSec)
+      document.cookie = `gps_kota=${encodeURIComponent(gpsRef.current?.kota || 'Tidak Diketahui')}; path=/; max-age=${maxAgeSec}`
+      document.cookie = `session_login_at=${encodeURIComponent(loginAt)}; path=/; max-age=${maxAgeSec}`
 
       await updateUserPresence(
         uid, tenantId, sessionId, nama, roleDipilih,

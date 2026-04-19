@@ -24,9 +24,10 @@ export const ROLE_DASHBOARD: Record<string, string> = {
 }
 
 // Simpan cookie role dan tenant setelah login berhasil
-// max-age=3600 → cookie hidup 1 jam, sama dengan session Supabase default
-export function setSessionCookies(role: string, tenantId: string): void {
-  const maxAge = 60 * 60
+// maxAgeSeconds dibaca dari platform_policies.session_timeout_minutes — tidak hardcode
+// Default 8 jam (28800 detik) sebagai fallback aman
+export function setSessionCookies(role: string, tenantId: string, maxAgeSeconds?: number): void {
+  const maxAge = maxAgeSeconds ?? (8 * 3600)
   document.cookie =
     `session_role=${role}; path=/; max-age=${maxAge}; SameSite=Strict`
   document.cookie =

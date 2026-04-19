@@ -144,28 +144,28 @@ async function seedConfigRegistry() {
   if (delError) throw new Error(`seedConfigRegistry delete: ${delError.message}`)
 
   const items = [
-    { label: 'Maks percobaan login',                kategori: 'Keamanan Login',       nilai: '5',                   tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
-    { label: 'Durasi kunci akun (menit)',            kategori: 'Keamanan Login',       nilai: '30',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
-    { label: 'Reset counter gagal setelah idle',     kategori: 'Keamanan Login',       nilai: '24',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
-    { label: 'Progressive lockout',                  kategori: 'Keamanan Login',       nilai: 'true',                tipe_data: 'boolean', akses_baca: ['superadmin'],         akses_ubah: ['superadmin'],         nilai_enum: null },
-    { label: 'Batas maksimal durasi kunci (jam)',    kategori: 'Keamanan Login',       nilai: '24',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
-    { label: 'OTP via WhatsApp aktif',               kategori: 'OTP',                  nilai: 'true',                tipe_data: 'boolean', akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
-    { label: 'Durasi OTP expired (menit)',           kategori: 'OTP',                  nilai: '5',                   tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
-    { label: 'Panjang kode OTP',                     kategori: 'OTP',                  nilai: '6',                   tipe_data: 'select',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: ['4','6','8'] },
-    { label: 'Maks percobaan OTP salah',             kategori: 'OTP',                  nilai: '3',                   tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
-    { label: 'Jeda sebelum kirim ulang OTP (detik)', kategori: 'OTP',                  nilai: '60',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
-    { label: 'Tawarkan biometric saat login',        kategori: 'Biometric',            nilai: 'true',                tipe_data: 'boolean', akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
-    { label: 'Durasi trusted device (hari)',         kategori: 'Biometric',            nilai: '30',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
-    { label: 'Durasi session timeout (menit)',       kategori: 'Session & Concurrent', nilai: '480',                 tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
-    { label: 'Session timeout tidak aktif (menit)', kategori: 'Session & Concurrent', nilai: '30',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
-    { label: 'Aturan login bersamaan',               kategori: 'Session & Concurrent', nilai: 'different_role_only', tipe_data: 'select',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: ['none','different_role_only','always'] },
-    { label: 'Notif WA ke SuperAdmin saat dikunci',  kategori: 'Session & Concurrent', nilai: 'true',                tipe_data: 'boolean', akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { policy_key: 'max_login_attempts',              label: 'Maks percobaan login',                kategori: 'Keamanan Login',       nilai: '5',                   tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { policy_key: 'lock_duration_minutes',            label: 'Durasi kunci akun (menit)',            kategori: 'Keamanan Login',       nilai: '30',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { policy_key: 'login_attempts_reset_hours',       label: 'Reset counter gagal setelah idle',     kategori: 'Keamanan Login',       nilai: '24',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { policy_key: 'progressive_lockout_enabled',      label: 'Progressive lockout',                  kategori: 'Keamanan Login',       nilai: 'true',                tipe_data: 'boolean', akses_baca: ['superadmin'],         akses_ubah: ['superadmin'],         nilai_enum: null },
+    { policy_key: 'max_lock_duration_hours',          label: 'Batas maksimal durasi kunci (jam)',    kategori: 'Keamanan Login',       nilai: '24',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { policy_key: 'require_otp',                      label: 'OTP via WhatsApp aktif',               kategori: 'OTP',                  nilai: 'true',                tipe_data: 'boolean', akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { policy_key: 'otp_expiry_minutes',               label: 'Durasi OTP expired (menit)',           kategori: 'OTP',                  nilai: '5',                   tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { policy_key: 'otp_digits',                       label: 'Panjang kode OTP',                     kategori: 'OTP',                  nilai: '6',                   tipe_data: 'select',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: ['4','6','8'] },
+    { policy_key: 'otp_max_attempts',                 label: 'Maks percobaan OTP salah',             kategori: 'OTP',                  nilai: '3',                   tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { policy_key: 'otp_resend_cooldown_seconds',      label: 'Jeda sebelum kirim ulang OTP (detik)', kategori: 'OTP',                  nilai: '60',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { policy_key: 'require_biometric_offer',          label: 'Tawarkan biometric saat login',        kategori: 'Biometric',            nilai: 'true',                tipe_data: 'boolean', akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { policy_key: 'trusted_device_days',              label: 'Durasi trusted device (hari)',         kategori: 'Biometric',            nilai: '30',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { policy_key: 'session_timeout_minutes',          label: 'Durasi session timeout (menit)',       kategori: 'Session & Concurrent', nilai: '480',                 tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { policy_key: 'session_inactive_timeout_minutes', label: 'Session timeout tidak aktif (menit)', kategori: 'Session & Concurrent', nilai: '30',                  tipe_data: 'number',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
+    { policy_key: 'concurrent_rule',                  label: 'Aturan login bersamaan',               kategori: 'Session & Concurrent', nilai: 'different_role_only', tipe_data: 'select',  akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: ['none','different_role_only','always'] },
+    { policy_key: 'notify_superadmin_on_lock',        label: 'Notif WA ke SuperAdmin saat dikunci',  kategori: 'Session & Concurrent', nilai: 'true',                tipe_data: 'boolean', akses_baca: ['superadmin','admin'], akses_ubah: ['superadmin','admin'], nilai_enum: null },
   ]
 
   const rows = items.map(item => ({
-    feature_key: 'security_login', tenant_id: null, label: item.label,
-    kategori: item.kategori, nilai: item.nilai, tipe_data: item.tipe_data,
-    akses_baca: item.akses_baca, akses_ubah: item.akses_ubah,
+    feature_key: 'security_login', tenant_id: null, policy_key: item.policy_key,
+    label: item.label, kategori: item.kategori, nilai: item.nilai,
+    tipe_data: item.tipe_data, akses_baca: item.akses_baca, akses_ubah: item.akses_ubah,
     nilai_enum: item.nilai_enum, is_active: true, updated_at: new Date().toISOString(),
   }))
 
@@ -209,7 +209,15 @@ async function seedMessageLibrary() {
     { key: 'otp_error_batas_habis',       kategori: 'otp_ui', channel: 'ui', teks: 'Batas percobaan OTP habis. Klik Kirim ulang.',    variabel: [], keterangan: 'Percobaan OTP mencapai otp_max_attempts' },
     { key: 'otp_error_verifikasi_gagal',  kategori: 'otp_ui', channel: 'ui', teks: 'Gagal memverifikasi OTP. Coba lagi.',             variabel: [], keterangan: 'verifyOTP() throw error (network atau server)' },
 
-    // ── notif_wa: 1 template WhatsApp via Fonnte ─────────────────────────────
+    // ── notif_wa: 2 template WhatsApp via Fonnte ─────────────────────────────
+    {
+      key:        'notif_wa_otp_login',
+      kategori:   'notif_wa',
+      channel:    'wa',
+      teks:       '*Kode OTP Anda: {otp_code}*\n\nUntuk masuk sebagai *{role}* di {nama_platform}.\n\n⏰ Berlaku hingga pukul *{expired_jam} WIB* tanggal {expired_tanggal}.\n\n🚫 *JANGAN berikan kode ini kepada siapapun*, termasuk pihak yang mengaku dari tim {nama_platform}.',
+      variabel:   ['otp_code', 'role', 'nama_platform', 'expired_jam', 'expired_tanggal'],
+      keterangan: 'Dikirim via Fonnte saat OTP login dikirim ke Vendor/Admin/SuperAdmin',
+    },
     {
       key:        'notif_wa_akun_dikunci',
       kategori:   'notif_wa',

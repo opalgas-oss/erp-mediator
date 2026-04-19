@@ -1,153 +1,126 @@
 // lib/config-registry.ts
-// Membaca Dynamic Config Registry dari PostgreSQL (Supabase)
-// Tabel: config_registry
+// Satu-satunya pintu server-side untuk membaca nilai dari Modul Konfigurasi.
+// Tabel: config_registry — dikelola SuperAdmin via Dashboard Modul Konfigurasi.
 //
-// PERUBAHAN dari versi Firebase:
-//   - Import Firebase → Supabase server client
-//   - Schema berubah: dari nested fields per dokumen → flat row per item
-//   - Interface ConfigRegistryItem diupdate sesuai schema PostgreSQL baru
-//   - Hapus 3 TODO comment yang sudah kedaluarsa
-//   - Tambah unstable_cache untuk caching efektif di Vercel
-//   - Tambah import 'server-only'
+// 3 MODUL DASHBOARD SUPERADMIN:
+//   1. Modul Konfigurasi → tabel config_registry    ← file ini
+//   2. Modul Pesan       → tabel message_library    ← lib/message-library.ts
+//   3. Modul API         → tabel instance_credentials ← lib/credential-reader.ts
+//
+// ATURAN:
+//   - Semua nilai yang bisa diubah SuperAdmin WAJIB dibaca lewat file ini
+//   - DILARANG baca platform_policies untuk nilai yang sudah ada di config_registry
+//   - platform_policies hanya untuk nilai yang TIDAK ada di config_registry
 
+import 'server-only'
 import { unstable_cache } from 'next/cache'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
-// ============================================================
-// TYPE DEFINITIONS — sesuai schema tabel config_registry PostgreSQL
-// ============================================================
+// ─── Tipe Data ────────────────────────────────────────────────────────────────
 
-/** Satu item konfigurasi dari tabel config_registry */
-export interface ConfigItem {
-  id:          string
-  feature_key: string
-  tenant_id:   string | null
-  label:       string
-  deskripsi:   string | null
-  kategori:    string
-  nilai:       string
-  tipe_data:   'string' | 'number' | 'boolean' | 'select'
-  terenkripsi: boolean
-  akses_baca:  string[]
-  akses_ubah:  string[]
-  nilai_min:   number | null
-  nilai_maks:  number | null
-  nilai_enum:  string[] | null
-  is_active:   boolean
-  updated_at:  string
+export interface ConfigRegistryItem {
+  id:         string
+  policy_key: string | null
+  label:      string
+  nilai:      string
+  tipe_data:  string
+  nilai_enum: string[] | null
+  is_active:  boolean
 }
 
-// ============================================================
-// FUNGSI UTAMA
-// ============================================================
+// ─── FUNGSI 1: getConfigValues ────────────────────────────────────────────────
+// Baca semua nilai untuk satu feature_key sekaligus — satu query untuk semua nilai.
+// Return map { policy_key: nilai }
+// Contoh: getConfigValues('security_login') → { max_login_attempts: '5', otp_digits: '6', ... }
 
-/**
- * Ambil nilai satu item konfigurasi berdasarkan feature_key.
- * Mengembalikan nilai aktual (nilai), bukan default.
- */
-export async function getConfigValue(
-  featureKey: string
-): Promise<string> {
-  const item = await getConfigItem(featureKey)
-  return item.nilai
-}
-
-/**
- * Ambil satu item konfigurasi lengkap berdasarkan feature_key.
- */
-export async function getConfigItem(
-  featureKey: string
-): Promise<ConfigItem> {
+export async function getConfigValues(featureKey: string): Promise<Record<string, string>> {
   const cached = unstable_cache(
     async () => {
-      const db = createServerSupabaseClient()
+      try {
+        const db = createServerSupabaseClient()
+        const { data, error } = await db
+          .from('config_registry')
+          .select('policy_key, nilai')
+          .eq('feature_key', featureKey)
+          .is('tenant_id', null)
+          .eq('is_active', true)
+          .not('policy_key', 'is', null)
 
-      const { data, error } = await db
-        .from('config_registry')
-        .select('*')
-        .eq('feature_key', featureKey)
-        .eq('is_active', true)
-        .single()
+        if (error) {
+          console.error(`[config-registry] getConfigValues(${featureKey}):`, error.message)
+          return {}
+        }
 
-      if (error || !data) {
-        throw new Error(
-          `Konfigurasi '${featureKey}' tidak ditemukan di Config Registry`
-        )
+        const map: Record<string, string> = {}
+        for (const row of data ?? []) {
+          if (row.policy_key) map[row.policy_key] = row.nilai
+        }
+        return map
+      } catch (err) {
+        console.error(`[config-registry] getConfigValues error:`, err)
+        return {}
       }
-
-      return data as ConfigItem
-    },
-    [`config:item:${featureKey}`],
-    { revalidate: 15 * 60, tags: [`config:${featureKey}`] }
-  )
-
-  return cached()
-}
-
-/**
- * Ambil semua item konfigurasi berdasarkan kategori.
- * Dipakai untuk render halaman Settings yang dikelompokkan per kategori.
- */
-export async function getAllConfigsByCategory(
-  kategori: string,
-  maxResults: number = 50
-): Promise<ConfigItem[]> {
-  const cached = unstable_cache(
-    async () => {
-      const db = createServerSupabaseClient()
-
-      const { data, error } = await db
-        .from('config_registry')
-        .select('*')
-        .eq('kategori', kategori)
-        .eq('is_active', true)
-        .order('feature_key', { ascending: true })
-        .limit(maxResults)
-
-      if (error) {
-        throw new Error(
-          `Gagal ambil konfigurasi kategori '${kategori}': ${error.message}`
-        )
-      }
-
-      return (data ?? []) as ConfigItem[]
-    },
-    [`config:kategori:${kategori}`],
-    { revalidate: 15 * 60, tags: [`config:kategori:${kategori}`] }
-  )
-
-  return cached()
-}
-
-/**
- * Ambil semua item konfigurasi berdasarkan feature_key prefix.
- * Contoh: feature_key = 'security_login' → ambil semua item security_login.*
- */
-export async function getConfigsByFeatureKey(
-  featureKey: string
-): Promise<ConfigItem[]> {
-  const cached = unstable_cache(
-    async () => {
-      const db = createServerSupabaseClient()
-
-      const { data, error } = await db
-        .from('config_registry')
-        .select('*')
-        .eq('feature_key', featureKey)
-        .eq('is_active', true)
-        .order('label', { ascending: true })
-
-      if (error) {
-        throw new Error(
-          `Gagal ambil konfigurasi '${featureKey}': ${error.message}`
-        )
-      }
-
-      return (data ?? []) as ConfigItem[]
     },
     [`config:feature:${featureKey}`],
-    { revalidate: 15 * 60, tags: [`config:${featureKey}`] }
+    { revalidate: 15 * 60, tags: [`config:${featureKey}`, 'config'] }
   )
 
   return cached()
+}
+
+// ─── FUNGSI 2: getConfigValue ─────────────────────────────────────────────────
+// Baca satu nilai dari config_registry berdasarkan policy_key.
+// Cache 15 menit — di-invalidate saat PATCH /api/config/[feature_key]
+
+export async function getConfigValue(
+  featureKey: string,
+  policyKey:  string,
+  fallback?:  string
+): Promise<string | null> {
+  const cached = unstable_cache(
+    async () => {
+      try {
+        const db = createServerSupabaseClient()
+        const { data, error } = await db
+          .from('config_registry')
+          .select('nilai')
+          .eq('feature_key', featureKey)
+          .eq('policy_key', policyKey)
+          .is('tenant_id', null)
+          .eq('is_active', true)
+          .single()
+
+        if (error) {
+          console.error(`[config-registry] getConfigValue(${featureKey}, ${policyKey}):`, error.message)
+          return null
+        }
+        return data?.nilai ?? null
+      } catch (err) {
+        console.error(`[config-registry] getConfigValue error:`, err)
+        return null
+      }
+    },
+    [`config:${featureKey}:${policyKey}`],
+    { revalidate: 15 * 60, tags: [`config:${featureKey}`, 'config'] }
+  )
+
+  const result = await cached()
+  return result ?? fallback ?? null
+}
+
+// ─── FUNGSI 3: parseConfigNumber ─────────────────────────────────────────────
+// Parse nilai string dari DB ke number dengan fallback aman
+
+export function parseConfigNumber(nilai: string | null | undefined, fallback: number): number {
+  if (nilai === null || nilai === undefined) return fallback
+  const n = Number(nilai)
+  return isNaN(n) ? fallback : n
+}
+
+// ─── FUNGSI 4: parseConfigBoolean ────────────────────────────────────────────
+// Parse nilai string dari DB ke boolean dengan fallback aman
+
+export function parseConfigBoolean(nilai: string | null | undefined, fallback: boolean): boolean {
+  if (nilai === null || nilai === undefined) return fallback
+  return nilai === 'true'
 }

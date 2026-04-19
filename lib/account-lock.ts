@@ -18,6 +18,7 @@ import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getMessage, interpolate }    from '@/lib/message-library'
 import { getCredential }              from '@/lib/credential-reader'
+import { getConfigValues, parseConfigNumber, parseConfigBoolean } from '@/lib/config-registry'
 
 // ─── Tipe Data Dokumen account_locks ─────────────────────────────────────────
 export interface AccountLockDoc {
@@ -80,12 +81,10 @@ export async function incrementLockCount(data: {
 
     const countBaru = startCount + 1
 
-    const { data: policyData } = await db
-      .from('platform_policies').select('nilai').eq('feature_key', 'security_login').single()
-
-    const policy       = (policyData?.nilai || {}) as Record<string, unknown>
-    const maxPercobaan = typeof policy['max_login_attempts']    === 'number' ? policy['max_login_attempts']    : 5
-    const durasiMenit  = typeof policy['lock_duration_minutes'] === 'number' ? policy['lock_duration_minutes'] : 15
+    // Baca config dari Modul Konfigurasi (config_registry)
+    const cfg          = await getConfigValues('security_login')
+    const maxPercobaan = parseConfigNumber(cfg['max_login_attempts'],  5)
+    const durasiMenit  = parseConfigNumber(cfg['lock_duration_minutes'], 15)
 
     if (countBaru >= maxPercobaan) {
       const lockUntil = new Date(sekarang.getTime() + durasiMenit * 60 * 1000)

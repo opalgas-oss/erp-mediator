@@ -47,25 +47,44 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
   const handleSave = async () => {
     try {
       setSaving(true)
-      const payload = {
-        items: config.flatMap((group) =>
-          group.items.map((item) => ({
-            config_id: item.id,
-            value: item.value,
-            unit: item.unit ?? null,
-            tenant_can_override: item.adminCanChange,
-            enabled: item.enabled,
-          }))
-        ),
-      }
-      const res = await fetch('/api/config/security_login', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      setError(null)
+
+      // Kumpulkan hanya item yang nilainya berubah dari originalConfig
+      const changedItems: Array<{ feature_key: string; id: string; nilai: string }> = []
+
+      config.forEach((group, gi) => {
+        group.items.forEach((item, ii) => {
+          const orig = originalConfig[gi]?.items[ii]
+          if (!orig || String(item.value) !== String(orig.value)) {
+            changedItems.push({
+              feature_key: group.feature_key,
+              id:          item.id,
+              nilai:       String(item.value),
+            })
+          }
+        })
       })
-      if (!res.ok) throw new Error('Gagal menyimpan')
-      const result = await res.json()
-      if (!result.success) throw new Error('API error')
+
+      if (changedItems.length === 0) {
+        setHasChanges(false)
+        return
+      }
+
+      // Kirim satu PATCH per item yang berubah
+      // Format { id, nilai } sesuai dengan PATCH handler di api/config/[feature_key]/route.ts
+      const results = await Promise.all(
+        changedItems.map(({ feature_key, id, nilai }) =>
+          fetch(`/api/config/${feature_key}`, {
+            method:  'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ id, nilai }),
+          }).then(res => res.json())
+        )
+      )
+
+      const anyFailed = results.some(r => !r.success)
+      if (anyFailed) throw new Error('Sebagian konfigurasi gagal disimpan')
+
       setHasChanges(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan')
