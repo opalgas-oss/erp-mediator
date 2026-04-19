@@ -17,11 +17,14 @@ export default async function LoginSettingsPage() {
     .order('label', { ascending: true })
 
   const groups = (() => {
-    const map = new Map<string, { group_id: string; group_label: string; items: typeof data }>()
+    const map = new Map<string, { group_id: string; group_label: string; items: NonNullable<typeof data> }>()
     for (const item of data ?? []) {
       const kat = item.kategori as string
-      if (!map.has(kat)) map.set(kat, { group_id: kat, group_label: kat, items: [] })
-      map.get(kat)!.items.push(item)
+      if (!map.has(kat)) {
+        map.set(kat, { group_id: kat, group_label: kat, items: [] })
+      }
+      const group = map.get(kat)
+      if (group) group.items.push(item)
     }
     return Array.from(map.values())
   })()
