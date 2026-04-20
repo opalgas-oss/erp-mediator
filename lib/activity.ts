@@ -7,11 +7,18 @@
 //   - Hapus import getEffectivePolicy dari lib/policy (server-only)
 //   - Policy activity_logging dibaca langsung via browser client
 //   - File ini sekarang bisa dipakai di Client Component maupun server
+//
+// PERUBAHAN Sesi #039:
+//   - updateUserPresence: tenantId bertipe string | null
+//     SUPERADMIN kirim null bukan '' (empty string bukan UUID valid → Supabase 400)
+//   - SUPERADMIN: tidak pakai upsert (PostgREST tidak support partial unique index)
+//     Diganti dengan SELECT → UPDATE jika ada, INSERT jika belum ada
+//   - Non-SUPERADMIN: tetap upsert dengan onConflict 'tenant_id,uid'
 
 import { createBrowserSupabaseClient } from '@/lib/supabase-client'
 
 // ============================================================
-// TYPE DEFINITIONS — TIDAK BERUBAH
+// TYPE DEFINITIONS
 // ============================================================
 
 export interface PageInfo {
@@ -43,7 +50,7 @@ export interface ActivityLogData {
 
 export async function updateUserPresence(
   uid:       string,
-  tenantId:  string,
+  tenantId:  string | null,  // null untuk SUPERADMIN — tidak punya tenant_id
   sessionId: string,
   nama:      string,
   role:      string,
@@ -51,24 +58,48 @@ export async function updateUserPresence(
   gpsKota:   string,
   pageInfo:  PageInfo
 ): Promise<void> {
-  const supabase = createBrowserSupabaseClient()
+  const supabase   = createBrowserSupabaseClient()
+  const tenantNull = tenantId || null  // '' → null untuk SUPERADMIN
 
-  await supabase
-    .from('user_presence')
-    .upsert(
-      {
-        uid,
-        tenant_id:          tenantId,
-        nama,
-        role,
-        device,
-        current_page:       pageInfo.page,
-        current_page_label: pageInfo.label,
-        last_active:        new Date().toISOString(),
-        status:             'online',
-      },
-      { onConflict: 'tenant_id,uid' }
-    )
+  const payload = {
+    uid,
+    tenant_id:          tenantNull,
+    nama,
+    role,
+    device,
+    current_page:       pageInfo.page,
+    current_page_label: pageInfo.label,
+    last_active:        new Date().toISOString(),
+    status:             'online',
+  }
+
+  if (tenantNull) {
+    // Non-SUPERADMIN: upsert berdasarkan composite key tenant_id + uid
+    await supabase
+      .from('user_presence')
+      .upsert(payload, { onConflict: 'tenant_id,uid' })
+  } else {
+    // SUPERADMIN: PostgREST tidak support partial unique index untuk upsert
+    // Ganti dengan: cek apakah sudah ada → update jika ada, insert jika belum
+    const { data: existing } = await supabase
+      .from('user_presence')
+      .select('uid')
+      .eq('uid', uid)
+      .is('tenant_id', null)
+      .maybeSingle()
+
+    if (existing) {
+      await supabase
+        .from('user_presence')
+        .update(payload)
+        .eq('uid', uid)
+        .is('tenant_id', null)
+    } else {
+      await supabase
+        .from('user_presence')
+        .insert(payload)
+    }
+  }
 }
 
 export async function writeActivityLog(
@@ -126,16 +157,21 @@ export async function writeActivityLog(
 
 export async function setUserOffline(
   uid:      string,
-  tenantId: string
+  tenantId: string | null  // null untuk SUPERADMIN
 ): Promise<void> {
   const supabase = createBrowserSupabaseClient()
 
-  await supabase
+  const query = supabase
     .from('user_presence')
     .update({
       status:      'offline',
       last_active: new Date().toISOString(),
     })
     .eq('uid', uid)
-    .eq('tenant_id', tenantId)
+
+  if (tenantId) {
+    await query.eq('tenant_id', tenantId)
+  } else {
+    await query.is('tenant_id', null)
+  }
 }

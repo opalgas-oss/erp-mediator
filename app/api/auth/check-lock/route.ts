@@ -1,11 +1,18 @@
 // app/api/auth/check-lock/route.ts
 // POST — Cek apakah akun sedang dikunci karena terlalu banyak percobaan login gagal.
-// Dipanggil oleh login/page.tsx SEBELUM memanggil Firebase Auth,
-// sehingga user tidak perlu menunggu Firebase untuk tahu akunnya terkunci.
+// Dipanggil oleh login/page.tsx SEBELUM memanggil Supabase Auth,
+// sehingga user tidak perlu menunggu Auth untuk tahu akunnya terkunci.
+//
+// MIGRASI Sesi #037: Firebase Admin + Firestore → Supabase PostgreSQL (tabel account_locks)
+//
+// PERUBAHAN Sesi #042:
+//   - Ganti hardcode 'Asia/Jakarta' → getPlatformTimezone() dari config_registry
+//     Arsitektur timezone 3-level: platform default → tenant override → user preference
 
-import { NextRequest, NextResponse } from 'next/server'
-import { z }                         from 'zod'
-import { getAccountLock }            from '@/lib/account-lock'
+import { NextRequest, NextResponse }  from 'next/server'
+import { z }                          from 'zod'
+import { getAccountLock }             from '@/lib/account-lock'
+import { getPlatformTimezone }        from '@/lib/config-registry'
 
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
 
@@ -30,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     const { email } = parsed.data
 
-    // ── Cek dokumen account_lock di Firestore ─────────────────────────────────
+    // ── Cek tabel account_locks di Supabase PostgreSQL ────────────────────────
     const lockDoc = await getAccountLock(email)
 
     // Tidak ada dokumen → akun belum pernah dikunci
@@ -39,23 +46,22 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Evaluasi apakah kunci masih aktif ─────────────────────────────────────
-    const sekarang  = Date.now()
-    const lockUntil = lockDoc.lock_until ? new Date(lockDoc.lock_until).getTime() : null
+    const sekarang   = Date.now()
+    const lockUntil  = lockDoc.lock_until ? new Date(lockDoc.lock_until).getTime() : null
     const masihKunci = lockDoc.status === 'locked' && lockUntil !== null && lockUntil > sekarang
 
     if (!masihKunci) {
-      // Kunci sudah kadaluarsa atau status bukan "locked"
       return NextResponse.json({ locked: false })
     }
 
-    // ── Format lock_until ke waktu WIB ───────────────────────────────────────
-    // Format: "HH.mm WIB" — contoh: "09.30 WIB"
+    // ── Format lock_until ke waktu lokal platform — timezone dari config_registry
+    const timezone      = await getPlatformTimezone()
     const lockUntilDate = new Date(lockUntil)
     const lockUntilWIB  = lockUntilDate
       .toLocaleTimeString('id-ID', {
         hour:     '2-digit',
         minute:   '2-digit',
-        timeZone: 'Asia/Jakarta',
+        timeZone: timezone,
         hour12:   false,
       })
       .replace(':', '.') + ' WIB'
@@ -63,7 +69,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ locked: true, lock_until_wib: lockUntilWIB })
 
   } catch (error: unknown) {
-    // Tidak ekspos stack trace — hanya pesan singkat
     const message = error instanceof Error ? error.message : 'Terjadi kesalahan server'
     return NextResponse.json({ error: message }, { status: 500 })
   }

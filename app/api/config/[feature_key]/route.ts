@@ -2,29 +2,25 @@
 // GET  — Ambil semua item konfigurasi berdasarkan feature_key, dikelompokkan per kategori
 // PATCH — Update nilai satu item konfigurasi berdasarkan feature_key + item id
 //
-// PERUBAHAN dari versi Firebase:
-//   - Hapus import getAdminDb dari firebase-admin
-//   - Query Firestore nested → query tabel config_registry PostgreSQL
-//   - GET: kembalikan items dikelompokkan per kategori (kompatibel dengan UI)
-//   - PATCH: update row config_registry + invalidate cache via revalidateTag
+// PERUBAHAN Sesi #039:
+//   - GET: hapus auth check — config_registry dibutuhkan halaman publik (login page) sebelum user login
+//   - PATCH: tetap butuh JWT + role SUPERADMIN atau ADMIN_TENANT
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { revalidateTag }              from 'next/cache'
 import { verifyJWT }                  from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
-// ─── Handler GET ──────────────────────────────────────────────────────────────
+// ─── Handler GET — PUBLIK, tidak butuh auth ───────────────────────────────────
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ feature_key: string }> }
 ) {
   try {
-    // Verifikasi JWT — verifyJWT() baca cookie sendiri
-    const decoded = await verifyJWT()
-    if (!decoded) {
-      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
-    }
+    // GET tidak butuh auth — config_registry dibaca halaman publik (login page)
+    // sebelum user login. Nilai config tidak sensitif (timeout, mode, min length).
+    // PATCH tetap butuh JWT (lihat handler PATCH di bawah)
 
     const { feature_key } = await params
     const db = createServerSupabaseClient()
@@ -71,7 +67,7 @@ export async function GET(
   }
 }
 
-// ─── Handler PATCH ────────────────────────────────────────────────────────────
+// ─── Handler PATCH — Butuh JWT + role ─────────────────────────────────────────
 
 export async function PATCH(
   request: NextRequest,

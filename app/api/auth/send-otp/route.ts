@@ -85,6 +85,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: 'Gagal menyiapkan OTP' }, { status: 500 })
     }
 
+    // ── Baca nama_brand dari tabel tenants (bukan hardcode) ──────────────────
+    // tenant_id ada di request → query nama brand platform/tenant ini
+    // Fallback: ambil tenant aktif pertama jika tenant_id kosong atau tidak ditemukan
+    let namaPlatform = ''
+    try {
+      if (tenant_id) {
+        const { data: tenantRow } = await db
+          .from('tenants')
+          .select('nama_brand')
+          .eq('id', tenant_id)
+          .single()
+        namaPlatform = tenantRow?.nama_brand ?? ''
+      }
+      if (!namaPlatform) {
+        const { data: tenantRow } = await db
+          .from('tenants')
+          .select('nama_brand')
+          .eq('status', 'aktif')
+          .limit(1)
+          .single()
+        namaPlatform = tenantRow?.nama_brand ?? ''
+      }
+    } catch { /* namaPlatform tetap '' — template tetap terkirim tanpa nama platform */ }
+
     // ── Baca Fonnte token dari Modul API (credential-reader) ──────────────────
     const apiKey = await getCredential('fonnte', 'api_token')
     if (!apiKey) {
@@ -110,7 +134,7 @@ export async function POST(request: NextRequest) {
     const template = await getMessage('notif_wa_otp_login', FALLBACK)
     const pesan    = interpolate(template, {
       otp_code: kodeOTP, nama: nama || role, role,
-      nama_platform: 'ERP Mediator', expired_jam: expiredJam, expired_tanggal: expiredTanggal,
+      nama_platform: namaPlatform, expired_jam: expiredJam, expired_tanggal: expiredTanggal,
     })
 
     // ── Kirim via Fonnte ──────────────────────────────────────────────────────

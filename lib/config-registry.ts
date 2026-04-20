@@ -11,6 +11,12 @@
 //   - Semua nilai yang bisa diubah SuperAdmin WAJIB dibaca lewat file ini
 //   - DILARANG baca platform_policies untuk nilai yang sudah ada di config_registry
 //   - platform_policies hanya untuk nilai yang TIDAK ada di config_registry
+//
+// PERUBAHAN Sesi #042:
+//   - Tambah FUNGSI 5: getPlatformTimezone()
+//     Baca timezone dari config_registry (platform_general.platform_timezone)
+//     Arsitektur 3-level: platform default → tenant override → user preference
+//     Level 1 (platform) diimplementasi sekarang. Level 2+3 di sprint berikutnya.
 
 import 'server-only'
 import { unstable_cache } from 'next/cache'
@@ -123,4 +129,24 @@ export function parseConfigNumber(nilai: string | null | undefined, fallback: nu
 export function parseConfigBoolean(nilai: string | null | undefined, fallback: boolean): boolean {
   if (nilai === null || nilai === undefined) return fallback
   return nilai === 'true'
+}
+
+// ─── FUNGSI 5: getPlatformTimezone ───────────────────────────────────────────
+// Baca timezone dari config_registry — JANGAN hardcode 'Asia/Jakarta' di kode manapun.
+//
+// Arsitektur 3-level (mature, long-term):
+//   Level 1 — Platform default : config_registry (platform_general.platform_timezone) ← AKTIF SEKARANG
+//   Level 2 — Per-tenant       : tenants.timezone (override per tenant)               ← Sprint berikutnya
+//   Level 3 — Per-user         : user_profiles.timezone (preferensi user)             ← Sprint lanjutan
+//
+// Precedence saat runtime: user timezone → tenant timezone → platform timezone → 'UTC'
+//
+// Cara pakai:
+//   import { getPlatformTimezone } from '@/lib/config-registry'
+//   const tz = await getPlatformTimezone()
+//   new Date().toLocaleTimeString('id-ID', { timeZone: tz, ... })
+
+export async function getPlatformTimezone(): Promise<string> {
+  const tz = await getConfigValue('platform_general', 'platform_timezone', 'Asia/Jakarta')
+  return tz ?? 'Asia/Jakarta'
 }

@@ -8,6 +8,9 @@
 // PERUBAHAN dari versi Firebase:
 //   - Hapus Firebase Admin initAdmin() dan getAuth()
 //   - Verifikasi JWT manual → Supabase auth.getUser() via createServerClient
+//
+// PERUBAHAN Sesi #041:
+//   - tenant_id: boleh null — SUPERADMIN tidak punya tenant_id
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z }                         from 'zod'
@@ -19,7 +22,8 @@ import { unlockAccount }             from '@/lib/account-lock'
 
 const RequestSchema = z.object({
   uid:             z.string().min(1, 'uid wajib diisi'),
-  tenant_id:       z.string().min(1, 'tenant_id wajib diisi'),
+  tenant_id:       z.string().nullable().optional(),
+  email:           z.string().email().optional(),   // opsional — untuk fallback unlock SUPERADMIN by email
   method:          z.enum(['auto', 'manual'] as const, {
     message: 'method harus "auto" atau "manual"',
   }),
@@ -41,7 +45,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { uid, tenant_id, method, unlocked_by_uid } = parsed.data
+    const { uid, method, unlocked_by_uid } = parsed.data
+    const tenant_id = parsed.data.tenant_id ?? null
+    const email     = parsed.data.email     ?? undefined
 
     // ── Custom validation: method "manual" wajib sertakan unlocked_by_uid ─────
     if (method === 'manual' && !unlocked_by_uid) {
@@ -80,7 +86,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Buka kunci akun ───────────────────────────────────────────────────────
-    await unlockAccount(uid, tenant_id, method, unlocked_by_uid)
+    await unlockAccount(uid, tenant_id, method, unlocked_by_uid, email)
 
     return NextResponse.json({ success: true, method })
 

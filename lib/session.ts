@@ -9,6 +9,10 @@
  *     Nilai default tetap tersedia sebagai fallback aman
  *   - sendOTPviaWA dan saveOTPtoFirestore sudah dihapus — diganti /api/auth/send-otp
  *   - registerBiometric: baca trusted_device_days dari config_registry via API
+ *
+ * PERUBAHAN Sesi #039:
+ *   - writeSessionLog: tenantId bertipe string | null — SUPERADMIN kirim null bukan ''
+ *     (empty string bukan UUID valid → Supabase 400 Bad Request)
  */
 
 import { createBrowserSupabaseClient } from '@/lib/supabase-client'
@@ -156,11 +160,13 @@ export async function getGPSLocation(opts?: GPSOpts): Promise<{
 
 // ---------------------------------------------------------------------------
 // 3. writeSessionLog — tabel session_logs
+//    tenantId: string | null — SUPERADMIN tidak punya tenant, kirim null
+//    (empty string '' bukan UUID valid → Supabase tolak dengan 400 Bad Request)
 // ---------------------------------------------------------------------------
 
 export async function writeSessionLog(params: {
   uid:      string
-  tenantId: string
+  tenantId: string | null
   email:    string
   role:     string
   lat:      number
@@ -176,7 +182,7 @@ export async function writeSessionLog(params: {
       id:         sessionId,
       session_id: sessionId,
       uid:        params.uid,
-      tenant_id:  params.tenantId,
+      tenant_id:  params.tenantId || null,  // '' → null untuk SUPERADMIN
       role:       params.role,
       device:     getDeviceInfo(),
       gps_kota:   params.kota,
