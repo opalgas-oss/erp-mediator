@@ -1,13 +1,25 @@
+'use client'
+
 // app/dashboard/vendor/page.tsx
 // Halaman utama Dashboard Vendor — Sprint 3
 //
-// Saat ini: placeholder konfirmasi login berhasil
+// Saat ini: placeholder konfirmasi login berhasil + tombol logout
 // Sprint 3: akan diisi dengan fitur Vendor Store, order list, dll.
 //
 // Layout sudah verifikasi JWT dan role === 'VENDOR'
 // Page ini tidak perlu verifikasi ulang.
 
+import { useRouter } from 'next/navigation'
+import { clearSessionCookies } from '@/lib/auth'
+
 export default function VendorPage() {
+  const router = useRouter()
+
+  async function handleLogout() {
+    await clearSessionCookies()
+    router.push('/login')
+  }
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-10 text-center">
       <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mx-auto mb-4">
@@ -26,9 +38,15 @@ export default function VendorPage() {
         </svg>
       </div>
       <h1 className="text-lg font-semibold text-gray-900 mb-1">Dashboard Vendor</h1>
-      <p className="text-sm text-gray-400">
+      <p className="text-sm text-gray-400 mb-6">
         Login berhasil. Fitur Vendor Store akan tersedia di Sprint 3.
       </p>
+      <button
+        onClick={handleLogout}
+        className="text-sm text-red-500 hover:text-red-700 underline"
+      >
+        Logout
+      </button>
     </div>
   )
 }
