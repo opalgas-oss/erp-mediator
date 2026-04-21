@@ -1,13 +1,26 @@
 // app/dashboard/superadmin/layout.tsx
+//
+// PERUBAHAN Sesi #045 — Fix Performa (mengacu PERFORMANCE_STANDARDS_v1.md Poin 6.D):
+//   - getSidebarData: 3 query sequential → Promise.all paralel
+//   - getSidebarData: dibungkus unstable_cache, TTL dibaca dari DB
+//     Key: config_registry (platform_general.sidebar_cache_ttl_seconds) — tidak hardcode
+//     Fallback: 1800 detik jika key belum ada di DB
+//   - Cache diinvalidasi via revalidateTag('sidebar-data') di PATCH /api/config
+
 export const dynamic = 'force-dynamic'
 
 import { redirect }                   from 'next/navigation'
+import { unstable_cache }             from 'next/cache'
 import { verifyJWT }                  from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getMessagesByKategori }      from '@/lib/message-library'
+import { getConfigValue }             from '@/lib/config-registry'
 import { DashboardShell }             from '@/components/DashboardShell'
 
-async function getSidebarData(): Promise<{
+// ─── Data sidebar — Promise.all + unstable_cache ──────────────────────────────
+// TTL dibaca dari config_registry agar bisa dikonfigurasi SuperAdmin
+// tanpa menyentuh kode. Fallback 1800 detik (30 menit).
+async function fetchSidebarData(): Promise<{
   brandName:   string
   messages:    Record<string, string>
   featureKeys: string[]
@@ -15,25 +28,24 @@ async function getSidebarData(): Promise<{
   try {
     const db = createServerSupabaseClient()
 
-    const { data: tenant } = await db
-      .from('tenants')
-      .select('nama_brand')
-      .limit(1)
-      .single()
+    // Paralel — 3 query jalan bersamaan, bukan sequential
+    const [tenantResult, messages, configResult] = await Promise.all([
+      db.from('tenants').select('nama_brand').limit(1).single(),
+      getMessagesByKategori(['sidebar_ui', 'page_ui']),
+      db.from('config_registry')
+        .select('feature_key')
+        .is('tenant_id', null)
+        .eq('is_active', true),
+    ])
 
-    // Fetch sidebar_ui + page_ui sekaligus — satu round-trip
-    const messages = await getMessagesByKategori(['sidebar_ui', 'page_ui'])
-
-    const { data: configRows } = await db
-      .from('config_registry')
-      .select('feature_key')
-      .is('tenant_id', null)
-      .eq('is_active', true)
-
-    const featureKeys = [...new Set((configRows ?? []).map((r: { feature_key: string }) => r.feature_key))]
+    const featureKeys = [
+      ...new Set(
+        (configResult.data ?? []).map((r: { feature_key: string }) => r.feature_key)
+      ),
+    ]
 
     return {
-      brandName:   tenant?.nama_brand ?? 'ERP Mediator',
+      brandName:   tenantResult.data?.nama_brand ?? 'ERP Mediator',
       messages:    messages ?? {},
       featureKeys: featureKeys.length > 0 ? featureKeys : ['security_login'],
     }
@@ -49,6 +61,18 @@ async function getSidebarData(): Promise<{
 export default async function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   const payload = await verifyJWT()
   if (!payload || payload.role !== 'SUPERADMIN') redirect('/login')
+
+  // Baca TTL sidebar cache dari config_registry — tidak hardcode
+  // getConfigValue() pakai unstable_cache 15 menit, sehingga cepat setelah warm
+  const ttlStr   = await getConfigValue('platform_general', 'sidebar_cache_ttl_seconds', '1800')
+  const revalidate = Number(ttlStr) || 1800
+
+  // unstable_cache dengan TTL dari DB dan tag untuk explicit invalidation
+  const getSidebarData = unstable_cache(
+    fetchSidebarData,
+    ['sidebar-data'],
+    { revalidate, tags: ['sidebar-data'] }
+  )
 
   const { brandName, messages, featureKeys } = await getSidebarData()
 

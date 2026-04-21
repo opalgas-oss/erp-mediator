@@ -17,6 +17,15 @@
 // PERUBAHAN Sesi #042:
 //   - Fix TC-I04: ambil nama SUPERADMIN dari tabel users sebelum updateUserPresence
 //     Sebelumnya nama di-hardcode '' → sekarang query users.nama by uid
+//
+// PERUBAHAN Sesi #045 — Fix Performa (mengacu PERFORMANCE_STANDARDS_v1.md):
+//   - HAPUS getSessionTimeoutMinutes() — fungsi ini fetch /api/config/security_login ulang
+//     padahal data sudah ada di configLogin state sejak initConfigDanGPS() di mount
+//   - Ganti 2 pemanggilan getSessionTimeoutMinutes() → Number(configLogin['session_timeout_minutes'] || '480')
+//   - lanjutSetelahRole(): hapus fetch /api/config/security_login untuk require_otp
+//     Ganti → configLogin['require_otp'] === 'true' (data sudah ada di state)
+//   - Guard clause unlock-account: hanya panggil jika had_attempts === true dari check-lock response
+//     Sebelumnya: dipanggil SETIAP login berhasil → buang 1.13s di 99% kasus normal
 
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams }            from 'next/navigation'
@@ -179,14 +188,16 @@ function LoginForm() {
   const [otpHitunganMundur, setOtpHitunganMundur] = useState(60)
   const [otpExpiryMenit,    setOtpExpiryMenit]    = useState(5)
 
-  // State config dari config_registry (Modul Konfigurasi) — untuk GPS dan validasi form
-  // Default adalah fallback aman — akan di-update saat config berhasil diload dari DB
+  // State config dari config_registry (Modul Konfigurasi) — untuk GPS dan validasi form.
+  // Ini adalah SATU-SATUNYA sumber config di seluruh flow login.
+  // Di-load sekali saat mount di initConfigDanGPS() — tidak perlu fetch ulang.
   const [configLogin, setConfigLogin] = useState<Record<string, string>>({
     gps_timeout_seconds:     '10',
     gps_cache_ttl_minutes:   '30',
     gps_mode:                'required',
     password_min_length:     '8',
     session_timeout_minutes: '480',
+    require_otp:             'true',
   })
 
   // State pesan dari message_library (Modul Pesan)
@@ -211,13 +222,13 @@ function LoginForm() {
   }, [])
 
   // ── TAHAP 0: Load config GPS dari Modul Konfigurasi, lalu start GPS ───────
-  // GPS berjalan setelah config terload agar timeout dan cache TTL dari DB
+  // Config di-fetch SEKALI di sini dan disimpan di configLogin state.
+  // Semua bagian flow login WAJIB baca dari configLogin state — tidak fetch ulang.
   useEffect(() => {
     if (gpsUdahDiminta.current) return
     gpsUdahDiminta.current = true
 
     async function initConfigDanGPS() {
-      // Fetch config dari config_registry (Modul Konfigurasi)
       let gpsTimeoutMs  = 10 * 1000       // fallback 10 detik
       let gpsCacheTtlMs = 30 * 60 * 1000  // fallback 30 menit
 
@@ -230,6 +241,8 @@ function LoginForm() {
           for (const item of items) {
             if (item.policy_key && item.nilai !== undefined) map[item.policy_key] = item.nilai
           }
+          // Simpan SEMUA nilai ke configLogin — termasuk require_otp dan session_timeout_minutes
+          // Sehingga tidak ada fetch ulang di lanjutSetelahRole atau saat set session cookie
           if (Object.keys(map).length > 0) setConfigLogin(prev => ({ ...prev, ...map }))
 
           const timeoutSec = Number(findConfigValue(items, 'gps_timeout_seconds'))
@@ -239,7 +252,6 @@ function LoginForm() {
         }
       } catch { /* pakai fallback */ }
 
-      // Jalankan GPS background dengan nilai dari config_registry
       try {
         const hasil = await getGPSLocation({ timeoutMs: gpsTimeoutMs, cacheTtlMs: gpsCacheTtlMs })
         setGps(hasil)
@@ -275,7 +287,7 @@ function LoginForm() {
     }
   }
 
-  // ── validasiForm: password_min_length dari config_registry ───────────────
+  // ── validasiForm: password_min_length dari configLogin state ─────────────
   function validasiForm(): boolean {
     let valid = true
     if (!email) { setErrorEmail(m('login_validasi_email_kosong')); valid = false }
@@ -293,25 +305,10 @@ function LoginForm() {
     return valid
   }
 
-  // ── Helper: ambil session_timeout_minutes dari config_registry ────────────
-  async function getSessionTimeoutMinutes(): Promise<number> {
-    try {
-      const res  = await fetch('/api/config/security_login')
-      const data = await res.json()
-      if (data.success && data.data) {
-        const items = extractConfigItems(data.data)
-        const val   = findConfigValue(items, 'session_timeout_minutes')
-        if (val) return Number(val) || 480
-      }
-    } catch {}
-    return Number(configLogin['session_timeout_minutes'] || '480')
-  }
-
   // ── TAHAP 1: Submit email + password ──────────────────────────────────────
   async function handleLogin() {
     if (!validasiForm()) return
 
-    // Cek GPS — wajib ada sebelum lanjut autentikasi (sesuai gps_mode dari config)
     const gpsMode = configLogin['gps_mode'] ?? 'required'
     if (!gpsRef.current && gpsMode === 'required') {
       setIsLoading(true)
@@ -332,12 +329,18 @@ function LoginForm() {
     setError('')
 
     // Cek kunci akun sebelum login
+    // had_attempts dari response dipakai sebagai guard untuk unlock-account
+    let hadAttempts = false
     try {
       const resLock  = await fetch('/api/auth/check-lock', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       })
       const dataLock = await resLock.json()
+
+      // Simpan had_attempts — dipakai setelah login berhasil
+      hadAttempts = dataLock.had_attempts === true
+
       if (dataLock.locked) {
         setError(m('login_error_akun_dikunci', { lock_until_wib: dataLock.lock_until_wib }))
         setIsLoading(false)
@@ -361,7 +364,8 @@ function LoginForm() {
 
       // SUPERADMIN — tidak punya tenant_id
       if (claimRole === 'SUPERADMIN') {
-        const sessionTimeoutMinutes = await getSessionTimeoutMinutes()
+        // Baca session_timeout_minutes dari configLogin state — tidak perlu fetch ulang
+        const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || '480')
         const maxAgeSec = sessionTimeoutMinutes * 60
         const loginAt   = new Date().toISOString()
 
@@ -369,7 +373,6 @@ function LoginForm() {
         document.cookie = `gps_kota=${encodeURIComponent(gpsRef.current?.kota || 'Tidak Diketahui')}; path=/; max-age=${maxAgeSec}`
         document.cookie = `session_login_at=${encodeURIComponent(loginAt)}; path=/; max-age=${maxAgeSec}`
 
-        // Tulis session log ke Supabase (TC-I01)
         let sessionId = ''
         try {
           sessionId = await writeSessionLog({
@@ -386,7 +389,6 @@ function LoginForm() {
         }
 
         // Ambil nama SUPERADMIN dari tabel users untuk user_presence (TC-I04)
-        // Sebelumnya '' → sekarang query users.nama agar presence tidak kosong
         let namaSuperAdmin = ''
         try {
           const { data: userRow } = await supabase
@@ -395,21 +397,23 @@ function LoginForm() {
             .eq('id', data.user.id)
             .single()
           namaSuperAdmin = userRow?.nama || ''
-        } catch { /* tetap lanjut tanpa nama — presence tetap terupdate */ }
+        } catch { /* tetap lanjut tanpa nama */ }
 
-        // Update user presence (TC-I04)
         updateUserPresence(
           data.user.id, '', sessionId, namaSuperAdmin, claimRole,
           getDeviceInfo(), gpsRef.current?.kota || '',
           { page: '/login', label: 'Halaman Login', module: 'AUTH' },
         ).catch((err) => console.error('[login] Gagal update presence SUPERADMIN:', err))
 
-        // Reset counter account_locks SUPERADMIN setelah login berhasil (TC-C05)
-        fetch('/api/auth/unlock-account', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ uid: data.user.id, tenant_id: null, email, method: 'auto' }),
-        }).catch(err => console.error('[login] unlock-account SUPERADMIN gagal:', err))
+        // Guard clause: unlock-account hanya dipanggil jika ada percobaan gagal sebelumnya
+        // had_attempts: false → skip, hemat ~1.13s di login normal
+        if (hadAttempts) {
+          fetch('/api/auth/unlock-account', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid: data.user.id, tenant_id: null, email, method: 'auto' }),
+          }).catch(err => console.error('[login] unlock-account SUPERADMIN gagal:', err))
+        }
 
         router.push('/dashboard/superadmin')
         return
@@ -425,10 +429,13 @@ function LoginForm() {
       setUserEmail(data.user.email || email)
       setTenantId(claimTenantId)
 
-      fetch('/api/auth/unlock-account', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: data.user.id, tenant_id: claimTenantId, method: 'auto' }),
-      }).catch(err => console.error('[login] unlock-account gagal:', err))
+      // Guard clause: unlock-account hanya dipanggil jika ada percobaan gagal sebelumnya
+      if (hadAttempts) {
+        fetch('/api/auth/unlock-account', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: data.user.id, tenant_id: claimTenantId, method: 'auto' }),
+        }).catch(err => console.error('[login] unlock-account gagal:', err))
+      }
 
       setTahap('LOADING')
       const resSesi  = await fetch('/api/auth/check-session', {
@@ -518,18 +525,9 @@ function LoginForm() {
     role: string, tid: string, uidUser: string, namaUser: string, waNumber: string,
   ) {
     try {
-      // Baca require_otp dari Modul Konfigurasi (config_registry)
-      let requireOtp = false
-      try {
-        const res  = await fetch('/api/config/security_login')
-        const data = await res.json()
-        if (data.success && data.data) {
-          const items = extractConfigItems(data.data)
-          requireOtp  = findConfigValue(items, 'require_otp') === 'true'
-        }
-      } catch {
-        requireOtp = false
-      }
+      // Baca require_otp dari configLogin state — sudah di-load di initConfigDanGPS()
+      // Tidak perlu fetch /api/config/security_login ulang — data sudah ada
+      const requireOtp = configLogin['require_otp'] === 'true'
 
       const isCustomer = role.toLowerCase() === 'customer'
       const perluOTP   = !isCustomer && requireOtp
@@ -663,7 +661,8 @@ function LoginForm() {
         kota: gpsRef.current?.kota ?? '',
       })
 
-      const sessionTimeoutMinutes = await getSessionTimeoutMinutes()
+      // Baca session_timeout_minutes dari configLogin state — tidak perlu fetch ulang
+      const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || '480')
       const maxAgeSec = sessionTimeoutMinutes * 60
       const loginAt   = new Date().toISOString()
 

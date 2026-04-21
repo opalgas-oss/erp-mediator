@@ -5,11 +5,21 @@
 // PERUBAHAN Sesi #039:
 //   - GET: hapus auth check — config_registry dibutuhkan halaman publik (login page) sebelum user login
 //   - PATCH: tetap butuh JWT + role SUPERADMIN atau ADMIN_TENANT
+//
+// PERUBAHAN Sesi #045 — Fix Performa (mengacu PERFORMANCE_STANDARDS_v1.md Poin 7):
+//   - GET: tambah Redis L1 cache-aside pattern
+//     Urutan: Redis (1–10ms) → miss → Supabase (50–150ms) → simpan ke Redis TTL dari DB
+//   - GET: TTL Redis dibaca dari config_registry (platform_general.redis_ttl_config_seconds)
+//     Tidak hardcode — nilai ada di DB, SuperAdmin bisa ubah via Dashboard
+//   - PATCH: tambah Redis explicit invalidation + revalidateTag sidebar-data
+//     Saat config diubah: Redis del + Next.js cache revalidate → data baru langsung aktif
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { revalidateTag }              from 'next/cache'
 import { verifyJWT }                  from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { getConfigValue }             from '@/lib/config-registry'
+import { getRedisClient, REDIS_TTL }  from '@/lib/redis'
 
 // ─── Handler GET — PUBLIK, tidak butuh auth ───────────────────────────────────
 
@@ -18,14 +28,28 @@ export async function GET(
   { params }: { params: Promise<{ feature_key: string }> }
 ) {
   try {
-    // GET tidak butuh auth — config_registry dibaca halaman publik (login page)
-    // sebelum user login. Nilai config tidak sensitif (timeout, mode, min length).
-    // PATCH tetap butuh JWT (lihat handler PATCH di bawah)
-
     const { feature_key } = await params
+    const cacheKey        = `config:api:${feature_key}`
+
+    // ── L1 Cache: cek Redis dulu (~1–10ms jika hit) ───────────────────────────
+    const redis = await getRedisClient()
+    if (redis) {
+      try {
+        const cached = await redis.get<string>(cacheKey)
+        if (cached) {
+          // Cache hit — kembalikan langsung tanpa sentuh Supabase
+          const parsed = typeof cached === 'string' ? JSON.parse(cached) : cached
+          return NextResponse.json(parsed)
+        }
+      } catch (redisErr) {
+        // Redis error tidak boleh hentikan request — lanjut ke Supabase
+        console.warn('[GET /api/config] Redis get gagal:', redisErr)
+      }
+    }
+
+    // ── L2: Query Supabase (~50–150ms) ────────────────────────────────────────
     const db = createServerSupabaseClient()
 
-    // Ambil semua item config untuk feature_key ini
     const { data, error } = await db
       .from('config_registry')
       .select('*')
@@ -57,9 +81,27 @@ export async function GET(
       groupMap.get(kat)!.items.push(item)
     }
 
-    const groups = Array.from(groupMap.values())
+    const result = { success: true, data: Array.from(groupMap.values()) }
 
-    return NextResponse.json({ success: true, data: groups })
+    // ── Simpan ke Redis — TTL dari config_registry (bukan hardcode) ───────────
+    // TTL diambil dari platform_general.redis_ttl_config_seconds
+    // getConfigValue() pakai unstable_cache 15 menit — cepat setelah warm
+    // Fallback ke REDIS_TTL.CONFIG (600) jika key belum ada di DB
+    if (redis) {
+      try {
+        const ttlStr = await getConfigValue(
+          'platform_general',
+          'redis_ttl_config_seconds',
+          String(REDIS_TTL.CONFIG)
+        )
+        const ttl = Number(ttlStr) || REDIS_TTL.CONFIG
+        await redis.set(cacheKey, JSON.stringify(result), { ex: ttl })
+      } catch (redisErr) {
+        console.warn('[GET /api/config] Redis set gagal:', redisErr)
+      }
+    }
+
+    return NextResponse.json(result)
 
   } catch (error) {
     console.error('[GET /api/config] Error:', error)
@@ -89,9 +131,6 @@ export async function PATCH(
     const { feature_key } = await params
     const payload = await request.json()
 
-    // payload berisi: { id: string, nilai: string }
-    // id = UUID row yang akan diupdate
-    // nilai = nilai baru
     if (!payload.id || payload.nilai === undefined) {
       return NextResponse.json(
         { success: false, message: 'Field id dan nilai wajib ada' },
@@ -113,8 +152,21 @@ export async function PATCH(
 
     if (error) throw error
 
-    // Invalidate cache agar data baru langsung terlihat tanpa tunggu TTL
-    revalidateTag(`config:${feature_key}`, 'page')
+    // ── Invalidasi cache — Next.js server cache ────────────────────────────────
+    revalidateTag(`config:${feature_key}`)
+    revalidateTag('config')
+    revalidateTag('sidebar-data')
+
+    // ── Invalidasi cache — Redis L1 ───────────────────────────────────────────
+    const redis    = await getRedisClient()
+    const cacheKey = `config:api:${feature_key}`
+    if (redis) {
+      try {
+        await redis.del(cacheKey)
+      } catch (redisErr) {
+        console.warn('[PATCH /api/config] Redis del gagal:', redisErr)
+      }
+    }
 
     return NextResponse.json({ success: true, message: 'Konfigurasi berhasil disimpan' })
 

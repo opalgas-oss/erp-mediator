@@ -1,16 +1,28 @@
 # ERP Mediator Hyperlocal — Konteks Project untuk Claude Code
-# Sprint 1 — Login & Auth Lengkap (FASE M Aktif)
-# Terakhir diupdate: 17 April 2026 — Sesi #032
-# Perubahan dari versi sebelumnya:
+# Sprint 1 — Login & Auth Lengkap
+# Terakhir diupdate: 21 April 2026 — Sesi #045
+# Perubahan dari Sesi #032 (tetap berlaku):
 #   - IDENTITAS PROJECT: Stack diupdate — Firebase/Firestore → Supabase/PostgreSQL
-#   - SPRINT AKTIF: FASE M sebagai prioritas berikutnya (Sesi #033)
 #   - FILE LIB: Diupdate total — hapus Firebase, tambah Supabase + Repository/Service/Adapter
-#   - FILE PENTING: Diupdate — hapus firestore.rules, tambah file Supabase
 #   - ATURAN COOKIE SESSION: Firebase JWT → Supabase JWT
 #   - ATURAN CODING: Tambah aturan Supabase + API Layer + Database Standards
 #   - PATH DATABASE: Firestore paths → PostgreSQL tables
 #   - TIGA SISTEM REALTIME: onSnapshot → Supabase Realtime
 #   - STANDAR CACHE: Diupdate — unstable_cache + react.cache() + Upstash Redis
+# Perubahan Sesi #044:
+#   - SPRINT AKTIF: FASE M SELESAI. TAHAP P0 SELESAI. TAHAP 3 Responsive SELESAI.
+#   - FILE PENTING: settings/config/ → settings/security-login/ (rename sesuai feature_key)
+#   - KOMPONEN BARU: DashboardShell.tsx. SidebarNav.tsx REWRITE. DashboardHeader.tsx UPDATE.
+#   - STAGING URL PERMANEN: erp-mediator-git-dev-philips-liemenas-projects.vercel.app
+#   - RESTART SERVER: dev.ps1 (klik kanan → Run with PowerShell) — JANGAN npm run dev manual
+# Perubahan Sesi #045:
+#   - lib/redis.ts: BARU — Redis client lazy init via getCredential() + env fallback
+#   - STANDAR CACHE: Tambah Redis L1 cache pattern untuk API route handlers
+#   - scripts/add-redis-cache-ttl-config.sql: BARU — 4 key config_registry (platform_general)
+#   - app/api/config/[feature_key]/route.ts: Redis L1 cache-aside + invalidation
+#   - app/login/page.tsx: dedup config fetch (3→1), guard unlock-account with had_attempts
+#   - app/dashboard/superadmin/layout.tsx: Promise.all + unstable_cache TTL dari DB
+#   - Vercel Fluid Compute: AKTIF (dikonfirmasi Sesi #045)
 
 ---
 
@@ -42,6 +54,13 @@ Semua credential service disimpan terenkripsi di database — TIDAK ada di .env 
 - v0.app: TIDAK DIGUNAKAN sejak Sesi #022 — semua UI dikerjakan via Claude + MCP
 
 Port lokal: localhost:3000 (satu port saja, tidak boleh ganti)
+
+**RESTART SERVER:** Jalankan `dev.ps1` (klik kanan → Run with PowerShell).
+JANGAN instruksikan npm run dev manual atau PowerShell custom.
+
+**STAGING URL PERMANEN:** `https://erp-mediator-git-dev-philips-liemenas-projects.vercel.app`
+URL ini selalu mengikuti branch `dev`. Gunakan ini untuk semua testing online.
+JANGAN gunakan deployment-specific URL (yang ada hash di tengahnya — berubah setiap build).
 
 ---
 
@@ -78,15 +97,22 @@ WAJIB diikuti untuk setiap perubahan kode, penambahan fitur, atau perbaikan bug:
 ---
 
 ## SPRINT AKTIF
-(Update Sesi #032 — FASE M sebagai prioritas pertama Sesi #033)
+(Update Sesi #045)
 
 - Sprint: Sprint 1 — Login & Auth Lengkap
-- Step selesai: A, B, C, D, E.1, E.2, E.3, E.4.1, E.4.2, TAHAP 0, **TAHAP 1 ✅ SELESAI DI STAGING (Sesi #031)**
-- **Yang dikerjakan berikutnya: FASE M — Migrasi Firebase → Supabase (mulai Sesi #033)**
-- TAHAP P0: Dikerjakan otomatis dalam FASE M (P0.1 di M.D, P0.4 di M.G)
-- Referensi FASE M: MIGRATION_PLAN_FIREBASE_TO_SUPABASE_v1.md
+- FASE M: ✅ SELESAI PENUH (Sesi #033–#044)
+- TAHAP P0: ✅ SELESAI (otomatis dalam FASE M)
+- TAHAP 3 Responsive Design: ✅ SELESAI (Sesi #044)
+- Vercel Fluid Compute: ✅ AKTIF (dikonfirmasi Sesi #045)
+- Performance fix code: ✅ SELESAI (Sesi #045) — BELUM PUSH ke dev
+- SQL new config keys: ✅ Script siap (Sesi #045) — BELUM DIJALANKAN di DB
+- TC lulus: 13/36 — TC-D01-D03 prioritas berikutnya di staging URL
+- Yang dikerjakan berikutnya:
+  1. Restart Claude Desktop → Supabase MCP akan bisa execute_sql
+  2. Jalankan scripts/add-redis-cache-ttl-config.sql via Supabase MCP
+  3. Push ke dev → Vercel deploy
+  4. TC-D01-D03 di staging URL
 - Referensi UI: UI_UX_Approved\dashboard_config_login_sesi025_v1.html
-- Testing: 10/36 TC lulus — 26 TC pending
 
 ---
 
@@ -104,10 +130,13 @@ SUPABASE_SERVICE_ROLE_KEY=[service-role-key dari Supabase Dashboard]
 TIDAK ADA credential lain di .env (Xendit, Fonnte, Cloudinary, Redis, Typesense, SMTP, Cloudflare).
 Semua credential service diisi via Dashboard SuperAdmin → menu Integrasi → disimpan terenkripsi di database.
 
+**Vercel:** 4 variable ini wajib ter-set untuk Production + Preview environment.
+Cek di: Vercel → erp-mediator → Settings → Environment Variables.
+
 ---
 
 ## FILE LIB YANG SUDAH ADA / YANG AKAN ADA SETELAH FASE M
-(Update Sesi #032 — GANTI TOTAL)
+(Update Sesi #045 — tambah lib/redis.ts)
 
 ### Layer Foundation (dibuat di FASE M C)
 - lib/supabase-server.ts — createServerSupabaseClient() service role — HANYA server-side
@@ -136,15 +165,19 @@ Semua credential service diisi via Dashboard SuperAdmin → menu Integrasi → d
 ### Layer Helper (dimigrasi dari Firebase di FASE M)
 - lib/auth-server.ts — verifyJWT() dengan react.cache() — server-side only
 - lib/auth.ts — RBAC, session cookies, role mapping
-- lib/config-registry.ts — getConfigValue() via unstable_cache
+- lib/config-registry.ts — getConfigValue() + getPlatformTimezone() via unstable_cache
+- lib/message-library.ts — getMessage() + getMessagesByKategori() via unstable_cache
+- lib/credential-reader.ts — getCredential() — baca dari DB, fallback ke env
+- lib/credential-crypto.ts — enkripsi/dekripsi AES-256-GCM envelope encryption
 - lib/policy.ts — getEffectivePolicy() via unstable_cache
-- lib/activity.ts — updateUserPresence() + writeActivityLog()
+- lib/activity.ts — updateUserPresence() + writeActivityLog() + setUserOffline()
 - lib/cache.ts — MemoryCache + helper unstable_cache + react.cache()
 - lib/session.ts — GPS, OTP, Biometric, session log
 - lib/account-lock.ts — getAccountLock(), setAccountLock()
 - lib/errors.ts — Hierarki AppError + 9 jenis error standar
 - lib/api/handler.ts — withApi() wrapper untuk semua Route Handler
 - lib/api/envelope.ts — successEnvelope(), errorEnvelope()
+- **lib/redis.ts** — BARU Sesi #045 — getRedisClient() lazy init via getCredential() + env fallback. REDIS_TTL fallback constants. TTL sumber kebenaran dari config_registry (platform_general).
 
 ### Yang Diarsipkan di FASE M B.2 (bukan dihapus)
 - lib/firebase.ts → _arsip/firebase-legacy/lib/
@@ -153,41 +186,46 @@ Semua credential service diisi via Dashboard SuperAdmin → menu Integrasi → d
 ---
 
 ## FILE PENTING YANG SUDAH ADA
-(Update Sesi #032 — status diupdate sesuai FASE M)
+(Update Sesi #045 — performance fix + redis)
 
-- app/login/page.tsx — akan dimigrasi FASE M F.2
-- app/register/page.tsx — belum menyentuh FASE M
-- app/init-philipsliemena/page.tsx — akan dimigrasi FASE M F.6
-- app/dashboard/superadmin/layout.tsx — akan dimigrasi FASE M F.3
-- app/dashboard/superadmin/page.tsx — akan dimigrasi FASE M F.4
-- app/dashboard/superadmin/settings/config/page.tsx — akan dimigrasi FASE M F.5
-- app/dashboard/superadmin/settings/config/ConfigPageClient.tsx — TIDAK perlu dimigrasi
-- app/dashboard/superadmin/settings/[...slug]/page.tsx — TIDAK perlu dimigrasi
-- app/api/setup/check/route.ts — akan dimigrasi FASE M E.6
-- app/api/setup/create-superadmin/route.ts — akan dimigrasi FASE M E.7
-- app/api/config/[feature_key]/route.ts — akan dimigrasi FASE M E.5
-- app/api/auth/check-lock/route.ts — akan dimigrasi FASE M E.1
-- app/api/auth/lock-account/route.ts — akan dimigrasi FASE M E.2
-- app/api/auth/unlock-account/route.ts — akan dimigrasi FASE M E.3
-- app/api/auth/check-session/route.ts — akan dimigrasi FASE M E.4
-- components/SidebarNav.tsx — TIDAK perlu dimigrasi
-- components/ConfigItem.tsx — TIDAK perlu dimigrasi
-- scripts/seed-tenant.mjs — akan DITULIS ULANG FASE M H.1
-- middleware.ts — akan dimigrasi + full crypto verify FASE M F.1
-- next.config.ts — akan ditambah HTTP Security Headers FASE M G.1
-- firestore.rules — akan DIARSIPKAN FASE M B.2
+- app/login/page.tsx ✅ — UPDATE Sesi #045: hapus getSessionTimeoutMinutes(), guard unlock-account with had_attempts, dedup config fetch (3→1)
+- app/register/page.tsx — placeholder
+- app/init-philipsliemena/page.tsx ✅ — setup SuperAdmin pertama
+- app/dashboard/superadmin/layout.tsx ✅ — UPDATE Sesi #045: Promise.all 3 query paralel + unstable_cache TTL dari config_registry
+- app/dashboard/superadmin/page.tsx ✅ — dashboard utama SuperAdmin
+- **app/dashboard/superadmin/settings/security-login/page.tsx** ✅ — config page (RENAMED dari config/ — Sesi #044)
+- **app/dashboard/superadmin/settings/security-login/ConfigPageClient.tsx** ✅ — form edit config
+- app/dashboard/superadmin/settings/[...slug]/page.tsx ✅ — catch-all placeholder
+- app/api/setup/check/route.ts ✅
+- app/api/setup/create-superadmin/route.ts ✅
+- app/api/config/[feature_key]/route.ts ✅ — UPDATE Sesi #045: Redis L1 cache-aside + invalidation + TTL dari config_registry
+- app/api/auth/check-lock/route.ts ✅ — UPDATE Sesi #045: tambah had_attempts di semua response path
+- app/api/auth/lock-account/route.ts ✅ — baca notify_superadmin_on_lock dari config_registry
+- app/api/auth/unlock-account/route.ts ✅
+- app/api/auth/check-session/route.ts ✅
+- app/api/auth/send-otp/route.ts ✅
+- app/api/message-library/route.ts ✅ — GET publik per kategori
+- middleware.ts ✅ — full crypto verify Supabase JWT
+- next.config.ts ✅ — HTTP Security Headers
+- scripts/seed-tenant.mjs ✅ — 6 bagian seed
+- scripts/seed-credentials.mjs ✅ — migrate .env → DB
+- **scripts/add-redis-cache-ttl-config.sql** ✅ — BARU Sesi #045 — 4 key config_registry untuk Redis TTL + sidebar cache TTL. ⚠️ BELUM DIJALANKAN — jalankan via Supabase Dashboard atau Supabase MCP setelah restart Claude Desktop.
+
+## KOMPONEN YANG SUDAH ADA
+(Update Sesi #044 — tidak berubah)
+
+- **components/DashboardShell.tsx** ✅ BARU Sesi #044 — client wrapper mobile sidebar state
+- **components/SidebarNav.tsx** ✅ REWRITE Sesi #044 — data-driven dari DB, NAV_POSITION constant, responsive
+- **components/DashboardHeader.tsx** ✅ UPDATE Sesi #044 — messages prop, judul dinamis, hamburger
+- components/ConfigItem.tsx ✅ — form item config (toggle, number, select)
+- components/config/ ✅ — komponen UI config
 
 ---
 
 ## ATURAN PENTING COOKIE SESSION
-(Update Sesi #032 — Firebase JWT → Supabase JWT setelah FASE M)
+(Update Sesi #032 — tidak berubah)
 
-SEBELUM FASE M (kondisi sekarang):
-- Cookie 'session' berisi Firebase ID Token (JWT)
-- Middleware decode base64 untuk routing
-- verifyJWT() verifikasi via Firebase Admin SDK
-
-SETELAH FASE M (kondisi baru):
+KONDISI AKTIF (setelah FASE M selesai):
 - Cookie 'session' berisi Supabase JWT
 - Middleware verifikasi full crypto dengan Supabase JWT secret
 - verifyJWT() verifikasi via Supabase Auth, dibungkus react.cache()
@@ -197,68 +235,87 @@ SETELAH FASE M (kondisi baru):
 ---
 
 ## ATURAN CODING WAJIB — TIDAK BOLEH DILANGGAR
-(Update Sesi #032 — tambah aturan API Layer + Database Standards)
+(Update Sesi #032 — tambah aturan API Layer + Database Standards. Update Sesi #042–#045)
 
 ### Aturan Arsitektur
-1. SEMUA nilai konfigurasi bisnis WAJIB baca via getEffectivePolicy() — TIDAK BOLEH hardcode
-2. SETIAP halaman WAJIB panggil updateUserPresence() dan writeActivityLog() dari lib/activity.ts
-3. SETIAP API route WAJIB validasi input dengan Zod
-4. SEMUA kalkulasi uang HANYA di server — tidak ada di browser
-5. SETIAP tabel PostgreSQL WAJIB ada tenant_id
-6. SEMUA teks UI dalam Bahasa Indonesia
-7. Komentar kode dalam Bahasa Indonesia
-8. Sebelum buat file baru — cek apakah fungsinya sudah ada di lib/
+1. SEMUA nilai konfigurasi bisnis WAJIB baca via getConfigValues() — TIDAK BOLEH hardcode
+2. SEMUA teks ke user WAJIB baca dari message_library via getMessage() atau m() helper
+3. SEMUA credential service WAJIB baca via getCredential() dari credential-reader
+4. SETIAP halaman WAJIB panggil updateUserPresence() dan writeActivityLog() dari lib/activity.ts
+5. SETIAP API route WAJIB validasi input dengan Zod
+6. SEMUA kalkulasi uang HANYA di server — tidak ada di browser
+7. SETIAP tabel PostgreSQL WAJIB ada tenant_id
+8. SEMUA teks UI dalam Bahasa Indonesia
+9. Komentar kode dalam Bahasa Indonesia
+10. Sebelum buat file baru — cek apakah fungsinya sudah ada di lib/
 
 ### Aturan API Layer (BARU Sesi #032)
-9. Route Handler dan Server Action HANYA boleh panggil Service — TIDAK BOLEH query database langsung
-10. SETIAP file di lib/repositories/ dan lib/services/ WAJIB diawali `import 'server-only'`
-11. Ganti third-party provider = ganti Adapter saja — Service TIDAK BOLEH diubah
-12. Credential service WAJIB disimpan via lib/credential-crypto.ts — TIDAK BOLEH di kode atau .env biasa
+11. Route Handler dan Server Action HANYA boleh panggil Service — TIDAK BOLEH query database langsung
+12. SETIAP file di lib/repositories/ dan lib/services/ WAJIB diawali `import 'server-only'`
+13. Ganti third-party provider = ganti Adapter saja — Service TIDAK BOLEH diubah
+14. Credential service WAJIB disimpan via lib/credential-crypto.ts — TIDAK BOLEH di kode atau .env biasa
 
 ### Aturan Performa
-13. DILARANG query di dalam loop — wajib pakai batch insert atau Promise.all
-14. SEMUA list data WAJIB pakai limit/pagination — tidak boleh ambil semua row sekaligus
-15. SELALU pakai named import — tidak boleh import * dari library manapun
-16. Komponen besar atau jarang dipakai WAJIB pakai dynamic import
-17. SETIAP event listener WAJIB ada cleanup saat logout dan saat tab/browser ditutup
-18. Pekerjaan berat (blast WA, disbursement) WAJIB pakai Queue (Inngest/PGMQ) — tidak boleh di API route langsung
+15. DILARANG query di dalam loop — wajib pakai batch insert atau Promise.all
+16. SEMUA list data WAJIB pakai limit/pagination — tidak boleh ambil semua row sekaligus
+17. SELALU pakai named import — tidak boleh import * dari library manapun
+18. Komponen besar atau jarang dipakai WAJIB pakai dynamic import
+19. SETIAP event listener WAJIB ada cleanup saat logout dan saat tab/browser ditutup
+20. Pekerjaan berat (blast WA, disbursement) WAJIB pakai Queue (Inngest/PGMQ) — tidak boleh di API route langsung
 
 ### Aturan Supabase + Next.js 16 (BARU Sesi #032)
-19. WAJIB bungkus verifyJWT() dengan react.cache() — mencegah cold start berulang per navigasi
-20. WAJIB pakai Supabase service role client di semua file lib/ yang jalan di server
-21. WAJIB pakai unstable_cache untuk data policy dan config yang shared across requests
-22. WAJIB koneksi database via Supavisor port 6543 + `prepare: false` di Vercel runtime
-23. Migration WAJIB via Drizzle Kit + Supabase CLI — TIDAK BOLEH langsung edit SQL Editor production
-24. Operasi kritikal (bid, close auction, payment) WAJIB dalam PostgreSQL RPC Function + SELECT FOR UPDATE
+21. WAJIB bungkus verifyJWT() dengan react.cache() — mencegah cold start berulang per navigasi
+22. WAJIB pakai Supabase service role client di semua file lib/ yang jalan di server
+23. WAJIB pakai unstable_cache untuk data policy dan config yang shared across requests
+24. WAJIB koneksi database via Supavisor port 6543 + `prepare: false` di Vercel runtime
+25. Migration WAJIB via Drizzle Kit + Supabase CLI — TIDAK BOLEH langsung edit SQL Editor production
+26. Operasi kritikal (bid, close auction, payment) WAJIB dalam PostgreSQL RPC Function + SELECT FOR UPDATE
 
 ### Aturan Database Security (dari standar Philips)
-25. Data PII sensitif (NIK, NPWP, rekening) WAJIB dienkripsi AES-256-GCM sebelum masuk database
-26. Semua tabel WAJIB punya Row Level Security (RLS) policy
-27. Tabel yang tumbuh cepat (bids, activity_logs) WAJIB dipartisi dari hari pertama
-28. Semua tabel kritikal WAJIB punya immutable audit trigger
+27. Data PII sensitif (NIK, NPWP, rekening) WAJIB dienkripsi AES-256-GCM sebelum masuk database
+28. Semua tabel WAJIB punya Row Level Security (RLS) policy
+29. Tabel yang tumbuh cepat (bids, activity_logs) WAJIB dipartisi dari hari pertama
+30. Semua tabel kritikal WAJIB punya immutable audit trigger
+
+### Aturan Hardcode — Sesi #042–#045
+31. DILARANG hardcode nilai konfigurasi bisnis → pakai getConfigValues()
+32. DILARANG hardcode teks pesan/error/notifikasi → pakai getMessage() atau m()
+33. DILARANG hardcode credential/API key → pakai getCredential()
+34. DILARANG hardcode 'Asia/Jakarta' → pakai getPlatformTimezone()
+35. PENGECUALIAN: 'WIB' (derived value) + 'id-ID' (platform invariant) → BOLEH di kode
+36. PENGECUALIAN: 4 bootstrap secret di .env → BOLEH
+37. NAV_POSITION (urutan sidebar) → konstanta di kode, TIDAK di DB (WooCommerce pattern)
+38. URL path dashboard → derived dari feature_key di kode, TIDAK disimpan di DB
+39. Redis TTL (REDIS_TTL constants di lib/redis.ts) → FALLBACK saja. Sumber kebenaran di config_registry (platform_general: redis_ttl_config_seconds, redis_ttl_messages_seconds, redis_ttl_credentials_seconds). Kode WAJIB baca dari DB via getConfigValue() dengan fallback ke REDIS_TTL constant.
+40. Sidebar cache TTL (revalidate di unstable_cache layout.tsx) → dibaca dari config_registry (platform_general: sidebar_cache_ttl_seconds). Fallback 1800 detik.
 
 ### Aturan Proses
-29. Setelah selesai setiap file — kabari nama file yang dibuat dan cara testingnya
-30. Kerjakan SATU FILE dalam SATU instruksi — tidak boleh gabung beberapa file sekaligus
+41. Setelah selesai setiap file — kabari nama file yang dibuat dan cara testingnya
+42. Kerjakan SATU FILE dalam SATU instruksi — tidak boleh gabung beberapa file sekaligus
 
 ---
 
 ## PATH DATABASE POSTGRESQL
-(Update Sesi #032 — GANTI TOTAL dari Firestore paths ke PostgreSQL tables)
+(Update Sesi #032 — tidak berubah kecuali tambahan Sesi #045)
 
 Tabel utama:
 - users — SuperAdmin (root level)
-- tenants — daftar tenant/brand
+- tenants — daftar tenant/brand (termasuk nama_brand)
 - user_profiles — semua user kecuali SuperAdmin
 - platform_policies — policy platform (JSONB nilai per feature_key)
-- config_registry — Dynamic Config Registry
+- config_registry — Dynamic Config Registry (feature_key, policy_key, nilai)
+  - ⚠️ Sesi #045: tambah 4 key baru di feature_key 'platform_general':
+    redis_ttl_config_seconds (600), redis_ttl_messages_seconds (900),
+    redis_ttl_credentials_seconds (900), sidebar_cache_ttl_seconds (1800)
+    SQL: scripts/add-redis-cache-ttl-config.sql — ⚠️ BELUM DIJALANKAN
+- message_library — semua teks ke user (key, kategori, teks, variabel)
+- service_providers, provider_field_definitions, provider_instances, instance_credentials — tabel credential
 - account_locks — throttling login + progressive lockout
 - session_logs — riwayat login PERMANEN
 - otp_codes — kode OTP sementara
 - trusted_devices — perangkat biometric
 - user_presence — posisi user sekarang (UPSERT)
 - activity_logs — log aktivitas PERMANEN partisi bulanan
-- service_providers, provider_field_definitions, provider_instances, instance_credentials — tabel credential
 
 Schema audit (terpisah):
 - audit.log — perubahan data PERMANEN dengan hash chain
@@ -267,7 +324,7 @@ Schema audit (terpisah):
 ---
 
 ## ARSITEKTUR POLICY — 2 LEVEL
-(Update Sesi #032 — path diupdate ke PostgreSQL)
+(Update Sesi #032 — tidak berubah)
 
 Level 1 (Platform Owner):
   Tabel: platform_policies WHERE feature_key = '[featureKey]'
@@ -281,19 +338,29 @@ Fungsi merge: getEffectivePolicy(tenantId, featureKey)
 
 ---
 
-## FEATURE KEYS YANG ADA
-(dari Sesi #025 — tidak berubah)
+## FEATURE KEYS YANG ADA DI config_registry
+(Update Sesi #044 — tidak berubah. Catatan Sesi #045: platform_general +4 key cache TTL)
 
-- security_login — keamanan login (max attempts, OTP, biometric, session timeout)
-- concurrent_session — aturan sesi paralel
-- commission — persentase komisi dan siapa yang bayar
-- timers — durasi timer T1, T2, T3 untuk auction
-- activity_logging — apa yang dicatat dan berapa lama disimpan
+| feature_key | URL Path | Keterangan |
+|---|---|---|
+| security_login | /settings/security-login | 20 item aktif |
+| platform_general | (tidak di sidebar) | 5 item: platform_timezone + 4 cache TTL Sesi #045 (pending SQL) |
+| register_user | /settings/register-user | Belum ada data |
+| register_vendor | /settings/register-vendor | Belum ada data |
+| order_form | /settings/order-form | Belum ada data |
+| bidding_vendor | /settings/bidding-vendor | Belum ada data |
+| payment | /settings/payment | Belum ada data |
+| branding | /settings/branding | Belum ada data |
+| pesan | /settings/pesan | Belum ada data |
+| sistem | /settings/sistem | Belum ada data |
+| pilihan_opsi | /settings/pilihan-opsi | Belum ada data |
+
+URL derivation rule: feature_key.replace(/_/g, '-') → /dashboard/superadmin/settings/{slug}
 
 ---
 
 ## TIGA SISTEM REALTIME
-(Update Sesi #032 — Supabase Realtime menggantikan Firestore onSnapshot)
+(Update Sesi #032 — tidak berubah)
 
 Sistem 1 — Config Changes:
   Supabase Realtime subscribe tabel `platform_policies`
@@ -309,23 +376,36 @@ Sistem 3 — Notifikasi:
 
 Semua 3 listener dipasang saat login berhasil.
 Semua 3 listener WAJIB dihentikan saat logout DAN saat tab/browser ditutup.
+Implementasi: TAHAP 5 (F) di sprint plan.
 
 ---
 
 ## STANDAR CACHE
-(Update Sesi #032 — tiga lapis cache untuk Vercel serverless + Supabase)
+(Update Sesi #045 — tambah Lapis 4: Redis L1 untuk API route handlers)
 
 1. react.cache() — per-request deduplication
    → Untuk: verifyJWT(), session check
    → Scope: satu HTTP request, tidak shared antar user
 
 2. unstable_cache (next/cache) — cross-request shared cache
-   → Untuk: policy platform, config registry
-   → TTL: 15 menit, invalidasi via revalidateTag()
+   → Untuk: policy platform, config registry, message library, sidebar dashboard data
+   → TTL: 15 menit (lib/), 30 menit (layout sidebar) — TTL dari config_registry
+   → Invalidasi via revalidateTag()
 
-3. Upstash Redis — edge + server persistent cache
-   → Untuk: session data, rate limiting, bid state aktif
-   → HTTP REST API — bisa dari Edge Runtime (middleware.ts)
+3. Upstash Redis — edge + server persistent cache — L1 cache untuk API routes
+   → Client: lib/redis.ts — getRedisClient() lazy init via getCredential() + env fallback
+   → Untuk: /api/config/[feature_key] response cache (TTL dari config_registry)
+   → Pattern cache-aside: cek Redis dulu (1–10ms) → miss → query Supabase (50–150ms) → simpan ke Redis
+   → Explicit invalidation: PATCH /api/config → redis.del() + revalidateTag()
+   → TTL diambil dari config_registry (platform_general.redis_ttl_config_seconds) — TIDAK hardcode
+   → Juga dipakai untuk rate limiting di middleware.ts
 
-lib/cache.ts (MemoryCache) masih ada sebagai fallback lokal untuk development.
-Di production Vercel, WAJIB pakai react.cache() atau unstable_cache — bukan MemoryCache.
+4. MemoryCache (lib/cache.ts) — development fallback
+   → Efektif HANYA di development (satu proses Node.js)
+   → Di production Vercel: tidak efektif (serverless invocation terpisah)
+   → Pakai react.cache() atau unstable_cache di production
+
+---
+
+*CLAUDE.md — 21 April 2026 — Sesi #045*
+*lib/redis.ts BARU. Performance fix: check-lock, login, config route, layout. SQL pending.*
