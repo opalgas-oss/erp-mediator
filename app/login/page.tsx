@@ -26,6 +26,13 @@
 //     Ganti → configLogin['require_otp'] === 'true' (data sudah ada di state)
 //   - Guard clause unlock-account: hanya panggil jika had_attempts === true dari check-lock response
 //     Sebelumnya: dipanggil SETIAP login berhasil → buang 1.13s di 99% kasus normal
+//
+// PERUBAHAN Sesi #046 — Fix TC-D (Vendor Status Check):
+//   - Pindahkan cek status Vendor (PENDING/REVIEW) dari selesaiLogin() ke muatDataUser()
+//   - Sesuai WORKFLOW_SYSTEM_LOGIN_v7.md BAB 2 TAHAP 3: cek status terjadi SEBELUM OTP/Biometric
+//   - Tambah supabase.auth.signOut() saat Vendor diblokir — agar JWT tidak tersisa di browser
+//   - Tambah 'status' ke select query di muatDataUser()
+//   - Hapus blok cek status Vendor dari selesaiLogin() — sudah tidak diperlukan di sana
 
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams }            from 'next/navigation'
@@ -480,17 +487,38 @@ function LoginForm() {
     }
   }
 
-  // ── TAHAP 3: Baca data user dari PostgreSQL ────────────────────────────────
+  // ── TAHAP 3: Baca data user + Cek Status Vendor ───────────────────────────
+  // PERUBAHAN Sesi #046 — sesuai WORKFLOW_SYSTEM_LOGIN_v7.md BAB 2 TAHAP 3:
+  //   Cek status Vendor (PENDING/REVIEW) dilakukan DI SINI,
+  //   segera setelah credentials valid, SEBELUM OTP dan Biometric.
+  //   Vendor PENDING/REVIEW di-signOut dan diblokir di sini — tidak lanjut ke OTP.
   async function muatDataUser(uidUser: string, tid: string, claimRole: string) {
     try {
       const supabase = createBrowserSupabaseClient()
 
+      // Tambah 'status' ke select — dibutuhkan untuk cek Vendor PENDING/REVIEW
       const { data: profile } = await supabase
         .from('user_profiles')
-        .select('nama, role, nomor_wa')
+        .select('nama, role, nomor_wa, status')
         .eq('id', uidUser)
         .eq('tenant_id', tid)
         .single()
+
+      // ── Cek status Vendor SEBELUM lanjut ke OTP/Biometric ────────────────
+      // Vendor diblokir di sini, bukan di selesaiLogin().
+      // supabase.auth.signOut() dipanggil agar JWT tidak tersisa di browser.
+      // vendor_blocked_statuses dibaca dari configLogin (sudah di-load dari config_registry
+      // di initConfigDanGPS — tidak hardcode di sini).
+      const vendorStatus = (profile?.status || '').toUpperCase()
+      const vendorBlockedStatuses = (configLogin['vendor_blocked_statuses'] || 'PENDING,REVIEW')
+        .split(',').map(s => s.trim().toUpperCase())
+      if (claimRole === 'VENDOR' && vendorBlockedStatuses.includes(vendorStatus)) {
+        await supabase.auth.signOut()
+        setError(m('login_error_akun_belum_aktif'))
+        setTahap('KREDENSIAL')
+        setIsLoading(false)
+        return
+      }
 
       const namaUser       = profile?.nama     || ''
       const nomorWAUser    = profile?.nomor_wa || ''
@@ -632,28 +660,15 @@ function LoginForm() {
     await selesaiLogin()
   }
 
-  // ── TAHAP 6: Selesaikan login ──────────────────────────────────────────────
+  // ── TAHAP 8: Selesaikan login ──────────────────────────────────────────────
+  // PERUBAHAN Sesi #046: Hapus cek status Vendor dari sini.
+  //   Cek status Vendor sudah dipindah ke muatDataUser() (TAHAP 3).
+  //   Vendor PENDING/REVIEW sudah diblokir jauh sebelum sampai ke sini.
   async function selesaiLogin() {
     setIsLoading(true)
     setTahap('SELESAI')
 
     try {
-      const supabase = createBrowserSupabaseClient()
-
-      if (roleDipilih.toLowerCase() === 'vendor') {
-        const { data: profile } = await supabase
-          .from('user_profiles').select('status')
-          .eq('id', uid).eq('tenant_id', tenantId).single()
-
-        const status = (profile?.status || '').toUpperCase()
-        if (['PENDING', 'REVIEW'].includes(status)) {
-          setError(m('login_error_akun_belum_aktif'))
-          setTahap('KREDENSIAL')
-          setIsLoading(false)
-          return
-        }
-      }
-
       const sessionId = await writeSessionLog({
         uid, tenantId, email: userEmail, role: roleDipilih,
         lat:  gpsRef.current?.lat  ?? 0,
