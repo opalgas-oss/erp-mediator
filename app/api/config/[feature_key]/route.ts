@@ -13,6 +13,10 @@
 //     Tidak hardcode — nilai ada di DB, SuperAdmin bisa ubah via Dashboard
 //   - PATCH: tambah Redis explicit invalidation + revalidateTag sidebar-data
 //     Saat config diubah: Redis del + Next.js cache revalidate → data baru langsung aktif
+//
+// FIX Sesi #046:
+//   - revalidateTag: Next.js 16.2.1 membutuhkan argumen kedua (profile: string | CacheLifeConfig)
+//     Semua pemanggilan revalidateTag ditambah 'default' sebagai profile
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { revalidateTag }              from 'next/cache'
@@ -153,9 +157,10 @@ export async function PATCH(
     if (error) throw error
 
     // ── Invalidasi cache — Next.js server cache ────────────────────────────────
-    revalidateTag(`config:${feature_key}`)
-    revalidateTag('config')
-    revalidateTag('sidebar-data')
+    // Next.js 16.2.1: revalidateTag butuh 2 argumen (tag, profile)
+    revalidateTag(`config:${feature_key}`, 'default')
+    revalidateTag('config', 'default')
+    revalidateTag('sidebar-data', 'default')
 
     // ── Invalidasi cache — Redis L1 ───────────────────────────────────────────
     const redis    = await getRedisClient()
