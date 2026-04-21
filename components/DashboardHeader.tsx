@@ -9,6 +9,7 @@ import { useState, useEffect, useRef } from 'react'
 import { usePathname }                 from 'next/navigation'
 import { LogOut, ChevronDown, Menu }   from 'lucide-react'
 import { createBrowserSupabaseClient } from '@/lib/supabase-client'
+import { performLogout }               from '@/lib/auth'
 
 interface UserInfo { nama: string; email: string; role: string }
 
@@ -74,19 +75,7 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
 
   async function handleLogout() {
     setLoading(true)
-    try {
-      // Langkah 1: tandai session_logs sebagai logout (JWT masih valid di sini)
-      await fetch('/api/auth/logout', { method: 'POST' })
-    } catch { /* gagal update session log — tetap lanjut logout */ }
-
-    const supabase = createBrowserSupabaseClient()
-    // Langkah 2: invalidasi Supabase session
-    await supabase.auth.signOut()
-    // Langkah 3: hapus semua session cookie
-    ;['user_role','tenant_id','session_timeout_minutes','session_last_active','gps_kota','session_login_at']
-      .forEach(k => { document.cookie = `${k}=; path=/; max-age=0` })
-    // Langkah 4: navigate ke login (full reload agar state client bersih)
-    window.location.href = '/login'
+    await performLogout()
   }
 
   const inisial     = user ? getInisial(user.nama, user.email) : '?'

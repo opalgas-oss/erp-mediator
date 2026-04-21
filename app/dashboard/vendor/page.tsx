@@ -15,9 +15,8 @@
 // Layout sudah verifikasi JWT dan role === 'VENDOR'
 // Page ini tidak perlu verifikasi ulang.
 
-import { useState, useEffect } from 'react'
-import { useRouter }           from 'next/navigation'
-import { createBrowserSupabaseClient } from '@/lib/supabase-client'
+import { useState, useEffect }           from 'react'
+import { performLogout }                 from '@/lib/auth'
 
 // Default teks sebagai fallback jika message_library belum termuat
 const DEFAULT_MSG: Record<string, string> = {
@@ -28,7 +27,6 @@ const DEFAULT_MSG: Record<string, string> = {
 }
 
 export default function VendorPage() {
-  const router  = useRouter()
   const [msg,     setMsg]     = useState<Record<string, string>>(DEFAULT_MSG)
   const [loading, setLoading] = useState(false)
 
@@ -42,19 +40,7 @@ export default function VendorPage() {
 
   async function handleLogout() {
     setLoading(true)
-    try {
-      // Langkah 1: tandai session_logs sebagai logout (JWT masih valid di sini)
-      await fetch('/api/auth/logout', { method: 'POST' })
-    } catch { /* gagal update session log — tetap lanjut logout */ }
-
-    const supabase = createBrowserSupabaseClient()
-    // Langkah 2: invalidasi Supabase session
-    await supabase.auth.signOut()
-    // Langkah 3: hapus session cookies
-    ;['user_role','tenant_id','session_timeout_minutes','session_last_active','gps_kota','session_login_at']
-      .forEach(k => { document.cookie = `${k}=; path=/; max-age=0` })
-    // Langkah 4: navigate ke login
-    router.push('/login')
+    await performLogout()
   }
 
   return (
