@@ -31,7 +31,7 @@ async function fetchSidebarData(): Promise<{
     // Paralel — 3 query jalan bersamaan, bukan sequential
     const [tenantResult, messages, configResult] = await Promise.all([
       db.from('tenants').select('nama_brand').limit(1).single(),
-      getMessagesByKategori(['sidebar_ui', 'page_ui']),
+      getMessagesByKategori(['sidebar_ui', 'page_ui', 'header_ui']),
       db.from('config_registry')
         .select('feature_key')
         .is('tenant_id', null)

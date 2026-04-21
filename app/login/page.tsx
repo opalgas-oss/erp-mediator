@@ -745,14 +745,14 @@ function LoginForm() {
     const waktu  = formatWaktuLogin(sesiParalel?.login_at)
     return (
       <Wrapper>
-        <CardHeader><CardTitle className="text-center text-base">Sesi Aktif Terdeteksi</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-center text-base">{m('session_paralel_title')}</CardTitle></CardHeader>
         <CardContent className="pb-6 space-y-4">
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
-            Akun sedang digunakan di <strong>{device}</strong> ({kota}). Login pada <strong>{waktu}</strong>.
+            {m('session_paralel_info', { device, kota, waktu })}
           </div>
-          <p className="text-sm text-muted-foreground text-center">Hanya satu sesi aktif yang diizinkan.</p>
+          <p className="text-sm text-muted-foreground text-center">{m('session_paralel_sub')}</p>
           <Button variant="outline" className="w-full" onClick={() => { setTahap('KREDENSIAL'); setError('') }}>
-            Kembali ke Login
+            {m('session_paralel_kembali')}
           </Button>
         </CardContent>
       </Wrapper>

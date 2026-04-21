@@ -6,17 +6,54 @@
 // Saat ini: placeholder konfirmasi login berhasil + tombol logout
 // Sprint 3: akan diisi dengan fitur Vendor Store, order list, dll.
 //
+// Teks halaman dibaca dari message_library (vendor_ui):
+//   - vendor_page_title    → judul halaman
+//   - vendor_page_subtitle → teks placeholder Sprint 3
+//   - header_logout_label  → teks tombol logout
+//   - header_logout_loading → teks saat proses logout
+//
 // Layout sudah verifikasi JWT dan role === 'VENDOR'
 // Page ini tidak perlu verifikasi ulang.
 
-import { useRouter } from 'next/navigation'
-import { clearSessionCookies } from '@/lib/auth'
+import { useState, useEffect } from 'react'
+import { useRouter }           from 'next/navigation'
+import { createBrowserSupabaseClient } from '@/lib/supabase-client'
+
+// Default teks sebagai fallback jika message_library belum termuat
+const DEFAULT_MSG: Record<string, string> = {
+  vendor_page_title:    'Dashboard Vendor',
+  vendor_page_subtitle: 'Login berhasil. Fitur Vendor Store akan tersedia di Sprint 3.',
+  header_logout_label:  'Logout',
+  header_logout_loading:'Keluar...',
+}
 
 export default function VendorPage() {
-  const router = useRouter()
+  const router  = useRouter()
+  const [msg,     setMsg]     = useState<Record<string, string>>(DEFAULT_MSG)
+  const [loading, setLoading] = useState(false)
+
+  // Muat teks dari message_library — vendor_ui + header_ui
+  useEffect(() => {
+    fetch('/api/message-library?kategori=vendor_ui,header_ui')
+      .then(res => res.json())
+      .then(json => { if (json.success && json.data) setMsg(prev => ({ ...prev, ...json.data })) })
+      .catch(() => { /* tetap pakai default */ })
+  }, [])
 
   async function handleLogout() {
-    await clearSessionCookies()
+    setLoading(true)
+    try {
+      // Langkah 1: tandai session_logs sebagai logout (JWT masih valid di sini)
+      await fetch('/api/auth/logout', { method: 'POST' })
+    } catch { /* gagal update session log — tetap lanjut logout */ }
+
+    const supabase = createBrowserSupabaseClient()
+    // Langkah 2: invalidasi Supabase session
+    await supabase.auth.signOut()
+    // Langkah 3: hapus session cookies
+    ;['user_role','tenant_id','session_timeout_minutes','session_last_active','gps_kota','session_login_at']
+      .forEach(k => { document.cookie = `${k}=; path=/; max-age=0` })
+    // Langkah 4: navigate ke login
     router.push('/login')
   }
 
@@ -37,15 +74,18 @@ export default function VendorPage() {
           />
         </svg>
       </div>
-      <h1 className="text-lg font-semibold text-gray-900 mb-1">Dashboard Vendor</h1>
+      <h1 className="text-lg font-semibold text-gray-900 mb-1">
+        {msg['vendor_page_title']}
+      </h1>
       <p className="text-sm text-gray-400 mb-6">
-        Login berhasil. Fitur Vendor Store akan tersedia di Sprint 3.
+        {msg['vendor_page_subtitle']}
       </p>
       <button
         onClick={handleLogout}
-        className="text-sm text-red-500 hover:text-red-700 underline"
+        disabled={loading}
+        className="text-sm text-red-500 hover:text-red-700 underline disabled:opacity-50"
       >
-        Logout
+        {loading ? msg['header_logout_loading'] : msg['header_logout_label']}
       </button>
     </div>
   )

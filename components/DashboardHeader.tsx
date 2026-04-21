@@ -74,10 +74,18 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
 
   async function handleLogout() {
     setLoading(true)
+    try {
+      // Langkah 1: tandai session_logs sebagai logout (JWT masih valid di sini)
+      await fetch('/api/auth/logout', { method: 'POST' })
+    } catch { /* gagal update session log — tetap lanjut logout */ }
+
     const supabase = createBrowserSupabaseClient()
+    // Langkah 2: invalidasi Supabase session
     await supabase.auth.signOut()
+    // Langkah 3: hapus semua session cookie
     ;['user_role','tenant_id','session_timeout_minutes','session_last_active','gps_kota','session_login_at']
       .forEach(k => { document.cookie = `${k}=; path=/; max-age=0` })
+    // Langkah 4: navigate ke login (full reload agar state client bersih)
     window.location.href = '/login'
   }
 
@@ -150,7 +158,9 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
               <button onClick={handleLogout} disabled={loading}
                 className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50">
                 <LogOut size={15} className="shrink-0" />
-                <span>{loading ? 'Keluar...' : 'Logout'}</span>
+                <span>{loading
+                  ? (messages['header_logout_loading'] || 'Keluar...')
+                  : (messages['header_logout_label']   || 'Logout')}</span>
               </button>
             </div>
           </div>
