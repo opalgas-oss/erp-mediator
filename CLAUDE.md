@@ -1,6 +1,19 @@
 # ERP Mediator Hyperlocal — Konteks Project untuk Claude Code
 # Sprint 1 — Login & Auth Lengkap
-# Terakhir diupdate: 21 April 2026 — Sesi #045
+# Terakhir diupdate: 24 April 2026 — Sesi #054 (Audit Dokumen)
+# Perubahan Sesi #054 (Audit Dokumen):
+#   - SUMBER KEBENARAN: Tambah tabel referensi per topik → dokumen audit baru
+#   - REFERENSI DOKUMEN: Update semua versi lama ke versi baru hasil audit
+#   - SESI #053 INFO: 4 route baru, tenant.repository, ATURAN_CODING_AI_v2, cr_functions 64
+# Perubahan Sesi #052:
+#   - SERVICE LAYER (auth): 5 file BARU di lib/services/ — account-lock, credential, activity, otp, session (total 27.70 KB)
+#   - CLIENT HELPER: lib/session-client.ts BARU — getDeviceInfo, getGPSLocation, generateOTP (dipecah dari session.ts)
+#   - HOOK: lib/hooks/useBiometric.ts BARU — register + verify WebAuthn (dipecah dari session.ts)
+#   - DEPRECATED: lib/account-lock.ts, lib/credential-reader.ts, lib/session.ts, lib/activity.ts — digantikan Service layer
+#   - ROUTE HANDLERS: 7 route auth diupdate import ke Service layer
+#   - CONSTANTS: lib/auth.ts + middleware.ts + useLoginFlow.ts sekarang import ROLES dari lib/constants
+#   - REGISTRY DB: 6 constants + 32 fungsi baru di cr_functions (total 61)
+#   - BUILD: npm run build LULUS 0 error. Login SuperAdmin LULUS.
 # Perubahan dari Sesi #032 (tetap berlaku):
 #   - IDENTITAS PROJECT: Stack diupdate — Firebase/Firestore → Supabase/PostgreSQL
 #   - FILE LIB: Diupdate total — hapus Firebase, tambah Supabase + Repository/Service/Adapter
@@ -43,6 +56,29 @@
 **CATATAN PENTING:** Stack adalah Next.js 16.2.1 + React 19 + Supabase/PostgreSQL.
 Firebase dan Firestore sudah TIDAK DIGUNAKAN sejak Sesi #032 (FASE M).
 Semua credential service disimpan terenkripsi di database — TIDAK ada di .env kecuali 4 bootstrap secret.
+
+---
+
+## SUMBER KEBENARAN PER TOPIK
+(BARU — Audit Dokumen 23 April 2026)
+
+| Topik | File Sumber | Keterangan |
+|---|---|---|
+| Anti-hardcode | TECHNICAL_STANDARDS_v3 bab 8 | Prosedur, larangan, pengecualian |
+| Identitas + Stack | ARSITEKTUR_FONDASI_v1 | Fondasi teknis platform |
+| 3 Layer | API_AND_DATABASE_STANDARDS_v2 bab 2-3 | Route → Service → Repository |
+| 3 Modul Dashboard | DASHBOARD_MODULES_SPEC_v3 | Config, Message, Credential |
+| Config Schema | CONFIG_REGISTRY_CORE/INTEGRATION/UI_OPTIONS_v1 | Semua item konfigurasi |
+| Credential Schema | CREDENTIAL_SYSTEM_SPEC_v1 | 4 tabel credential terenkripsi |
+| Policy 2 Level | POLICY_INHERITANCE_SPEC_v3 | getEffectivePolicy() |
+| Naming Convention | CODING_RULES_AI_v1 | Per layer, per file |
+| SOP Coding | CODING_SOP_AI_v1 | 5 fase + checklist |
+| Code Registry | CODE_REGISTRY_SPEC_v1 | DDL 7 tabel + query AI |
+| Alur Login | WORKFLOW_LOGIN_ALUR_UTAMA_v1 | 8 tahap + aturan |
+| OTP/Bio/Lock | WORKFLOW_LOGIN_FITUR_LANJUTAN_v1 | Detail 3 mode |
+| Testing | CARA_KERJA_TESTING_v3 | 7 komitmen |
+| Performa | PERFORMANCE_STANDARDS_v2 | Metrik + cache |
+| File Lib | CLAUDE.md (INI) | Sumber kebenaran mapping lib/ |
 
 ---
 
@@ -144,17 +180,29 @@ Cek di: Vercel → erp-mediator → Settings → Environment Variables.
 - lib/db.ts — Drizzle ORM + postgres.js via Supavisor port 6543, prepare: false
 - lib/credential-crypto.ts — enkripsiCredential() + dekripsiCredential() AES-256-GCM
 
-### Layer Repository (dibuat di FASE M D)
+### Layer Repository (dibuat di FASE M D + Sesi #051 BLOK B)
 - lib/repositories/auctions.repository.ts
 - lib/repositories/bids.repository.ts
 - lib/repositories/users.repository.ts
 - lib/repositories/payments.repository.ts
+- **lib/repositories/account-lock.repository.ts** — BARU Sesi #051 — findByEmail, spIncrementLockCount, spUnlockAccount
+- **lib/repositories/session-log.repository.ts** — BARU Sesi #051 — create, markLogout, findActiveByUid
+- **lib/repositories/otp.repository.ts** — BARU Sesi #051 — upsert, spVerifyAndConsume
+- **lib/repositories/user.repository.ts** — BARU Sesi #051 — findByEmail 3-tahap lookup
+- **lib/repositories/user-presence.repository.ts** — BARU Sesi #051 — spUpsert, setOffline
+- **lib/repositories/activity-log.repository.ts** — BARU Sesi #051 — create log
+- **lib/repositories/credential.repository.ts** — BARU Sesi #051 — spGetCredential, getAllByProvider
 
-### Layer Service (dibuat di FASE M D)
+### Layer Service (dibuat di FASE M D + Sesi #052 BLOK C)
 - lib/services/bid.service.ts — placeBid(), validateBid()
 - lib/services/auction.service.ts — createAuction(), closeAuction()
 - lib/services/payment.service.ts — createPayment(), processWebhook()
 - lib/services/notification.service.ts — notifyOutbid(), notifyPayment()
+- **lib/services/account-lock.service.ts** — BARU Sesi #052 — getAccountLock, incrementLockCount, unlockAccount (object param), sendLockNotificationWA
+- **lib/services/credential.service.ts** — BARU Sesi #052 — getCredential (SP+cache+env), getCredentialsByProvider, re-export enkripsi/dekripsi
+- **lib/services/activity.service.ts** — BARU Sesi #052 — updateUserPresence (SP), setUserOffline, writeActivityLog (cek policy)
+- **lib/services/otp.service.ts** — BARU Sesi #052 — sendOTP (generate+save+WA), verifyAndConsume (SP)
+- **lib/services/session.service.ts** — BARU Sesi #052 — writeSessionLog, markLogout, findActiveSessions
 
 ### Layer Adapter (dibuat di FASE M D)
 - lib/payments/types.ts — PaymentGateway interface
@@ -167,13 +215,14 @@ Cek di: Vercel → erp-mediator → Settings → Environment Variables.
 - lib/auth.ts — RBAC, session cookies, role mapping
 - lib/config-registry.ts — getConfigValue() + getPlatformTimezone() via unstable_cache
 - lib/message-library.ts — getMessage() + getMessagesByKategori() via unstable_cache
-- lib/credential-reader.ts — getCredential() — baca dari DB, fallback ke env
-- lib/credential-crypto.ts — enkripsi/dekripsi AES-256-GCM envelope encryption
+- lib/credential-reader.ts — ⚠️ DEPRECATED Sesi #052 — digantikan CredentialService
+- lib/credential-crypto.ts — enkripsi/dekripsi AES-256-GCM (masih aktif, re-exported oleh CredentialService)
 - lib/policy.ts — getEffectivePolicy() via unstable_cache
-- lib/activity.ts — updateUserPresence() + writeActivityLog() + setUserOffline()
+- lib/activity.ts — ⚠️ DEPRECATED Sesi #052 — digantikan ActivityService (server-side)
 - lib/cache.ts — MemoryCache + helper unstable_cache + react.cache()
-- lib/session.ts — GPS, OTP, Biometric, session log
-- lib/account-lock.ts — getAccountLock(), setAccountLock()
+- lib/session.ts — ⚠️ DEPRECATED Sesi #052 — dipecah ke session-client + services + useBiometric
+- **lib/session-client.ts** — BARU Sesi #052 — getDeviceInfo, getGPSLocation, generateOTP (browser-only)
+- lib/account-lock.ts — ⚠️ DEPRECATED Sesi #052 — digantikan AccountLockService
 - lib/errors.ts — Hierarki AppError + 9 jenis error standar
 - lib/api/handler.ts — withApi() wrapper untuk semua Route Handler
 - lib/api/envelope.ts — successEnvelope(), errorEnvelope()
@@ -210,6 +259,7 @@ Cek di: Vercel → erp-mediator → Settings → Environment Variables.
 - scripts/seed-tenant.mjs ✅ — 6 bagian seed
 - scripts/seed-credentials.mjs ✅ — migrate .env → DB
 - **scripts/add-redis-cache-ttl-config.sql** ✅ — BARU Sesi #045 — 4 key config_registry untuk Redis TTL + sidebar cache TTL. ⚠️ BELUM DIJALANKAN — jalankan via Supabase Dashboard atau Supabase MCP setelah restart Claude Desktop.
+- **scripts/create-stored-procedures.sql** ✅ — BARU Sesi #051 — 5 SP: sp_increment_lock_count, sp_verify_and_consume_otp, sp_get_credential, sp_unlock_account, sp_upsert_user_presence. Semua SUDAH LIVE di DB.
 
 ## KOMPONEN YANG SUDAH ADA
 (Update Sesi #044 — tidak berubah)
@@ -407,5 +457,6 @@ Implementasi: TAHAP 5 (F) di sprint plan.
 
 ---
 
-*CLAUDE.md — 21 April 2026 — Sesi #045*
-*lib/redis.ts BARU. Performance fix: check-lock, login, config route, layout. SQL pending.*
+*CLAUDE.md — 24 April 2026 — Sesi #054 (Audit Dokumen)*
+*Tambah SUMBER KEBENARAN PER TOPIK. Update referensi dokumen ke versi audit baru.*
+*Dokumen referensi sekarang di: Dokumen_Hasil_Audit/*

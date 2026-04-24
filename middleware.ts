@@ -11,6 +11,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse }        from 'next/server'
 import type { NextRequest }    from 'next/server'
+import { ROLES }               from '@/lib/constants'
 
 // ─── Konstanta Route Publik ───────────────────────────────────────────────────
 const PUBLIC_PATHS: string[] = [
@@ -29,17 +30,17 @@ const STATIC_EXTENSIONS = /\.(png|jpg|jpeg|svg|ico|css|js|webp|woff|woff2|ttf)$/
 
 // ─── Pemetaan Dashboard per Role — TIDAK BERUBAH ─────────────────────────────
 const DASHBOARD_ROLE_MAP: Record<string, string> = {
-  '/dashboard/customer':   'CUSTOMER',
-  '/dashboard/vendor':     'VENDOR',
-  '/dashboard/admin':      'ADMIN_TENANT',
-  '/dashboard/superadmin': 'SUPERADMIN',
+  '/dashboard/customer':   ROLES.CUSTOMER,
+  '/dashboard/vendor':     ROLES.VENDOR,
+  '/dashboard/admin':      ROLES.ADMIN_TENANT,
+  '/dashboard/superadmin': ROLES.SUPERADMIN,
 }
 
 const ROLE_REDIRECT: Record<string, string> = {
-  CUSTOMER:     '/dashboard/customer',
-  VENDOR:       '/dashboard/vendor',
-  ADMIN_TENANT: '/dashboard/admin',
-  SUPERADMIN:   '/dashboard/superadmin',
+  [ROLES.CUSTOMER]:     '/dashboard/customer',
+  [ROLES.VENDOR]:       '/dashboard/vendor',
+  [ROLES.ADMIN_TENANT]: '/dashboard/admin',
+  [ROLES.SUPERADMIN]:   '/dashboard/superadmin',
 }
 
 // ─── Middleware Utama ─────────────────────────────────────────────────────────

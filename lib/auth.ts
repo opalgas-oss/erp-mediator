@@ -11,6 +11,7 @@
 //     benar-benar bersih — mencegah middleware baca sesi lama dan redirect balik
 
 import { createBrowserSupabaseClient } from '@/lib/supabase-client'
+import { ROLES } from '@/lib/constants'
 
 // ─── Konstanta sesi ───────────────────────────────────────────────────────────
 
@@ -33,15 +34,15 @@ const SESSION_COOKIES = [
 // WAJIB sinkron dengan DASHBOARD_ROLE_MAP di middleware.ts
 
 export const ROLE_DASHBOARD: Record<string, string> = {
-  CUSTOMER:       '/dashboard/customer',
-  VENDOR:         '/dashboard/vendor',
-  DISPATCHER:     '/dashboard/admin',
-  FINANCE:        '/dashboard/admin',
-  SUPPORT:        '/dashboard/admin',
-  SUPER_ADMIN:    '/dashboard/admin',
-  SUPERADMIN:     '/dashboard/superadmin',
-  ADMIN_TENANT:   '/dashboard/admin',
-  PLATFORM_OWNER: '/dashboard/owner',
+  [ROLES.CUSTOMER]:       '/dashboard/customer',
+  [ROLES.VENDOR]:         '/dashboard/vendor',
+  [ROLES.DISPATCHER]:     '/dashboard/admin',
+  [ROLES.FINANCE]:        '/dashboard/admin',
+  [ROLES.SUPPORT]:        '/dashboard/admin',
+  SUPER_ADMIN:            '/dashboard/admin',
+  [ROLES.SUPERADMIN]:     '/dashboard/superadmin',
+  [ROLES.ADMIN_TENANT]:   '/dashboard/admin',
+  [ROLES.PLATFORM_OWNER]: '/dashboard/owner',
 }
 
 // ─── Simpan cookie sesi setelah login ────────────────────────────────────────

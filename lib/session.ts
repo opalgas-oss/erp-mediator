@@ -1,5 +1,14 @@
 /**
  * lib/session.ts
+ * ⚠️ DEPRECATED Sesi #052 — Dipecah menjadi:
+ *   Browser-only: lib/session-client.ts (getGPSLocation, getDeviceInfo, generateOTP)
+ *   Server-side:  lib/services/session.service.ts (writeSessionLog, markLogout)
+ *   Server-side:  lib/services/otp.service.ts (verifyAndConsume)
+ *   Hook:         lib/hooks/useBiometric.ts (registerBiometric, verifyBiometric)
+ *
+ *   File ini MASIH dipakai oleh useLoginFlow.ts (writeSessionLog, verifyOTP, register/verifyBiometric).
+ *   JANGAN import file ini dari file baru — gunakan file pecahan di atas.
+ *   Akan dihapus setelah useLoginFlow.ts dimigrasikan (BLOK E-08).
  * Helper fungsi session untuk platform ERP Mediator Hyperlocal.
  * Mencakup: GPS, device info, session log, OTP verify, biometric (WebAuthn).
  * Dapat diimport di browser (client component) maupun server.

@@ -1,4 +1,9 @@
 // lib/credential-reader.ts
+// ⚠️ DEPRECATED Sesi #052 — Digantikan oleh:
+//   lib/services/credential.service.ts (CredentialService)
+//   CredentialService menggabungkan credential-reader + credential-crypto.
+//   File ini TIDAK BOLEH diimport dari file baru.
+//   Akan dihapus setelah verifikasi tidak ada caller tersisa.
 // Membaca credential service dari tabel instance_credentials di PostgreSQL.
 // Jika belum ada di database, fallback otomatis ke environment variable.
 

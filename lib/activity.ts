@@ -1,4 +1,9 @@
 // lib/activity.ts
+// ⚠️ DEPRECATED Sesi #052 — Digantikan oleh:
+//   Server-side: lib/services/activity.service.ts (ActivityService)
+//   File ini MASIH dipakai oleh client components (useLoginFlow.ts).
+//   JANGAN import file ini dari server-side code — gunakan ActivityService.
+//   File ini akan dihapus setelah semua client caller dimigrasikan.
 // Mencatat posisi user secara realtime (User Presence) dan aksi penting ke activity log
 // Dipakai di SEMUA halaman setiap kali user navigasi atau lakukan aksi
 //
