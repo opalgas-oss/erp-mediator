@@ -206,6 +206,22 @@ export async function fetchUserPresence(params: ParamUserPresence): Promise<void
   })
 }
 
+// ─── FUNGSI: fetchLoadUserProfile ──────────────────────────────────────────────
+/**
+ * Muat profil user dari server — dipakai SEMUA role non-SUPERADMIN saat login.
+ * Menggantikan query Supabase langsung dari browser (lambat + melanggar arsitektur).
+ * @param uid - UID user dari JWT
+ * @param tenantId - Tenant ID dari JWT
+ * @returns nama, nomor_wa, role, status
+ */
+export async function fetchLoadUserProfile(uid: string, tenantId: string) {
+  const res = await fetch('/api/auth/load-user-profile', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uid, tenant_id: tenantId }),
+  })
+  return res.json()
+}
+
 // ─── FUNGSI: fetchActivityLog ────────────────────────────────────────────────
 /**
  * Kirim activity log — /api/auth/activity-log. Fire-and-forget.

@@ -27,6 +27,7 @@ import {
   fetchCheckLock, fetchLockAccount, fetchUnlockAccount,
   fetchCheckSession, fetchSendOTP, fetchVerifyOTP,
   fetchSessionLog, fetchUserPresence, fetchActivityLog,
+  fetchLoadUserProfile,
 } from './login/loginApiCalls'
 
 import {
@@ -267,24 +268,28 @@ export function useLoginFlow(): LoginFlowState {
   // ── Muat data user + cek status Vendor ──────────────────────────────────
   async function muatDataUser(uidUser: string, tid: string, claimRole: string) {
     try {
-      const supabase = createBrowserSupabaseClient()
-      const { data: profile } = await supabase
-        .from('user_profiles').select('nama, role, nomor_wa, status')
-        .eq('id', uidUser).eq('tenant_id', tid).single()
+      // Muat profil via server-side API route — jauh lebih cepat dari browser Supabase query
+      const profile = await fetchLoadUserProfile(uidUser, tid)
 
-      const vendorStatus    = (profile?.status || '').toUpperCase()
+      if (!profile.success) {
+        setError(m('login_error_gagal_muat_data'))
+        setTahap('KREDENSIAL'); setIsLoading(false); return
+      }
+
+      const vendorStatus    = (profile.status || '').toUpperCase()
       const blockedStatuses = (configLogin['vendor_blocked_statuses'] || 'PENDING,REVIEW')
-        .split(',').map(s => s.trim().toUpperCase())
+        .split(',').map((s: string) => s.trim().toUpperCase())
 
       if (claimRole === ROLES.VENDOR && blockedStatuses.includes(vendorStatus)) {
+        const supabase = createBrowserSupabaseClient()
         await supabase.auth.signOut()
         setError(m('login_error_akun_belum_aktif'))
         setTahap('KREDENSIAL'); setIsLoading(false); return
       }
 
-      const namaUser    = profile?.nama     || ''
-      const nomorWAUser = profile?.nomor_wa || ''
-      let   roles       = profile?.role ? [profile.role].filter(Boolean) : []
+      const namaUser    = profile.nama     || ''
+      const nomorWAUser = profile.nomor_wa || ''
+      let   roles       = profile.role ? [profile.role].filter(Boolean) : []
       if (roles.length === 0 && claimRole) roles = [claimRole]
 
       setNama(namaUser); setNomorWA(nomorWAUser); setDaftarRole(roles)
