@@ -87,6 +87,13 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
             } catch { /* abaikan */ }
           }
         }
+        // VENDOR: jangan auto-redirect dari /login meski sudah authenticated
+        // Status PENDING/REVIEW dicek oleh login flow (muatDataUser) + vendor layout
+        // Tanpa ini: vendor PENDING yang punya session aktif langsung masuk /dashboard/vendor
+        if (loginRole === ROLES.VENDOR) {
+          return loginResponse
+        }
+
         if (loginRole && ROLE_REDIRECT[loginRole]) {
           return NextResponse.redirect(new URL(ROLE_REDIRECT[loginRole], request.url))
         }
