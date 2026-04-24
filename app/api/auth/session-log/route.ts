@@ -1,23 +1,24 @@
-// app/api/auth/send-otp/route.ts
-// POST — Generate OTP, simpan ke otp_codes, kirim via Fonnte WhatsApp.
-// REFACTOR Sesi #052 — BLOK E-04 TODO_ARSITEKTUR_LAYER_v1:
-//   - Semua logika dipindahkan ke OTPService.sendOTP()
-//   - Route handler hanya: validasi input → panggil service → return response
-//   - Tidak ada lagi query DB langsung atau getCredential di route
+// app/api/auth/session-log/route.ts
+// POST — Tulis session log baru saat login berhasil.
+// Dipanggil oleh useLoginFlow.ts dari browser — menggantikan direct DB call.
+// Dibuat: Sesi #053 — FIX #7 Audit Logic FASE 1
+//
+// ARSITEKTUR:
+//   Browser (useLoginFlow) → POST /api/auth/session-log → SessionService → Repository → DB
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z }                         from 'zod'
 import { verifyJWT }                 from '@/lib/auth-server'
-import { sendOTP }                   from '@/lib/services/otp.service'
+import { writeSessionLog }           from '@/lib/services/session.service'
 
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
 
 const RequestSchema = z.object({
   uid:       z.string().min(1, 'uid wajib diisi'),
-  tenant_id: z.string(),
+  tenant_id: z.string().nullable(),
   role:      z.string().min(1, 'role wajib diisi'),
-  nomor_wa:  z.string().min(1, 'nomor_wa wajib diisi'),
-  nama:      z.string().default(''),
+  device:    z.string().min(1, 'device wajib diisi'),
+  gps_kota:  z.string().default('Tidak Diketahui'),
 })
 
 // ─── Handler POST ─────────────────────────────────────────────────────────────
@@ -27,12 +28,16 @@ export async function POST(request: NextRequest) {
     // ── Verifikasi JWT ────────────────────────────────────────────────────────
     const decoded = await verifyJWT()
     if (!decoded) {
-      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      )
     }
 
     // ── Validasi input ────────────────────────────────────────────────────────
     const body   = await request.json()
     const parsed = RequestSchema.safeParse(body)
+
     if (!parsed.success) {
       return NextResponse.json(
         { success: false, message: parsed.error.issues[0].message },
@@ -40,34 +45,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { uid, tenant_id, role, nomor_wa, nama } = parsed.data
+    const { uid, tenant_id, role, device, gps_kota } = parsed.data
 
-    // ── Delegasi ke OTPService ────────────────────────────────────────────────
-    const result = await sendOTP({
+    // ── Delegasi ke SessionService ────────────────────────────────────────────
+    const sessionId = await writeSessionLog({
       uid,
       tenantId: tenant_id,
       role,
-      nomorWa:  nomor_wa,
-      nama:     nama || undefined,
+      device,
+      gpsKota: gps_kota,
     })
 
-    if (!result.success) {
-      return NextResponse.json(
-        { success: false, message: result.message },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({
-      success:                 true,
-      otp_expiry_minutes:      result.otp_expiry_minutes,
-      otp_max_attempts:        result.otp_max_attempts,
-      resend_cooldown_seconds: result.resend_cooldown_seconds,
-    })
+    return NextResponse.json({ success: true, session_id: sessionId })
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Terjadi kesalahan server'
-    console.error('[send-otp] Error:', error)
+    console.error('[session-log] Error:', error)
     return NextResponse.json({ success: false, message }, { status: 500 })
   }
 }

@@ -1,23 +1,22 @@
-// app/api/auth/send-otp/route.ts
-// POST — Generate OTP, simpan ke otp_codes, kirim via Fonnte WhatsApp.
-// REFACTOR Sesi #052 — BLOK E-04 TODO_ARSITEKTUR_LAYER_v1:
-//   - Semua logika dipindahkan ke OTPService.sendOTP()
-//   - Route handler hanya: validasi input → panggil service → return response
-//   - Tidak ada lagi query DB langsung atau getCredential di route
+// app/api/auth/verify-otp/route.ts
+// POST — Verifikasi kode OTP — atomic via SP (race-condition safe).
+// Dipanggil oleh useLoginFlow.ts dari browser — menggantikan direct DB call.
+// Dibuat: Sesi #053 — FIX #7 Audit Logic FASE 1
+//
+// ARSITEKTUR:
+//   Browser (useLoginFlow) → POST /api/auth/verify-otp → OTPService → Repository → SP
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z }                         from 'zod'
 import { verifyJWT }                 from '@/lib/auth-server'
-import { sendOTP }                   from '@/lib/services/otp.service'
+import { verifyAndConsume }          from '@/lib/services/otp.service'
 
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
 
 const RequestSchema = z.object({
-  uid:       z.string().min(1, 'uid wajib diisi'),
-  tenant_id: z.string(),
-  role:      z.string().min(1, 'role wajib diisi'),
-  nomor_wa:  z.string().min(1, 'nomor_wa wajib diisi'),
-  nama:      z.string().default(''),
+  uid:        z.string().min(1, 'uid wajib diisi'),
+  tenant_id:  z.string().min(1, 'tenant_id wajib diisi'),
+  input_code: z.string().length(6, 'Kode OTP harus 6 digit'),
 })
 
 // ─── Handler POST ─────────────────────────────────────────────────────────────
@@ -27,12 +26,16 @@ export async function POST(request: NextRequest) {
     // ── Verifikasi JWT ────────────────────────────────────────────────────────
     const decoded = await verifyJWT()
     if (!decoded) {
-      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      )
     }
 
     // ── Validasi input ────────────────────────────────────────────────────────
     const body   = await request.json()
     const parsed = RequestSchema.safeParse(body)
+
     if (!parsed.success) {
       return NextResponse.json(
         { success: false, message: parsed.error.issues[0].message },
@@ -40,34 +43,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { uid, tenant_id, role, nomor_wa, nama } = parsed.data
+    const { uid, tenant_id, input_code } = parsed.data
 
     // ── Delegasi ke OTPService ────────────────────────────────────────────────
-    const result = await sendOTP({
+    const result = await verifyAndConsume({
       uid,
-      tenantId: tenant_id,
-      role,
-      nomorWa:  nomor_wa,
-      nama:     nama || undefined,
+      tenantId:  tenant_id,
+      inputCode: input_code,
     })
 
-    if (!result.success) {
-      return NextResponse.json(
-        { success: false, message: result.message },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({
-      success:                 true,
-      otp_expiry_minutes:      result.otp_expiry_minutes,
-      otp_max_attempts:        result.otp_max_attempts,
-      resend_cooldown_seconds: result.resend_cooldown_seconds,
-    })
+    // ── Map hasil SP ke response untuk client ─────────────────────────────────
+    // result: 'OK' | 'EXPIRED' | 'WRONG' | 'NOT_FOUND' | 'ALREADY_USED'
+    return NextResponse.json({ success: result === 'OK', result })
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Terjadi kesalahan server'
-    console.error('[send-otp] Error:', error)
+    console.error('[verify-otp] Error:', error)
     return NextResponse.json({ success: false, message }, { status: 500 })
   }
 }

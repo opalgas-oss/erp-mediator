@@ -2,14 +2,12 @@
 // POST — Cek apakah user sudah punya sesi aktif di tenant ini
 // Dipakai sebelum login selesai untuk menegakkan aturan sesi paralel
 //
-// PERUBAHAN dari versi Firebase:
-//   - Hapus Firebase Admin initAdmin() dan getFirestore()
-//   - Query Firestore session_logs → query tabel session_logs PostgreSQL
-//   - getEffectivePolicy tetap dipakai — tidak berubah
+// REFACTOR Sesi #052 — BLOK E-06: Pakai SessionService.findActiveSessions
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { z }                          from 'zod'
 import { getConfigValue }             from '@/lib/config-registry'
+import { findActiveSessions }         from '@/lib/services/session.service'
 
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
 
@@ -45,7 +43,6 @@ export async function POST(request: NextRequest) {
     const { uid, tenant_id } = parsed.data
 
     // ── Baca concurrent_rule dari Modul Konfigurasi (config_registry) ────────
-    // Nilai ini bisa diubah SuperAdmin dari Dashboard Modul Konfigurasi
     const rule = await getConfigValue('security_login', 'concurrent_rule', 'different_role_only')
 
     // ── Rule 'none' → izinkan langsung tanpa cek sesi ────────────────────────
@@ -53,32 +50,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ hasActiveSession: false, blocked: false })
     }
 
-    // ── Query tabel session_logs — cari sesi aktif untuk uid ini ─────────────
-    const { createServerSupabaseClient } = await import('@/lib/supabase-server')
-    const db = createServerSupabaseClient()
-
-    const { data: sessions, error } = await db
-      .from('session_logs')
-      .select('device, gps_kota, login_at, role')
-      .eq('uid', uid)
-      .eq('tenant_id', tenant_id)
-      .is('logout_at', null)
-      .limit(10)
-
-    if (error) throw error
+    // ── Query sesi aktif via SessionService ──────────────────────────────────
+    const sessions = await findActiveSessions(uid, tenant_id)
 
     // ── Tidak ada sesi aktif → izinkan login ─────────────────────────────────
-    if (!sessions || sessions.length === 0) {
+    if (sessions.length === 0) {
       return NextResponse.json({ hasActiveSession: false, blocked: false })
     }
 
     // ── Ada sesi aktif — ambil data sesi pertama sebagai referensi ───────────
     const first = sessions[0]
     const sessionData: SessionData = {
-      device:   typeof first.device   === 'string' ? first.device   : '',
-      gps_kota: typeof first.gps_kota === 'string' ? first.gps_kota : '',
+      device:   first.device   ?? '',
+      gps_kota: first.gps_kota ?? '',
       login_at: first.login_at ?? null,
-      role:     typeof first.role     === 'string' ? first.role     : '',
+      role:     first.role     ?? '',
     }
 
     // ── Rule 'always' → blokir jika ada sesi aktif apapun ────────────────────

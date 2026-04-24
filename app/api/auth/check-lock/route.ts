@@ -18,7 +18,7 @@
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { z }                          from 'zod'
-import { getAccountLock }             from '@/lib/account-lock'
+import { getAccountLock }             from '@/lib/services/account-lock.service'
 import { getPlatformTimezone }        from '@/lib/config-registry'
 
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────

@@ -1,12 +1,11 @@
 // app/api/auth/end-session/route.ts
-// POST — Tandai sesi user sebagai offline saat logout
-// Update tabel session_logs di Supabase PostgreSQL
-//
-// MIGRASI Sesi #037: Firebase Admin + Firestore → Supabase PostgreSQL
+// POST — Tandai sesi user sebagai logout saat end-session
+// REFACTOR Sesi #052 — BLOK E-07: Pakai SessionService + constants
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z }                         from 'zod'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { markLogout }                from '@/lib/services/session.service'
+import { setUserOffline }            from '@/lib/services/activity.service'
 
 const RequestSchema = z.object({
   uid:        z.string().min(1, 'uid wajib diisi'),
@@ -26,13 +25,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { session_id } = parsed.data
-    const db = createServerSupabaseClient()
+    const { uid, tenant_id } = parsed.data
 
-    await db
-      .from('session_logs')
-      .update({ status: 'offline', logout_at: new Date().toISOString() })
-      .eq('id', session_id)
+    // Tandai semua sesi aktif user ini sebagai logout via SessionService
+    await markLogout(uid)
+
+    // Set user offline via ActivityService
+    await setUserOffline(uid, tenant_id)
 
     return NextResponse.json({ success: true })
 

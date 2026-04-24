@@ -16,7 +16,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z }                         from 'zod'
 import { createServerClient }        from '@supabase/ssr'
 import { cookies }                   from 'next/headers'
-import { unlockAccount }             from '@/lib/account-lock'
+import { unlockAccount }             from '@/lib/services/account-lock.service'
+import { ROLES }                     from '@/lib/constants'
 
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
 
@@ -80,13 +81,13 @@ export async function POST(request: NextRequest) {
 
       // Hanya SUPERADMIN yang boleh unlock manual
       const role = user.app_metadata?.['app_role']
-      if (role !== 'SUPERADMIN') {
+      if (role !== ROLES.SUPERADMIN) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
     }
 
-    // ── Buka kunci akun ───────────────────────────────────────────────────────
-    await unlockAccount(uid, tenant_id, method, unlocked_by_uid, email)
+    // ── Buka kunci akun via AccountLockService ──────────────────────────────
+    await unlockAccount({ uid, method, unlockedByUid: unlocked_by_uid, email })
 
     return NextResponse.json({ success: true, method })
 

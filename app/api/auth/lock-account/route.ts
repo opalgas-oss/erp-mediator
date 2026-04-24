@@ -2,32 +2,22 @@
 // POST — Catat login gagal dan kunci akun jika sudah mencapai batas maksimal.
 // Dipanggil oleh login/page.tsx setiap kali Supabase Auth mengembalikan error kredensial.
 //
-// PERUBAHAN dari versi Firebase:
-//   - Hapus Firebase Admin initAdmin() dan getFirestore()
-//   - Query user → tabel users (SuperAdmin) + user_profiles (role lain)
-//   - cariEmailSuperAdmin → query tabel users di PostgreSQL
-//
-// PERUBAHAN Sesi #041:
-//   - tenant_id: boleh null — SUPERADMIN tidak punya tenant_id
-//   - Fallback user lookup: auth.admin.listUsers() → tetap buat lock record
-//   - Tidak return early jika user tidak ada di DB
-//
-// PERUBAHAN Sesi #042:
-//   - Ganti process.env.FONNTE_DEVICE_NUMBER → getCredential('fonnte', 'device_number')
-//     Nilai device_number sekarang dibaca dari instance_credentials di DB
-//   - Ganti hardcode 'Asia/Jakarta' → getPlatformTimezone() dari config_registry
-//
-// PERUBAHAN Sesi #043 — Audit Hardcode TC-C01/C02/C03:
-//   - Tambah cek notify_superadmin_on_lock dari config_registry sebelum kirim WA
-//     Sebelumnya: notifikasi WA selalu dikirim tanpa cek config (toggle Dashboard tidak berpengaruh)
-//     Sekarang: WA hanya dikirim jika notify_superadmin_on_lock = true (default: true)
+// REFACTOR Sesi #052 — BLOK E-02 TODO_ARSITEKTUR_LAYER_v1:
+//   - Import dari Service layer (bukan lib/ langsung)
+//   - User lookup via UserRepository (bukan query langsung)
+//   - sendLockNotificationWA dari AccountLockService (sudah cek config notify)
+//   - getCredential dari CredentialService (untuk filter nomor_wa Fonnte)
 
-import { NextRequest, NextResponse }                  from 'next/server'
-import { z }                                          from 'zod'
-import { createServerSupabaseClient }                 from '@/lib/supabase-server'
-import { incrementLockCount, sendLockNotificationWA } from '@/lib/account-lock'
-import { getCredential }                              from '@/lib/credential-reader'
-import { getPlatformTimezone, getConfigValues, parseConfigBoolean } from '@/lib/config-registry'
+import { NextRequest, NextResponse } from 'next/server'
+import { z }                         from 'zod'
+import {
+  incrementLockCount,
+  sendLockNotificationWA,
+} from '@/lib/services/account-lock.service'
+import { getCredential } from '@/lib/services/credential.service'
+import { findByEmail as findUserByEmail, findSuperAdminEmail } from '@/lib/repositories/user.repository'
+import { getPlatformTimezone } from '@/lib/config-registry'
+import { ROLES }              from '@/lib/constants'
 
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
 
@@ -38,33 +28,13 @@ const RequestSchema = z.object({
 
 // ─── Helper: Format Date ke string waktu lokal platform ──────────────────────
 
-async function formatWaktuLokal(date: Date): Promise<string> {
+async function formatWaktuLokal(isoString: string): Promise<string> {
   const timezone = await getPlatformTimezone()
-  return date
+  return new Date(isoString)
     .toLocaleTimeString('id-ID', {
-      hour:     '2-digit',
-      minute:   '2-digit',
-      timeZone: timezone,
-      hour12:   false,
+      hour: '2-digit', minute: '2-digit', timeZone: timezone, hour12: false,
     })
     .replace(':', '.') + ' WIB'
-}
-
-// ─── Helper: Cari email SuperAdmin dari tabel users ──────────────────────────
-
-async function cariEmailSuperAdmin(): Promise<string> {
-  try {
-    const db = createServerSupabaseClient()
-    const { data } = await db
-      .from('users')
-      .select('email')
-      .eq('role', 'SUPERADMIN')
-      .limit(1)
-      .single()
-    return data?.email ?? ''
-  } catch {
-    return ''
-  }
 }
 
 // ─── Handler POST ─────────────────────────────────────────────────────────────
@@ -84,88 +54,43 @@ export async function POST(request: NextRequest) {
 
     const { email } = parsed.data
     const tenant_id = parsed.data.tenant_id ?? null
-    const db = createServerSupabaseClient()
 
-    // ── Ambil nomor device Fonnte dari instance_credentials (bukan env) ───────
-    const fonnteDevice = await getCredential('fonnte', 'device_number') || ''
+    // ── Lookup user via UserRepository (3 tahap) ─────────────────────────────
+    const user = await findUserByEmail(email)
 
-    // ── Cari user berdasarkan email (3 tahap) ─────────────────────────────────
-    let uid      = ''
-    let nama     = email
-    let nomor_wa = ''
+    let uid      = user?.uid ?? crypto.randomUUID()
+    let nama     = user?.nama ?? email
+    let nomor_wa = user?.nomor_wa ?? ''
 
-    // Tahap 1: cek tabel users (SuperAdmin di DB)
-    const { data: userRow } = await db
-      .from('users')
-      .select('id, nama, email, nomor_wa')
-      .eq('email', email)
-      .maybeSingle()
-
-    if (userRow) {
-      uid  = userRow.id
-      nama = userRow.nama
-      // nomor_wa di tabel users adalah TEXT[] — ambil elemen pertama yang bukan nomor device Fonnte
-      const nomorWaArray = (userRow.nomor_wa as string[] | null) || []
-      nomor_wa = nomorWaArray.find(n => n !== fonnteDevice) || nomorWaArray[0] || ''
-    }
-
-    // Tahap 2: cek tabel user_profiles (non-SUPERADMIN)
-    if (!uid) {
-      let profileQuery = db
-        .from('user_profiles')
-        .select('id, nama, nomor_wa')
-        .eq('email', email)
-
-      if (tenant_id) {
-        profileQuery = profileQuery.eq('tenant_id', tenant_id) as typeof profileQuery
-      }
-
-      const { data: profile } = await profileQuery.maybeSingle()
-
-      if (profile) {
-        uid      = profile.id
-        nama     = profile.nama
-        nomor_wa = profile.nomor_wa ?? ''
-      }
-    }
-
-    // Tahap 3: fallback ke Supabase Auth
-    if (!uid) {
+    // Filter nomor_wa: kalau SuperAdmin, nomor_wa mungkin array — filter Fonnte device
+    if (user?.source === 'users' && nomor_wa) {
       try {
-        const { data: { users: authUsers } } = await db.auth.admin.listUsers()
-        const authUser = authUsers.find(u => u.email === email)
-        if (authUser) {
-          uid  = authUser.id
-          nama = (authUser.user_metadata?.nama as string) || email
+        const fonnteDevice = await getCredential('fonnte', 'device_number') || ''
+        // nomor_wa dari users bisa TEXT[] — cek apakah perlu filter
+        if (fonnteDevice && nomor_wa === fonnteDevice) {
+          nomor_wa = ''
         }
-      } catch (errAuth) {
-        console.error('[lock-account] fallback auth lookup gagal:', errAuth)
-      }
+      } catch { /* abaikan — pakai nomor_wa apa adanya */ }
     }
 
-    // ── Fallback final: generate UUID jika uid masih kosong ─────────────────
-    if (!uid) {
-      uid = crypto.randomUUID()
-      console.warn('[lock-account] uid tidak ditemukan untuk email:', email, '— pakai generated UUID')
+    if (!user) {
+      console.warn('[lock-account] user tidak ditemukan untuk email:', email, '— pakai generated UUID')
     }
 
-    console.log('[lock-account] akan catat lock:', { email, uid: uid.slice(0, 8) + '...', tenant_id })
+    // ── Tambah counter gagal via AccountLockService ──────────────────────────
+    const result = await incrementLockCount({
+      uid, email, nama, nomor_wa, tenantId: tenant_id,
+    })
 
-    // ── Tambah counter gagal dan evaluasi apakah akun perlu dikunci ───────────
-    const result = await incrementLockCount({ uid, email, nama, nomor_wa, tenantId: tenant_id })
-
-    // ── Akun BARU SAJA dikunci — kirim notifikasi WA ──────────────────────────
+    // ── Akun BARU SAJA dikunci — kirim notifikasi WA via Service ─────────────
     if (result.locked && result.lock_until) {
-      // Cek notify_superadmin_on_lock dari config_registry — default true jika key tidak ada
-      const cfg        = await getConfigValues('security_login')
-      const notifAktif = parseConfigBoolean(cfg['notify_superadmin_on_lock'], true)
-
-      if (nomor_wa && notifAktif) {
-        const superadminEmail = await cariEmailSuperAdmin()
+      if (nomor_wa) {
+        const superadminEmail = await findSuperAdminEmail() ?? ''
+        // Service sudah cek notify_superadmin_on_lock dari config
         await sendLockNotificationWA({
           nomor_wa,
           nama,
-          lock_until:         result.lock_until,
+          lock_until:         new Date(result.lock_until),
           max_login_attempts: result.count,
           superadmin_email:   superadminEmail,
           tenantId:           tenant_id,
