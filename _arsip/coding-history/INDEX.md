@@ -21,7 +21,7 @@ _arsip/
 
 **Konvensi nama folder snapshot:**
 - `sesi-057-baseline` — snapshot awal sebelum refactor dimulai (untuk jadi referensi)
-- `sesi-058-sebelum-refactor-login` — snapshot sebelum refactor spesifik
+- `sesi-058-langkah-1` — snapshot sebelum LANGKAH 1 refactor (Next.js after())
 - `sesi-NNN-<label-singkat>` — gunakan label deskriptif
 
 ---
@@ -55,6 +55,30 @@ _arsip/
 - TC-D03 (Vendor APPROVED): blocked oleh BUG-005
 
 **Git reference (untuk verifikasi):** branch `dev`, commit setelah fix BUG-004 + BUG-003 push — commit hash terakhir `521a411` (per `git log` Sesi #057).
+
+---
+
+### sesi-058-langkah-1 (27 April 2026)
+
+**Konteks:** Snapshot sebelum LANGKAH 1 refactor — mengubah 3 route handler supaya pakai Next.js `after()` untuk post-response background tasks. Target: hilangkan ~1,4 detik blocking dari session-log yang di-await browser.
+
+**Pendekatan satu-per-satu (konsep kerja Philips):** LANGKAH 1 ini satu dari 4 langkah berurutan (semua gratis) — selesaikan satu + test, baru lanjut LANGKAH 2. Tidak dikerjakan paralel.
+
+**File yang diarsipkan:**
+
+| Path | Catatan |
+|---|---|
+| `app/api/auth/session-log/route.ts` | Route handler — sebelum pakai `after()` untuk INSERT session log |
+| `app/api/auth/user-presence/route.ts` | Route handler — sebelum pakai `after()` untuk upsert presence |
+| `app/api/auth/activity-log/route.ts` | Route handler — sebelum pakai `after()` untuk insert activity log |
+
+**Kenapa diarsipkan:**
+- LANGKAH 1 mengubah timing eksekusi dari 3 route handler: dulu `await service(...)` lalu return → sekarang return dulu, service jalan di `after()`.
+- Kalau ada regresi (misal session_id tidak sempat di-INSERT saat browser sudah pakai untuk activity-log), bisa compare/rollback dari sini.
+
+**Posisi testing saat snapshot diambil:**
+- Sama dengan sesi-057-baseline (TC-D01~D03 masih blocked oleh BUG-005+006).
+- Login SuperAdmin masih 8-9 detik.
 
 ---
 
@@ -96,3 +120,4 @@ Kalau yakin mau rollback, copy file arsip ke lokasi aslinya, lalu `npm run build
 | Tanggal | Sesi | Perubahan |
 |---|---|---|
 | 26 Apr 2026 | #057 | File dibuat. Snapshot `sesi-057-baseline` ditambahkan (4 file login flow). |
+| 27 Apr 2026 | #058 | Snapshot `sesi-058-langkah-1` ditambahkan (3 route handler sebelum pakai `after()`). |

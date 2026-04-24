@@ -5,13 +5,8 @@
 //
 // ARSITEKTUR:
 //   Browser (useLoginFlow) → POST /api/auth/user-presence → ActivityService → Repository → SP
-//
-// UPDATE Sesi #058 LANGKAH 1 — pakai Next.js after():
-//   UPSERT presence jalan di background setelah response dikirim.
-//   Route return {success:true} segera — client tidak menunggu UPSERT DB.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { after }                     from 'next/server'
 import { z }                         from 'zod'
 import { verifyJWT }                 from '@/lib/auth-server'
 import { updateUserPresence }        from '@/lib/services/activity.service'
@@ -54,22 +49,15 @@ export async function POST(request: NextRequest) {
 
     const data = parsed.data
 
-    // ── Jadwal UPSERT presence ke background (after response) ─────────────────
-    // Presence bukan critical path — user tidak perlu menunggu hasil UPSERT.
-    after(async () => {
-      try {
-        await updateUserPresence({
-          uid:              data.uid,
-          tenantId:         data.tenant_id,
-          nama:             data.nama,
-          role:             data.role,
-          device:           data.device,
-          currentPage:      data.current_page,
-          currentPageLabel: data.current_page_label,
-        })
-      } catch (err) {
-        console.error('[user-presence after()] UPSERT gagal:', err)
-      }
+    // ── Delegasi ke ActivityService ───────────────────────────────────────────
+    await updateUserPresence({
+      uid:              data.uid,
+      tenantId:         data.tenant_id,
+      nama:             data.nama,
+      role:             data.role,
+      device:           data.device,
+      currentPage:      data.current_page,
+      currentPageLabel: data.current_page_label,
     })
 
     return NextResponse.json({ success: true })

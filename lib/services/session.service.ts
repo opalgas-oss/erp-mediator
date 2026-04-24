@@ -6,6 +6,11 @@
 // ARSITEKTUR:
 //   Route Handler → SessionService → SessionLogRepository → DB
 //   Ini MENGGANTIKAN writeSessionLog di lib/session.ts (client-side) untuk server usage.
+//
+// UPDATE Sesi #058 LANGKAH 1:
+//   writeSessionLog sekarang terima sessionId opsional.
+//   Rationale: route handler perlu dapat sessionId SEBELUM INSERT DB selesai
+//   supaya bisa return ke client segera + INSERT jalan di after().
 
 import 'server-only'
 import {
@@ -19,23 +24,26 @@ import {
 // ─── Tipe untuk writeSessionLog ──────────────────────────────────────────────
 
 export interface WriteSessionLogParams {
-  uid:       string
-  tenantId:  string | null
-  role:      string
-  device:    string
-  gpsKota:   string
+  uid:        string
+  tenantId:   string | null
+  role:       string
+  device:     string
+  gpsKota:    string
+  sessionId?: string  // opsional — kalau diisi, dipakai. Kalau tidak, auto-generate.
 }
 
 // ─── FUNGSI: writeSessionLog ─────────────────────────────────────────────────
-// Buat session log baru — generate sessionId, insert via repository.
+// Buat session log baru — pakai sessionId dari caller atau generate baru, insert via repository.
 /**
- * Buat session log baru saat login berhasil — generate sessionId + insert via repository.
- * @param params - WriteSessionLogParams berisi uid, tenantId, role, device, gpsKota
- * @returns sessionId yang dihasilkan (UUID)
+ * Buat session log baru saat login berhasil.
+ * Kalau caller sudah generate sessionId sendiri (misal untuk after() pattern), pass via params.sessionId.
+ * Kalau tidak, fungsi ini yang generate.
+ * @param params - WriteSessionLogParams berisi uid, tenantId, role, device, gpsKota, sessionId opsional
+ * @returns sessionId yang dipakai (dari param atau generated)
  * @throws Error jika insert DB gagal
  */
 export async function writeSessionLog(params: WriteSessionLogParams): Promise<string> {
-  const sessionId = crypto.randomUUID()
+  const sessionId = params.sessionId || crypto.randomUUID()
 
   const createParams: CreateSessionParams = {
     uid:       params.uid,

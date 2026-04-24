@@ -5,13 +5,8 @@
 //
 // ARSITEKTUR:
 //   Browser (useLoginFlow) → POST /api/auth/activity-log → ActivityService → Repository → DB
-//
-// UPDATE Sesi #058 LANGKAH 1 — pakai Next.js after():
-//   INSERT activity log jalan di background setelah response dikirim.
-//   Route return {success:true} segera — client (sudah fire-and-forget dari browser) pulang lebih cepat.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { after }                     from 'next/server'
 import { z }                         from 'zod'
 import { verifyJWT }                 from '@/lib/auth-server'
 import { writeActivityLog }          from '@/lib/services/activity.service'
@@ -64,29 +59,22 @@ export async function POST(request: NextRequest) {
 
     const data = parsed.data
 
-    // ── Jadwal INSERT activity log ke background (after response) ─────────────
-    // Activity log bukan critical path — user tidak perlu menunggu hasil INSERT.
-    after(async () => {
-      try {
-        await writeActivityLog({
-          uid:           data.uid,
-          tenant_id:     data.tenant_id,
-          nama:          data.nama,
-          role:          data.role,
-          session_id:    data.session_id,
-          action_type:   data.action_type,
-          module:        data.module,
-          page:          data.page,
-          page_label:    data.page_label,
-          action_detail: data.action_detail,
-          result:        data.result,
-          device:        data.device,
-          gps_kota:      data.gps_kota,
-          ip_address:    data.ip_address,
-        })
-      } catch (err) {
-        console.error('[activity-log after()] INSERT gagal:', err)
-      }
+    // ── Delegasi ke ActivityService ───────────────────────────────────────────
+    await writeActivityLog({
+      uid:           data.uid,
+      tenant_id:     data.tenant_id,
+      nama:          data.nama,
+      role:          data.role,
+      session_id:    data.session_id,
+      action_type:   data.action_type,
+      module:        data.module,
+      page:          data.page,
+      page_label:    data.page_label,
+      action_detail: data.action_detail,
+      result:        data.result,
+      device:        data.device,
+      gps_kota:      data.gps_kota,
+      ip_address:    data.ip_address,
     })
 
     return NextResponse.json({ success: true })

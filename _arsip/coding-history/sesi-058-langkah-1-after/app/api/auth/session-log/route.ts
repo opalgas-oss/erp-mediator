@@ -5,16 +5,8 @@
 //
 // ARSITEKTUR:
 //   Browser (useLoginFlow) → POST /api/auth/session-log → SessionService → Repository → DB
-//
-// UPDATE Sesi #058 LANGKAH 1 — pakai Next.js after():
-//   Pattern BARU:
-//     1. Generate sessionId di handler (crypto.randomUUID)
-//     2. Return session_id ke client SEGERA (response ~50-100 ms)
-//     3. INSERT DB jalan di after() — tidak blocking response
-//   Dampak: browser tidak perlu tunggu INSERT (~1,4 detik) sebelum lanjut redirect.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { after }                     from 'next/server'
 import { z }                         from 'zod'
 import { verifyJWT }                 from '@/lib/auth-server'
 import { writeSessionLog }           from '@/lib/services/session.service'
@@ -55,23 +47,13 @@ export async function POST(request: NextRequest) {
 
     const { uid, tenant_id, role, device, gps_kota } = parsed.data
 
-    // ── Generate sessionId dulu supaya bisa di-return ke client segera ─────────
-    // INSERT DB dijadwal ke after() — client tidak menunggu.
-    const sessionId = crypto.randomUUID()
-
-    after(async () => {
-      try {
-        await writeSessionLog({
-          uid,
-          tenantId: tenant_id,
-          role,
-          device,
-          gpsKota:  gps_kota,
-          sessionId,  // pass sessionId yang sama dengan yang di-return ke client
-        })
-      } catch (err) {
-        console.error('[session-log after()] INSERT gagal:', err)
-      }
+    // ── Delegasi ke SessionService ────────────────────────────────────────────
+    const sessionId = await writeSessionLog({
+      uid,
+      tenantId: tenant_id,
+      role,
+      device,
+      gpsKota: gps_kota,
     })
 
     return NextResponse.json({ success: true, session_id: sessionId })
