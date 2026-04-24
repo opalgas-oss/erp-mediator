@@ -9,9 +9,8 @@
 
 import { setSessionCookies, ROLE_DASHBOARD } from '@/lib/auth'
 import { getDeviceInfo }                      from '@/lib/session-client'
-import { createBrowserSupabaseClient }        from '@/lib/supabase-client'
 import { ROLES }                              from '@/lib/constants'
-import { fetchSessionLog, fetchActivityLog }  from './loginApiCalls'
+import { fetchSessionLog, fetchActivityLog, fetchLoadUserProfile } from './loginApiCalls'
 import type { ParamActivityLog }              from './loginApiCalls'
 
 // ─── Tipe Parameter ──────────────────────────────────────────────────────────
@@ -42,10 +41,10 @@ export interface ParamSelesaiLoginContext {
  */
 export async function ambilNamaSuperadmin(uidSA: string): Promise<string> {
   try {
-    const supabase = createBrowserSupabaseClient()
-    const { data: userRow } = await supabase
-      .from('users').select('nama').eq('id', uidSA).single()
-    return userRow?.nama || ''
+    // Pakai shared function — konsisten dengan semua role lain
+    // tenant_id null → API route query tabel users server-side
+    const profile = await fetchLoadUserProfile(uidSA, null)
+    return profile.success ? (profile.nama || '') : ''
   } catch { return '' }
 }
 

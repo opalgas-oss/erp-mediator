@@ -214,7 +214,7 @@ export async function fetchUserPresence(params: ParamUserPresence): Promise<void
  * @param tenantId - Tenant ID dari JWT
  * @returns nama, nomor_wa, role, status
  */
-export async function fetchLoadUserProfile(uid: string, tenantId: string) {
+export async function fetchLoadUserProfile(uid: string, tenantId: string | null) {
   const res = await fetch('/api/auth/load-user-profile', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ uid, tenant_id: tenantId }),
