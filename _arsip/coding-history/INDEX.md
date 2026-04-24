@@ -22,6 +22,7 @@ _arsip/
 **Konvensi nama folder snapshot:**
 - `sesi-057-baseline` — snapshot awal sebelum refactor dimulai (untuk jadi referensi)
 - `sesi-058-langkah-1` — snapshot sebelum LANGKAH 1 refactor (Next.js after())
+- `sesi-058-langkah-2` — snapshot sebelum LANGKAH 2 refactor (server action login)
 - `sesi-NNN-<label-singkat>` — gunakan label deskriptif
 
 ---
@@ -80,6 +81,37 @@ _arsip/
 - Sama dengan sesi-057-baseline (TC-D01~D03 masih blocked oleh BUG-005+006).
 - Login SuperAdmin masih 8-9 detik.
 
+**Hasil LANGKAH 1 (setelah deploy):** `after()` **terbukti bekerja** — baris session_logs masuk ~1 detik SETELAH response terkirim ke client. TAPI total saving dari perspektif browser hanya **~0,3 detik** (7,4s → 7,1s). Sisa bottleneck = `verifyJWT()` (~400ms × 4 route) + cold start serverless function. Bukan DB INSERT yang utama.
+
+---
+
+### sesi-058-langkah-2 (27 April 2026)
+
+**Konteks:** Snapshot sebelum LANGKAH 2 refactor — menggabungkan 5 operasi login SuperAdmin (check-lock + signInWithPassword + load-user-profile + set cookies + session-log/presence) jadi **1 server action** `loginSuperadminAction` di `app/login/actions.ts`. Target: hilangkan 3-4 kali `verifyJWT()` + 3-4 cold start dari blocking path.
+
+**Alasan strategis (dari investigasi LANGKAH 1):** Bottleneck utama BUKAN DB INSERT (itu sudah `after()`), tapi **banyaknya round-trip HTTP dari browser**. Setiap round-trip bayar: cold start + `verifyJWT()` call ke Supabase Auth (~400ms). Gabungkan jadi 1 action → eliminasi 3-4 dari ongkos ini.
+
+**Scope LANGKAH 2 TERBATAS ke SUPERADMIN:**
+- Vendor, Customer, AdminTenant → action signOut() dan return `errorKey='NOT_SUPERADMIN'`, client fallback ke flow lama (TIDAK ada regresi untuk role non-SA).
+- Vendor optimization direncanakan di LANGKAH 3 (beda sesi/langkah).
+
+**File yang diarsipkan:**
+
+| Path | Catatan |
+|---|---|
+| `lib/hooks/useLoginFlow.ts` | Hook login — sebelum `handleLogin` dimodifikasi untuk coba server action dulu |
+
+**File yang AKAN dibuat/dimodifikasi (bukan snapshot, tapi daftar perubahan):**
+
+| Path | Jenis perubahan |
+|---|---|
+| `app/login/actions.ts` | **BARU** — server action `loginSuperadminAction` |
+| `lib/hooks/useLoginFlow.ts` | **DIMODIFIKASI** — `handleLogin` coba action dulu, fallback ke flow lama jika role bukan SA |
+
+**Posisi testing saat snapshot diambil:**
+- LANGKAH 1 sudah merged ke `dev` (commit `a36b687c`).
+- Login SuperAdmin masih ~7,1 detik (target LANGKAH 2: <4,5 detik).
+
 ---
 
 ## CARA PAKAI
@@ -121,3 +153,4 @@ Kalau yakin mau rollback, copy file arsip ke lokasi aslinya, lalu `npm run build
 |---|---|---|
 | 26 Apr 2026 | #057 | File dibuat. Snapshot `sesi-057-baseline` ditambahkan (4 file login flow). |
 | 27 Apr 2026 | #058 | Snapshot `sesi-058-langkah-1` ditambahkan (3 route handler sebelum pakai `after()`). |
+| 27 Apr 2026 | #058 | Snapshot `sesi-058-langkah-2` ditambahkan (`useLoginFlow.ts` sebelum panggil server action). |

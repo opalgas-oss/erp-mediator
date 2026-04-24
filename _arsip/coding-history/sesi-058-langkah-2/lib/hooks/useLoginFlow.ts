@@ -6,12 +6,6 @@
 //   API calls    → lib/hooks/login/loginApiCalls.ts
 //   Session helpers → lib/hooks/login/loginSessionHelpers.ts
 //   Hook ini = state declarations + orchestration saja.
-//
-// REFACTOR Sesi #058 LANGKAH 2:
-//   handleLogin() sekarang coba loginSuperadminAction() DULU.
-//   - Kalau SUPERADMIN sukses → action sudah handle semua (signIn + cookies + session-log/presence via after()) → tinggal redirect
-//   - Kalau role bukan SA (errorKey='NOT_SUPERADMIN') → fallback ke flow lama (autentikasiSupabase + prosesSetelahAuthBerhasil)
-//   - Kalau error lain → tampilkan pesan
 
 'use client'
 
@@ -27,9 +21,6 @@ import {
   decodeJwtPayload, extractConfigItems, findConfigValue,
 } from '@/app/login/login-types'
 import type { Tahap, DataSesiParalel } from '@/app/login/login-types'
-
-// Server action — LANGKAH 2 Sesi #058
-import { loginSuperadminAction } from '@/app/login/actions'
 
 // API calls helpers
 import {
@@ -246,7 +237,6 @@ export function useLoginFlow(): LoginFlowState {
   }
 
   // ── Handle SUPERADMIN login ──────────────────────────────────────────────
-  // (DIPERTAHANKAN untuk fallback — kalau action gagal, flow lama tetap pakai ini)
   async function handleSuperadminLogin(
     authData:    { user: { id: string; email?: string | null }; session: { access_token: string } },
     hadAttempts: boolean,
@@ -414,9 +404,14 @@ export function useLoginFlow(): LoginFlowState {
     await muatDataUser(authData.user.id, claimTenantId, claimRole)
   }
 
-  // ── Flow lama (fallback dari action) — coba cek-lock + signIn + proses ───
-  // Dipisahkan jadi fungsi agar handleLogin bisa memanggilnya di path non-SA.
-  async function runFlowLama() {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PUBLIC HANDLERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async function handleLogin() {
+    if (!validasiForm()) return
+    setIsLoading(true); setError('')
+    if (!(await pastikanGPS())) { setIsLoading(false); return }
     const { dikunci, hadAttempts } = await cekKunciAkun()
     if (dikunci) { setIsLoading(false); return }
     try {
@@ -426,49 +421,6 @@ export function useLoginFlow(): LoginFlowState {
       const msg = err instanceof Error ? err.message : ''
       await catatLockGagal(msg)
     }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PUBLIC HANDLERS
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  async function handleLogin() {
-    if (!validasiForm()) return
-    setIsLoading(true); setError('')
-    if (!(await pastikanGPS())) { setIsLoading(false); return }
-
-    // ─── LANGKAH 2 Sesi #058: coba server action dulu ─────────────────────────
-    // Action handle semua untuk SUPERADMIN: lock check + signIn + cookies + after()
-    // Untuk role lain: action signOut dan return NOT_SUPERADMIN → fallback ke flow lama
-    try {
-      const result = await loginSuperadminAction({
-        email,
-        password,
-        device:  typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
-        gpsKota: gpsRef.current?.kota ?? '',
-      })
-
-      if (result.ok && result.redirectTo) {
-        // SUPERADMIN sukses — action sudah set cookies + fire after() tasks
-        router.push(result.redirectTo)
-        return
-      }
-
-      if (result.errorKey && result.errorKey !== 'NOT_SUPERADMIN') {
-        // Error nyata (akun dikunci, password salah, dll) — tampilkan
-        setError(m(result.errorKey, result.errorVars))
-        setIsLoading(false)
-        return
-      }
-
-      // errorKey === 'NOT_SUPERADMIN' → lanjut ke flow lama (Vendor/Customer/AdminTenant)
-    } catch (err) {
-      console.error('[handleLogin] server action error:', err)
-      // Kalau action crash, tetap lanjut flow lama sebagai safety net
-    }
-
-    // ─── Flow lama ───────────────────────────────────────────────────────────
-    await runFlowLama()
   }
 
   async function handleVerifikasiOTP() {

@@ -1,0 +1,77 @@
+// lib/hooks/useLoginFlow.ts
+// Hook utama state machine login — state + orchestration.
+// UI components di app/login/components/ hanya render — tidak ada logic bisnis.
+//
+// REFACTOR Sesi #055:
+//   API calls    → lib/hooks/login/loginApiCalls.ts
+//   Session helpers → lib/hooks/login/loginSessionHelpers.ts
+//   Hook ini = state declarations + orchestration saja.
+
+'use client'
+
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter, useSearchParams }               from 'next/navigation'
+import { createBrowserSupabaseClient }              from '@/lib/supabase-client'
+import { getGPSLocation }                           from '@/lib/session-client'
+import { useBiometric }                             from '@/lib/hooks/useBiometric'
+import { useOTPTimer }                              from '@/lib/hooks/useOTPTimer'
+import { ROLES }                                    from '@/lib/constants'
+import {
+  DEFAULT_PESAN, SUPABASE_ERROR_KEYS,
+  decodeJwtPayload, extractConfigItems, findConfigValue,
+} from '@/app/login/login-types'
+import type { Tahap, DataSesiParalel } from '@/app/login/login-types'
+
+// API calls helpers
+import {
+  fetchCheckLock, fetchLockAccount, fetchUnlockAccount,
+  fetchCheckSession, fetchSendOTP, fetchVerifyOTP,
+  fetchSessionLog, fetchUserPresence, fetchActivityLog,
+  fetchLoadUserProfile,
+} from './login/loginApiCalls'
+
+import {
+  ambilNamaSuperadmin, tulisSessionLogSuperadmin,
+  aturCookieSession, hitungTujuanRedirect, kirimActivityLoginBerhasil,
+} from './login/loginSessionHelpers'
+
+// ─── Return type hook ────────────────────────────────────────────────────────
+export interface LoginFlowState {
+  tahap: Tahap
+  email: string;          setEmail: (v: string) => void
+  password: string;       setPassword: (v: string) => void
+  tampilPassword: boolean
+  errorEmail: string;     setErrorEmail: (v: string) => void
+  errorPassword: string;  setErrorPassword: (v: string) => void
+  isLoading: boolean
+  error: string;          setError: (v: string) => void
+  gpsKota: string | null
+  akunDikunci: boolean
+  waktuKunci: string
+  sesiParalel: DataSesiParalel | null
+  daftarRole: string[]
+  roleDipilih: string;   setRoleDipilih: (v: string) => void
+  otpInput: string;      setOtpInput: (v: string) => void
+  otpPercobaan: number
+  maxOtpPercobaan: number
+  hitunganMundur: number
+  handleLogin: () => Promise<void>
+  handleVerifikasiOTP: () => Promise<void>
+  handleKirimUlangOTP: () => Promise<void>
+  handleAktifkanBiometric: () => Promise<void>
+  handleLewatiBiometric: () => Promise<void>
+  handlePilihRole: () => Promise<void>
+  handleKembaliDariSesiParalel: () => void
+  togglePassword: () => void
+  m: (key: string, vars?: Record<string, string>) => string
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// HOOK UTAMA
+// ═════════════════════════════════════════════════════════════════════════════
+export function useLoginFlow(): LoginFlowState {
+  // ... (isi sama dengan file asli — ini snapshot arsip untuk referensi rollback)
+  // File asli: D:\Philips\Project\erp-mediator\lib\hooks\useLoginFlow.ts
+  // Snapshot ini dibuat sebelum LANGKAH 2 Sesi #058 (merge ke server action untuk SUPERADMIN)
+  return {} as LoginFlowState
+}
