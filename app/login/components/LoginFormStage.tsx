@@ -1,6 +1,13 @@
 // app/login/components/LoginFormStage.tsx
 // UI tahap form email + password (KREDENSIAL)
 // Dibuat: Sesi #049 — Step 5 TAHAP D
+//
+// FIX Sesi #058 LANGKAH 2 (post-deploy investigasi):
+//   2 <Link> ke /forgot-password dan /register diberi prefetch={false}.
+//   Alasan: Network tab menunjukkan 15+ RSC prefetch yang nyampah saat login flow
+//   (re-render LoginFormStage memicu re-prefetch untuk setiap state change).
+//   Kedua halaman ini bukan navigasi yang pasti dilakukan user, jadi prefetch
+//   tidak memberi manfaat dan justru saturasi bandwidth di Incognito tanpa cache.
 
 'use client'
 
@@ -75,7 +82,7 @@ export function LoginFormStage(props: LoginFormStageProps) {
           {errorPassword && <p className="text-xs text-red-600 mt-1">{errorPassword}</p>}
         </div>
         <div className="text-right">
-          <Link href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700">Lupa password?</Link>
+          <Link href="/forgot-password" prefetch={false} className="text-sm text-blue-600 hover:text-blue-700">Lupa password?</Link>
         </div>
         <Button className="w-full" disabled={isLoading} onClick={onLogin}>
           {isLoading ? (
@@ -90,7 +97,7 @@ export function LoginFormStage(props: LoginFormStageProps) {
         </Button>
         <p className="text-sm text-center text-gray-500">
           Belum punya akun?{' '}
-          <Link href="/register" className="text-blue-600 font-medium hover:text-blue-700">Daftar di sini</Link>
+          <Link href="/register" prefetch={false} className="text-blue-600 font-medium hover:text-blue-700">Daftar di sini</Link>
         </p>
         {gpsKota && gpsKota !== 'Tidak Diketahui' && (
           <div className="flex items-center gap-1 pb-1">
