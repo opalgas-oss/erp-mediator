@@ -8,10 +8,15 @@
 //   Hook ini = state declarations + orchestration saja.
 //
 // REFACTOR Sesi #058 LANGKAH 2:
-//   handleLogin() sekarang coba loginSuperadminAction() DULU.
-//   - Kalau SUPERADMIN sukses → action sudah handle semua (signIn + cookies + session-log/presence via after()) → tinggal redirect
-//   - Kalau role bukan SA (errorKey='NOT_SUPERADMIN') → fallback ke flow lama (autentikasiSupabase + prosesSetelahAuthBerhasil)
-//   - Kalau error lain → tampilkan pesan
+//   handleLogin() coba loginSuperadminAction() dulu.
+//   - SUPERADMIN sukses → action sudah handle semua → redirect
+//   - role bukan SA (errorKey='NOT_SUPERADMIN') → fallback ke flow lama
+//
+// REFACTOR Sesi #060:
+//   handleLogin() sekarang juga coba loginVendorAction() untuk role VENDOR.
+//   - VENDOR sukses → action sudah set cookies + after() tasks
+//   - Tapi Vendor masih perlu OTP — setelah action sukses, lanjut ke stage OTP
+//   - role bukan SA dan bukan VENDOR → fallback ke flow lama (AdminTenant, Customer)
 
 'use client'
 
@@ -28,8 +33,8 @@ import {
 } from '@/app/login/login-types'
 import type { Tahap, DataSesiParalel } from '@/app/login/login-types'
 
-// Server action — LANGKAH 2 Sesi #058
-import { loginSuperadminAction } from '@/app/login/actions'
+// Server actions — Sesi #058 (SA) + Sesi #060 (Vendor)
+import { loginSuperadminAction, loginVendorAction } from '@/app/login/actions'
 
 // API calls helpers
 import {
@@ -143,10 +148,9 @@ export function useLoginFlow(): LoginFlowState {
   }, [])
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // INTERNAL FUNCTIONS — masing-masing ≤ 40 baris
+  // INTERNAL FUNCTIONS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // ── Init config + GPS ────────────────────────────────────────────────────
   async function initConfigDanGPS() {
     let gpsTimeoutMs = 10_000, gpsCacheTtlMs = 30 * 60_000
     try {
@@ -172,7 +176,6 @@ export function useLoginFlow(): LoginFlowState {
     } catch { /* GPS ditolak — form tetap jalan */ }
   }
 
-  // ── Validasi form ────────────────────────────────────────────────────────
   function validasiForm(): boolean {
     let valid = true
     if (!email) { setErrorEmail(m('login_validasi_email_kosong')); valid = false }
@@ -189,7 +192,6 @@ export function useLoginFlow(): LoginFlowState {
     return valid
   }
 
-  // ── Pastikan GPS ─────────────────────────────────────────────────────────
   async function pastikanGPS(): Promise<boolean> {
     const gpsMode = configLogin['gps_mode'] ?? 'required'
     if (gpsRef.current || gpsMode !== 'required') return true
@@ -203,7 +205,6 @@ export function useLoginFlow(): LoginFlowState {
     } catch { setError(m('login_error_gps_diperlukan')); return false }
   }
 
-  // ── Cek kunci akun ───────────────────────────────────────────────────────
   async function cekKunciAkun(): Promise<{ dikunci: boolean; hadAttempts: boolean }> {
     try {
       const data = await fetchCheckLock({ email })
@@ -218,7 +219,6 @@ export function useLoginFlow(): LoginFlowState {
     }
   }
 
-  // ── Autentikasi Supabase ─────────────────────────────────────────────────
   async function autentikasiSupabase() {
     const supabase = createBrowserSupabaseClient()
     const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
@@ -226,7 +226,6 @@ export function useLoginFlow(): LoginFlowState {
     return data
   }
 
-  // ── Catat kegagalan login ────────────────────────────────────────────────
   async function catatLockGagal(msg: string) {
     try {
       const data = await fetchLockAccount({ email, tenantId: tenantId || null })
@@ -245,46 +244,24 @@ export function useLoginFlow(): LoginFlowState {
     return false
   }
 
-  // ── Handle SUPERADMIN login ──────────────────────────────────────────────
-  // (DIPERTAHANKAN untuk fallback — kalau action gagal, flow lama tetap pakai ini)
+  // Dipertahankan untuk fallback flow lama (AdminTenant, Customer)
   async function handleSuperadminLogin(
     authData:    { user: { id: string; email?: string | null }; session: { access_token: string } },
     hadAttempts: boolean,
   ) {
     const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || '480')
-
-    aturCookieSession({
-      roleDipilih: ROLES.SUPERADMIN, tenantId: '',
-      gpsKota: gpsRef.current?.kota ?? null,
-      sessionTimeoutMinutes,
-    })
-
+    aturCookieSession({ roleDipilih: ROLES.SUPERADMIN, tenantId: '', gpsKota: gpsRef.current?.kota ?? null, sessionTimeoutMinutes })
     await tulisSessionLogSuperadmin(authData.user.id, gpsRef.current?.kota ?? '')
     const namaSA = await ambilNamaSuperadmin(authData.user.id)
-
-    fetchUserPresence({
-      uid: authData.user.id, tenantId: null,
-      nama: namaSA, role: ROLES.SUPERADMIN,
-      currentPage: '/login', currentPageLabel: 'Halaman Login',
-    }).catch(err => console.error('[login] presence SUPERADMIN gagal:', err))
-
-    if (hadAttempts) {
-      fetchUnlockAccount({ uid: authData.user.id, tenantId: null, email, method: 'auto' })
-    }
-
+    fetchUserPresence({ uid: authData.user.id, tenantId: null, nama: namaSA, role: ROLES.SUPERADMIN, currentPage: '/login', currentPageLabel: 'Halaman Login' }).catch(() => {})
+    if (hadAttempts) fetchUnlockAccount({ uid: authData.user.id, tenantId: null, email, method: 'auto' })
     router.push('/dashboard/superadmin')
   }
 
-  // ── Muat data user + cek status Vendor ──────────────────────────────────
   async function muatDataUser(uidUser: string, tid: string, claimRole: string) {
     try {
-      // Muat profil via server-side API route — jauh lebih cepat dari browser Supabase query
       const profile = await fetchLoadUserProfile(uidUser, tid)
-
-      if (!profile.success) {
-        setError(m('login_error_gagal_muat_data'))
-        setTahap('KREDENSIAL'); setIsLoading(false); return
-      }
+      if (!profile.success) { setError(m('login_error_gagal_muat_data')); setTahap('KREDENSIAL'); setIsLoading(false); return }
 
       const vendorStatus    = (profile.status || '').toUpperCase()
       const blockedStatuses = (configLogin['vendor_blocked_statuses'] || 'PENDING,REVIEW')
@@ -293,8 +270,7 @@ export function useLoginFlow(): LoginFlowState {
       if (claimRole === ROLES.VENDOR && blockedStatuses.includes(vendorStatus)) {
         const supabase = createBrowserSupabaseClient()
         await supabase.auth.signOut()
-        setError(m('login_error_akun_belum_aktif'))
-        setTahap('KREDENSIAL'); setIsLoading(false); return
+        setError(m('login_error_akun_belum_aktif')); setTahap('KREDENSIAL'); setIsLoading(false); return
       }
 
       const namaUser    = profile.nama     || ''
@@ -317,10 +293,7 @@ export function useLoginFlow(): LoginFlowState {
     }
   }
 
-  // ── Lanjut setelah role dipilih ──────────────────────────────────────────
-  async function lanjutSetelahRole(
-    role: string, tid: string, uidUser: string, namaUser: string, waNumber: string,
-  ) {
+  async function lanjutSetelahRole(role: string, tid: string, uidUser: string, namaUser: string, waNumber: string) {
     try {
       const requireOtp = configLogin['require_otp'] === 'true'
       const isCustomer = role.toUpperCase() === ROLES.CUSTOMER
@@ -334,23 +307,11 @@ export function useLoginFlow(): LoginFlowState {
     }
   }
 
-  // ── Kirim OTP ────────────────────────────────────────────────────────────
-  async function kirimOTP(
-    uidUser: string, tid: string, role: string, waNumber: string, namaUser: string,
-  ) {
+  async function kirimOTP(uidUser: string, tid: string, role: string, waNumber: string, namaUser: string) {
     setIsLoading(true); setError('')
     try {
       const resData = await fetchSendOTP({ uid: uidUser, tenantId: tid, role, nomorWa: waNumber, nama: namaUser })
-
-      fetchActivityLog({
-        uid: uidUser, tenantId: tid, nama: namaUser, role,
-        sessionId: '', actionType: 'API_CALL', module: 'AUTH',
-        page: '/login', pageLabel: 'Halaman Login',
-        actionDetail: resData.success ? 'OTP berhasil dikirim' : 'OTP gagal dikirim',
-        result: resData.success ? 'SUCCESS' : 'FAILED',
-        gpsKota: gpsRef.current?.kota || '',
-      })
-
+      fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: resData.success ? 'OTP berhasil dikirim' : 'OTP gagal dikirim', result: resData.success ? 'SUCCESS' : 'FAILED', gpsKota: gpsRef.current?.kota || '' })
       setMaxOtpPercobaan(resData.otp_max_attempts ?? 3)
       otpTimer.mulaiTimer(resData.resend_cooldown_seconds ?? 60)
       setOtpInput(''); setOtpPercobaan(0); setTahap('OTP')
@@ -360,30 +321,21 @@ export function useLoginFlow(): LoginFlowState {
     } finally { setIsLoading(false) }
   }
 
-  // ── Selesaikan login ─────────────────────────────────────────────────────
   async function selesaiLogin() {
     setIsLoading(true); setTahap('SELESAI')
     try {
       const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || '480')
       const slData    = await fetchSessionLog({ uid, tenantId: tenantId || null, role: roleDipilih, gpsKota: gpsRef.current?.kota ?? '' })
       const sessionId = slData.session_id ?? ''
-
       aturCookieSession({ roleDipilih, tenantId, gpsKota: gpsRef.current?.kota ?? null, sessionTimeoutMinutes })
-
-      await fetchUserPresence({
-        uid, tenantId: tenantId || null, nama, role: roleDipilih,
-        currentPage: '/login', currentPageLabel: 'Halaman Login',
-      })
-
+      await fetchUserPresence({ uid, tenantId: tenantId || null, nama, role: roleDipilih, currentPage: '/login', currentPageLabel: 'Halaman Login' })
       kirimActivityLoginBerhasil(uid, tenantId, nama, roleDipilih, sessionId, gpsRef.current?.kota ?? null)
-
       router.push(hitungTujuanRedirect(roleDipilih, redirectTo))
     } catch {
       setError(m('login_error_gagal_selesaikan')); setTahap('KREDENSIAL'); setIsLoading(false)
     }
   }
 
-  // ── Proses setelah auth Supabase berhasil ────────────────────────────────
   async function prosesSetelahAuthBerhasil(
     authData:    { user: { id: string; email?: string | null }; session: { access_token: string } },
     hadAttempts: boolean,
@@ -401,7 +353,6 @@ export function useLoginFlow(): LoginFlowState {
     }
 
     setUid(authData.user.id); setUserEmail(authData.user.email || email); setTenantId(claimTenantId)
-
     if (hadAttempts) fetchUnlockAccount({ uid: authData.user.id, tenantId: claimTenantId, method: 'auto' })
 
     setTahap('LOADING')
@@ -414,8 +365,6 @@ export function useLoginFlow(): LoginFlowState {
     await muatDataUser(authData.user.id, claimTenantId, claimRole)
   }
 
-  // ── Flow lama (fallback dari action) — coba cek-lock + signIn + proses ───
-  // Dipisahkan jadi fungsi agar handleLogin bisa memanggilnya di path non-SA.
   async function runFlowLama() {
     const { dikunci, hadAttempts } = await cekKunciAkun()
     if (dikunci) { setIsLoading(false); return }
@@ -437,37 +386,68 @@ export function useLoginFlow(): LoginFlowState {
     setIsLoading(true); setError('')
     if (!(await pastikanGPS())) { setIsLoading(false); return }
 
-    // ─── LANGKAH 2 Sesi #058: coba server action dulu ─────────────────────────
-    // Action handle semua untuk SUPERADMIN: lock check + signIn + cookies + after()
-    // Untuk role lain: action signOut dan return NOT_SUPERADMIN → fallback ke flow lama
+    // ─── Coba SA action dulu ──────────────────────────────────────────────────
     try {
-      const result = await loginSuperadminAction({
-        email,
-        password,
+      const resultSA = await loginSuperadminAction({
+        email, password,
         device:  typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
         gpsKota: gpsRef.current?.kota ?? '',
+        redirectTo,
       })
 
-      if (result.ok && result.redirectTo) {
-        // SUPERADMIN sukses — action sudah set cookies + fire after() tasks
-        router.push(result.redirectTo)
-        return
+      if (resultSA.ok && resultSA.redirectTo) {
+        router.push(resultSA.redirectTo); return
       }
 
-      if (result.errorKey && result.errorKey !== 'NOT_SUPERADMIN') {
-        // Error nyata (akun dikunci, password salah, dll) — tampilkan
-        setError(m(result.errorKey, result.errorVars))
-        setIsLoading(false)
-        return
+      if (resultSA.errorKey && resultSA.errorKey !== 'NOT_SUPERADMIN') {
+        setError(m(resultSA.errorKey, resultSA.errorVars)); setIsLoading(false); return
       }
-
-      // errorKey === 'NOT_SUPERADMIN' → lanjut ke flow lama (Vendor/Customer/AdminTenant)
+      // NOT_SUPERADMIN → lanjut cek Vendor
     } catch (err) {
-      console.error('[handleLogin] server action error:', err)
-      // Kalau action crash, tetap lanjut flow lama sebagai safety net
+      console.error('[handleLogin] SA action error:', err)
     }
 
-    // ─── Flow lama ───────────────────────────────────────────────────────────
+    // ─── Coba Vendor action ───────────────────────────────────────────────────
+    try {
+      const resultVendor = await loginVendorAction({
+        email, password,
+        device:  typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
+        gpsKota: gpsRef.current?.kota ?? '',
+        redirectTo,
+      })
+
+      if (resultVendor.ok && resultVendor.nama && resultVendor.uid) {
+        // Action sudah set cookies + after() tasks — sekarang lanjut ke OTP
+        // Ambil data dari action result, set state, lanjut ke kirimOTP
+        setUid(resultVendor.uid)
+        setNama(resultVendor.nama)
+        setRoleDipilih(ROLES.VENDOR)
+        setUserEmail(email)
+
+        // Ambil tenantId dari profile — butuh fetch ringan
+        const profile = await fetchLoadUserProfile(resultVendor.uid, null)
+        const tid = (profile as Record<string, unknown>)['tenant_id'] as string || ''
+        setTenantId(tid)
+        setNomorWA((profile as Record<string, unknown>)['nomor_wa'] as string || '')
+
+        const requireOtp = configLogin['require_otp'] === 'true'
+        if (requireOtp) {
+          await kirimOTP(resultVendor.uid, tid, ROLES.VENDOR, (profile as Record<string, unknown>)['nomor_wa'] as string || '', resultVendor.nama)
+        } else {
+          setTahap('BIOMETRIC'); setIsLoading(false)
+        }
+        return
+      }
+
+      if (resultVendor.errorKey && resultVendor.errorKey !== 'NOT_VENDOR') {
+        setError(m(resultVendor.errorKey, resultVendor.errorVars)); setIsLoading(false); return
+      }
+      // NOT_VENDOR → fallback ke flow lama
+    } catch (err) {
+      console.error('[handleLogin] Vendor action error:', err)
+    }
+
+    // ─── Flow lama — AdminTenant, Customer, atau fallback ────────────────────
     await runFlowLama()
   }
 
@@ -477,12 +457,7 @@ export function useLoginFlow(): LoginFlowState {
     try {
       const data = await fetchVerifyOTP({ uid, tenantId, inputCode: otpInput })
       if (data.success) {
-        fetchActivityLog({
-          uid, tenantId, nama, role: roleDipilih, sessionId: '',
-          actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login',
-          actionDetail: 'Verifikasi OTP berhasil', result: 'SUCCESS',
-          gpsKota: gpsRef.current?.kota || '',
-        })
+        fetchActivityLog({ uid, tenantId, nama, role: roleDipilih, sessionId: '', actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'Verifikasi OTP berhasil', result: 'SUCCESS', gpsKota: gpsRef.current?.kota || '' })
         setTahap('BIOMETRIC'); setIsLoading(false)
       } else if (data.result === 'EXPIRED') {
         setError(m('otp_error_kadaluarsa')); setIsLoading(false)
@@ -496,10 +471,7 @@ export function useLoginFlow(): LoginFlowState {
     } catch { setError(m('otp_error_verifikasi_gagal')); setIsLoading(false) }
   }
 
-  async function handleKirimUlangOTP() {
-    await kirimOTP(uid, tenantId, roleDipilih, nomorWA, nama)
-  }
-
+  async function handleKirimUlangOTP() { await kirimOTP(uid, tenantId, roleDipilih, nomorWA, nama) }
   async function handleAktifkanBiometric() {
     setIsLoading(true); setError('')
     const verified = await bio.verify(uid, tenantId)
@@ -507,20 +479,11 @@ export function useLoginFlow(): LoginFlowState {
     await bio.register(uid, tenantId)
     await selesaiLogin()
   }
-
   async function handleLewatiBiometric() { await selesaiLogin() }
-
-  async function handlePilihRole() {
-    setIsLoading(true); setError('')
-    await lanjutSetelahRole(roleDipilih, tenantId, uid, nama, nomorWA)
-  }
-
+  async function handlePilihRole() { setIsLoading(true); setError(''); await lanjutSetelahRole(roleDipilih, tenantId, uid, nama, nomorWA) }
   function handleKembaliDariSesiParalel() { setTahap('KREDENSIAL'); setError('') }
   function togglePassword() { setTampilPassword(prev => !prev) }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // RETURN
-  // ═══════════════════════════════════════════════════════════════════════════
   return {
     tahap,
     email, setEmail, password, setPassword, tampilPassword,
