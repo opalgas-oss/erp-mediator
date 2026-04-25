@@ -16,7 +16,7 @@
 // Page ini tidak perlu verifikasi ulang.
 
 import { useState, useEffect }           from 'react'
-import { performLogout }                 from '@/lib/auth'
+import { logoutAction }                      from '@/app/auth/logout-action'
 
 // Default teks sebagai fallback jika message_library belum termuat
 const DEFAULT_MSG: Record<string, string> = {
@@ -40,7 +40,7 @@ export default function VendorPage() {
 
   async function handleLogout() {
     setLoading(true)
-    await performLogout()
+    await logoutAction()
   }
 
   return (

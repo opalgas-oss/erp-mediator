@@ -55,17 +55,19 @@ export function setSessionCookies(role: string, tenantId: string, maxAgeSeconds?
   document.cookie = `session_tenant=${tenantId}; path=/; max-age=${maxAge}; SameSite=Strict`
 }
 
-// ─── Fungsi logout terpusat — WAJIB dipakai semua komponen (DRY) ─────────────
+// ─── Fungsi logout terpusat — DEPRECATED Sesi #062 ─────────────────────────
 //
-// Urutan 4 langkah tidak boleh diubah:
-//   1. Update session_logs di DB (JWT masih valid di langkah ini)
-//   2. Invalidasi Supabase session via signOut()
-//   3. Hapus semua session cookie
-//   4. Full page reload ke /login (window.location.href, BUKAN router.push)
-//      Alasan: router.push tidak bersihkan Supabase client cache di memory —
-//      middleware akan baca cache lama dan redirect balik ke dashboard.
+// @deprecated Gunakan logoutAction() dari '@/app/auth/logout-action' sebagai gantinya.
+//   logoutAction() adalah server action yang menangani semua operasi logout server-side:
+//   invalidasi session, hapus cookies, markLogout, setUserOffline, writeActivityLog.
 //
-// Dipakai oleh: DashboardHeader, vendor/page.tsx, dan semua dashboard role lain.
+// Semua caller sudah dimigrasikan di Sesi #062:
+//   - DashboardHeader.tsx → logoutAction()
+//   - app/dashboard/vendor/page.tsx → logoutAction()
+//
+// performLogout() dipertahankan di sini (tidak dihapus) untuk:
+//   - Referensi rollback jika logoutAction() bermasalah
+//   - Kompatibilitas jika ada caller di luar registry yang belum terdeteksi
 
 export async function performLogout(): Promise<void> {
   // Langkah 1: tandai session_logs sebagai logout sebelum JWT diinvalidasi

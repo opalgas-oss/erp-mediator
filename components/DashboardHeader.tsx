@@ -9,7 +9,7 @@ import { useState, useEffect, useRef } from 'react'
 import { usePathname }                 from 'next/navigation'
 import { LogOut, ChevronDown, Menu }   from 'lucide-react'
 import { createBrowserSupabaseClient } from '@/lib/supabase-client'
-import { performLogout }               from '@/lib/auth'
+import { logoutAction }                from '@/app/auth/logout-action'
 
 interface UserInfo { nama: string; email: string; role: string }
 
@@ -75,7 +75,7 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
 
   async function handleLogout() {
     setLoading(true)
-    await performLogout()
+    await logoutAction()
   }
 
   const inisial     = user ? getInisial(user.nama, user.email) : '?'
