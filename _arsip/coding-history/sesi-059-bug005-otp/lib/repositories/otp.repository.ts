@@ -1,9 +1,6 @@
 // lib/repositories/otp.repository.ts
 // Repository untuk tabel otp_codes — akses DB via SP untuk verify.
 // Dibuat: Sesi #051 — BLOK B-03 TODO_ARSITEKTUR_LAYER_v1
-// Fix BUG-005 Sesi #059: hapus filter dipakai=false dari DELETE
-//   → tabel punya unique constraint (tenant_id, uid)
-//   → DELETE harus hapus SEMUA OTP lama (used + unused) sebelum insert baru
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -22,23 +19,20 @@ export interface UpsertOTPParams {
 // ─── Repository ─────────────────────────────────────────────────────────────
 
 /**
- * Hapus SEMUA OTP lama (used + unused) lalu insert OTP baru untuk uid+tenant.
- * Catatan: tabel punya unique constraint (tenant_id, uid) — DELETE wajib hapus semua
- * sebelum insert agar tidak langgar constraint saat ada OTP lama yang sudah dipakai.
+ * Hapus OTP lama yang belum dipakai lalu insert OTP baru untuk uid+tenant.
  * @param params - uid, tenantId, kode (6 digit), expiredAt (ISO timestamp)
  * @throws Error jika insert DB gagal
  */
 export async function upsert(params: UpsertOTPParams): Promise<void> {
   const db = createServerSupabaseClient()
 
-  // Hapus SEMUA OTP lama untuk uid+tenant ini (used + unused)
-  // Alasan: unique constraint (tenant_id, uid) — kalau hanya hapus dipakai=false,
-  // baris lama yang dipakai=true akan memblokir INSERT baru (error 23505)
+  // Hapus OTP lama yang belum dipakai untuk uid+tenant ini
   await db
     .from('otp_codes')
     .delete()
     .eq('uid', params.uid)
     .eq('tenant_id', params.tenantId)
+    .eq('dipakai', false)
 
   // Insert OTP baru
   const { error } = await db
