@@ -4,6 +4,13 @@
 // PENTING: buatSupabaseSSR() memanggil cookies() SEKALI → return { supabase, cookieStore }.
 // cookieStore di-pass ke setCookiesLoginServer() — tidak ada double cookies() call.
 // Double cookies() = regresi +700ms (ditemukan Sesi #060).
+//
+// FIX Sesi #061:
+//   BUG-010 — loginVendorAction query user_profiles pakai .eq('uid') padahal kolom namanya 'id'.
+//   Akibat: profileRow selalu null → semua Vendor APPROVED diblokir dengan 'belum diaktifkan'.
+//   Fix: ganti .eq('uid', uid) → .eq('id', uid). Tambah nomor_wa ke select.
+//   Tambah tenantId + nomorWa ke LoginActionResult agar useLoginFlow tidak perlu
+//   fetchLoadUserProfile(uid, null) yang salah (null = dianggap SuperAdmin oleh route).
 
 'use server'
 
@@ -33,6 +40,8 @@ export interface LoginActionResult {
   redirectTo?: string
   nama?:       string
   uid?:        string
+  tenantId?:   string   // ← BARU Sesi #061: diisi oleh Vendor/AdminTenant action
+  nomorWa?:    string   // ← BARU Sesi #061: diisi oleh Vendor action (dari user_profiles)
 }
 
 // ─── Helper: cek lock sebelum proses ─────────────────────────────────────────
@@ -117,22 +126,26 @@ export async function loginVendorAction(params: LoginActionParams): Promise<Logi
 
   const uid     = authData.user.id
   const adminDb = createServerSupabaseClient()
+  // FIX BUG-010: kolom PK di user_profiles adalah 'id', bukan 'uid'
+  // Sebelumnya: .eq('uid', uid) → selalu null → semua Vendor APPROVED diblokir
   const { data: profileRow } = await adminDb
-    .from('user_profiles').select('status, nama')
-    .eq('uid', uid).eq('tenant_id', claims.tenantId).maybeSingle()
+    .from('user_profiles').select('status, nama, nomor_wa')
+    .eq('id', uid).eq('tenant_id', claims.tenantId).maybeSingle()
 
   if ((profileRow?.status ?? '').toUpperCase() !== 'APPROVED') {
     try { await supabase.auth.signOut() } catch { /* abaikan */ }
     return { ok: false, errorKey: 'login_error_akun_belum_aktif' }
   }
 
-  const nama = profileRow?.nama ?? (await ambilNamaUser(uid))
+  const nama    = profileRow?.nama    ?? (await ambilNamaUser(uid))
+  const nomorWa = profileRow?.nomor_wa ?? ''
   await setCookiesLoginServer({ role: ROLES.VENDOR, tenantId: claims.tenantId, gpsKota }, cookieStore)
   jalankanAfterTasksLogin(
     { uid, tenantId: claims.tenantId, nama, role: ROLES.VENDOR, device, gpsKota, hadAttempts: lock.hadAttempts, email },
     crypto.randomUUID()
   )
-  return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo), nama, uid }
+  // Kembalikan tenantId + nomorWa agar useLoginFlow tidak perlu fetch ulang
+  return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo), nama, uid, tenantId: claims.tenantId, nomorWa }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -173,5 +186,5 @@ export async function loginAdminTenantAction(params: LoginActionParams): Promise
     { uid, tenantId: claims.tenantId, nama, role: ROLES.ADMIN_TENANT, device, gpsKota, hadAttempts: lock.hadAttempts, email },
     crypto.randomUUID()
   )
-  return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.ADMIN_TENANT, redirectTo), nama, uid }
+  return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.ADMIN_TENANT, redirectTo), nama, uid, tenantId: claims.tenantId }
 }

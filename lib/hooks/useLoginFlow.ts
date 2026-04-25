@@ -17,6 +17,11 @@
 //   - VENDOR sukses → action sudah set cookies + after() tasks
 //   - Tapi Vendor masih perlu OTP — setelah action sukses, lanjut ke stage OTP
 //   - role bukan SA dan bukan VENDOR → fallback ke flow lama (AdminTenant, Customer)
+//
+// FIX Sesi #061 — BUG-010:
+//   Setelah loginVendorAction sukses, ambil tenantId + nomorWa dari action result
+//   (bukan fetchLoadUserProfile(uid, null) yang salah — null membuat route
+//   menganggap user sebagai SuperAdmin sehingga tenantId selalu kosong).
 
 'use client'
 
@@ -417,22 +422,21 @@ export function useLoginFlow(): LoginFlowState {
       })
 
       if (resultVendor.ok && resultVendor.nama && resultVendor.uid) {
-        // Action sudah set cookies + after() tasks — sekarang lanjut ke OTP
-        // Ambil data dari action result, set state, lanjut ke kirimOTP
+        // FIX BUG-010: ambil tenantId + nomorWa dari action result
+        // Sebelumnya: fetchLoadUserProfile(uid, null) → null dianggap SA → tenantId kosong
+        const tid = resultVendor.tenantId ?? ''
+        const wa  = resultVendor.nomorWa  ?? ''
+
         setUid(resultVendor.uid)
         setNama(resultVendor.nama)
+        setTenantId(tid)
+        setNomorWA(wa)
         setRoleDipilih(ROLES.VENDOR)
         setUserEmail(email)
 
-        // Ambil tenantId dari profile — butuh fetch ringan
-        const profile = await fetchLoadUserProfile(resultVendor.uid, null)
-        const tid = (profile as Record<string, unknown>)['tenant_id'] as string || ''
-        setTenantId(tid)
-        setNomorWA((profile as Record<string, unknown>)['nomor_wa'] as string || '')
-
         const requireOtp = configLogin['require_otp'] === 'true'
         if (requireOtp) {
-          await kirimOTP(resultVendor.uid, tid, ROLES.VENDOR, (profile as Record<string, unknown>)['nomor_wa'] as string || '', resultVendor.nama)
+          await kirimOTP(resultVendor.uid, tid, ROLES.VENDOR, wa, resultVendor.nama)
         } else {
           setTahap('BIOMETRIC'); setIsLoading(false)
         }
