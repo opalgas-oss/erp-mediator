@@ -1,23 +1,26 @@
 // app/dashboard/vendor/layout.tsx
-// Layout proteksi untuk semua halaman /dashboard/vendor
-//
-// Dua lapis proteksi:
-//   1. verifyJWT() — pastikan user authenticated + role === VENDOR
+// Layout Vendor Dashboard — server component.
+// Dua lapis proteksi (sama seperti sebelumnya):
+//   1. verifyJWT() — pastikan authenticated + role === VENDOR
 //   2. cek user_profiles.status — hanya APPROVED yang boleh masuk
 //
-// Tanpa layer 2: vendor PENDING/REVIEW bisa akses dashboard langsung
-// jika punya session aktif (middleware hanya cek role, tidak cek status)
+// REFACTOR Sesi #062:
+//   Tambah VendorDashboardShell — samakan UI/UX dengan SA dashboard.
+//   Fetch brandName + messages untuk sidebar dan header.
+//   Sebelumnya: hanya <div min-h-screen bg-gray-50> tanpa shell.
 //
-// PERUBAHAN Sesi #056 — fix TC-D01:
-//   Tambah vendor status check via createServerSupabaseClient()
+// PERUBAHAN Sesi #056 — tetap dipertahankan:
+//   vendor status check via createServerSupabaseClient()
 //   Jika status tidak ada di VENDOR_LOGIN_ALLOWED → redirect /login
 
 export const dynamic = 'force-dynamic'
 
-import { redirect }                  from 'next/navigation'
-import { verifyJWT }                 from '@/lib/auth-server'
+import { redirect }                   from 'next/navigation'
+import { verifyJWT }                  from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { VENDOR_LOGIN_ALLOWED }      from '@/lib/constants'
+import { getMessagesByKategori }      from '@/lib/message-library'
+import { VENDOR_LOGIN_ALLOWED }       from '@/lib/constants'
+import { VendorDashboardShell }       from '@/components/VendorDashboardShell'
 
 export default async function VendorLayout({ children }: { children: React.ReactNode }) {
   // ── Lapis 1: verifikasi JWT + role ──────────────────────────────────────────
@@ -25,25 +28,24 @@ export default async function VendorLayout({ children }: { children: React.React
   if (!payload || payload.role !== 'VENDOR') redirect('/login')
 
   // ── Lapis 2: verifikasi status vendor di user_profiles ─────────────────────
-  // Pakai service role agar tidak bergantung RLS — ini security check server-side
   const db = createServerSupabaseClient()
-  const { data: profile } = await db
-    .from('user_profiles')
-    .select('status')
-    .eq('id', payload.uid)
-    .single()
 
-  const statusVendor = (profile?.status || '').toUpperCase()
-  const bolehMasuk   = VENDOR_LOGIN_ALLOWED.map(s => s.toUpperCase())
+  const [profileResult, tenantResult, messages] = await Promise.all([
+    db.from('user_profiles').select('status').eq('id', payload.uid).single(),
+    db.from('tenants').select('nama_brand').limit(1).single(),
+    getMessagesByKategori(['sidebar_ui', 'header_ui', 'vendor_ui']),
+  ])
 
-  if (!bolehMasuk.includes(statusVendor)) {
-    // Status PENDING/REVIEW/REJECTED/SUSPENDED → paksa logout via redirect
+  const statusVendor = (profileResult.data?.status || '').toUpperCase()
+  if (!VENDOR_LOGIN_ALLOWED.map(s => s.toUpperCase()).includes(statusVendor)) {
     redirect('/login?error=vendor_not_approved')
   }
 
+  const brandName = tenantResult.data?.nama_brand ?? 'ERP Mediator'
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <VendorDashboardShell brandName={brandName} messages={messages ?? {}}>
       {children}
-    </div>
+    </VendorDashboardShell>
   )
 }
