@@ -22,6 +22,13 @@
 //   Setelah loginVendorAction sukses, ambil tenantId + nomorWa dari action result
 //   (bukan fetchLoadUserProfile(uid, null) yang salah — null membuat route
 //   menganggap user sebagai SuperAdmin sehingga tenantId selalu kosong).
+//
+// REFACTOR Sesi #062 — Hapus Biometric dari login flow:
+//   Keputusan Philips: Biometric TIDAK ada di login flow.
+//   Biometric hanya di Register (jika device support) dan Dashboard Settings.
+//   Semua titik setTahap('BIOMETRIC') diganti langsung ke selesaiLogin().
+//   handleAktifkanBiometric + handleLewatiBiometric dihapus.
+//   import useBiometric dihapus.
 
 'use client'
 
@@ -29,7 +36,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, useSearchParams }               from 'next/navigation'
 import { createBrowserSupabaseClient }              from '@/lib/supabase-client'
 import { getGPSLocation }                           from '@/lib/session-client'
-import { useBiometric }                             from '@/lib/hooks/useBiometric'
 import { useOTPTimer }                              from '@/lib/hooks/useOTPTimer'
 import { ROLES }                                    from '@/lib/constants'
 import {
@@ -77,8 +83,6 @@ export interface LoginFlowState {
   handleLogin: () => Promise<void>
   handleVerifikasiOTP: () => Promise<void>
   handleKirimUlangOTP: () => Promise<void>
-  handleAktifkanBiometric: () => Promise<void>
-  handleLewatiBiometric: () => Promise<void>
   handlePilihRole: () => Promise<void>
   handleKembaliDariSesiParalel: () => void
   togglePassword: () => void
@@ -125,7 +129,6 @@ export function useLoginFlow(): LoginFlowState {
   const gpsRef         = useRef<{ lat: number; lng: number; kota: string } | null>(null)
   const gpsUdahDiminta = useRef(false)
   const otpTimer       = useOTPTimer(60)
-  const bio            = useBiometric()
 
   // ── Helper: baca pesan ────────────────────────────────────────────────────
   const m = useCallback((key: string, vars?: Record<string, string>): string => {
@@ -305,7 +308,8 @@ export function useLoginFlow(): LoginFlowState {
       if (!isCustomer && requireOtp) {
         await kirimOTP(uidUser, tid, role, waNumber, namaUser)
       } else {
-        setTahap('BIOMETRIC'); setIsLoading(false)
+        // Sesi #062: Biometric dihapus dari login flow → langsung selesaiLogin()
+        await selesaiLogin()
       }
     } catch {
       setError(m('login_error_gagal_config')); setTahap('KREDENSIAL'); setIsLoading(false)
@@ -438,7 +442,8 @@ export function useLoginFlow(): LoginFlowState {
         if (requireOtp) {
           await kirimOTP(resultVendor.uid, tid, ROLES.VENDOR, wa, resultVendor.nama)
         } else {
-          setTahap('BIOMETRIC'); setIsLoading(false)
+          // Sesi #062: Biometric dihapus dari login flow → langsung selesaiLogin()
+          await selesaiLogin()
         }
         return
       }
@@ -462,7 +467,8 @@ export function useLoginFlow(): LoginFlowState {
       const data = await fetchVerifyOTP({ uid, tenantId, inputCode: otpInput })
       if (data.success) {
         fetchActivityLog({ uid, tenantId, nama, role: roleDipilih, sessionId: '', actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'Verifikasi OTP berhasil', result: 'SUCCESS', gpsKota: gpsRef.current?.kota || '' })
-        setTahap('BIOMETRIC'); setIsLoading(false)
+        // Sesi #062: Biometric dihapus dari login flow → langsung selesaiLogin()
+        await selesaiLogin()
       } else if (data.result === 'EXPIRED') {
         setError(m('otp_error_kadaluarsa')); setIsLoading(false)
       } else {
@@ -476,14 +482,6 @@ export function useLoginFlow(): LoginFlowState {
   }
 
   async function handleKirimUlangOTP() { await kirimOTP(uid, tenantId, roleDipilih, nomorWA, nama) }
-  async function handleAktifkanBiometric() {
-    setIsLoading(true); setError('')
-    const verified = await bio.verify(uid, tenantId)
-    if (verified) { await selesaiLogin(); return }
-    await bio.register(uid, tenantId)
-    await selesaiLogin()
-  }
-  async function handleLewatiBiometric() { await selesaiLogin() }
   async function handlePilihRole() { setIsLoading(true); setError(''); await lanjutSetelahRole(roleDipilih, tenantId, uid, nama, nomorWA) }
   function handleKembaliDariSesiParalel() { setTahap('KREDENSIAL'); setError('') }
   function togglePassword() { setTampilPassword(prev => !prev) }
@@ -500,7 +498,6 @@ export function useLoginFlow(): LoginFlowState {
     otpInput, setOtpInput, otpPercobaan, maxOtpPercobaan,
     hitunganMundur: otpTimer.hitunganMundur,
     handleLogin, handleVerifikasiOTP, handleKirimUlangOTP,
-    handleAktifkanBiometric, handleLewatiBiometric,
     handlePilihRole, handleKembaliDariSesiParalel,
     togglePassword, m,
   }

@@ -6,6 +6,10 @@
 // REFACTOR Sesi #049 — Step 5 ANALISIS v3:
 //   Sebelumnya: 39.27 KB monolith (700+ baris)
 //   Sekarang:   orchestrator yang import hook + render stage component
+//
+// REFACTOR Sesi #062:
+//   BiometricStage dihapus dari login flow (keputusan Philips Sesi #061).
+//   Login post-OTP langsung masuk dashboard via selesaiLogin() di hook.
 
 'use client'
 
@@ -17,7 +21,6 @@ import { LoginFormStage }     from './components/LoginFormStage'
 import { SesiParalelStage }   from './components/SesiParalelStage'
 import { RoleSelectorStage }  from './components/RoleSelectorStage'
 import { OTPStage }           from './components/OTPStage'
-import { BiometricStage }     from './components/BiometricStage'
 
 function LoginOrchestrator() {
   const flow = useLoginFlow()
@@ -47,10 +50,6 @@ function LoginOrchestrator() {
     return <OTPStage otpInput={flow.otpInput} otpPercobaan={flow.otpPercobaan} maxOtpPercobaan={flow.maxOtpPercobaan}
       hitunganMundur={flow.hitunganMundur} isLoading={flow.isLoading} error={flow.error} gpsKota={flow.gpsKota}
       onOtpChange={flow.setOtpInput} onVerifikasi={flow.handleVerifikasiOTP} onKirimUlang={flow.handleKirimUlangOTP} />
-
-  if (flow.tahap === 'BIOMETRIC')
-    return <BiometricStage isLoading={flow.isLoading} error={flow.error} gpsKota={flow.gpsKota}
-      onAktifkan={flow.handleAktifkanBiometric} onLewati={flow.handleLewatiBiometric} />
 
   // Default: KREDENSIAL — form email + password
   return <LoginFormStage email={flow.email} password={flow.password} tampilPassword={flow.tampilPassword}

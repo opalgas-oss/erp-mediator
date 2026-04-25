@@ -6,7 +6,6 @@
 
 import { Button }                             from '@/components/ui/button'
 import { Input }                              from '@/components/ui/input'
-import { Badge }                              from '@/components/ui/badge'
 import { Label }                              from '@/components/ui/label'
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Wrapper, KotakError }                from './shared'
@@ -35,20 +34,16 @@ export function OTPStage(props: OTPStageProps) {
   return (
     <Wrapper>
       <CardHeader>
-        <CardTitle className="text-center text-base">Verifikasi OTP</CardTitle>
+        <CardTitle className="text-center text-lg font-semibold text-gray-900">Verifikasi OTP</CardTitle>
+        <p className="text-sm text-muted-foreground text-center">ERP Mediator Hyperlocal</p>
       </CardHeader>
-      {gpsKota && (
-        <div className="flex justify-end px-6 -mt-2 mb-0">
-          <Badge variant="outline">📍 {gpsKota}</Badge>
-        </div>
-      )}
       <CardContent className="pb-6 space-y-4">
         <p className="text-sm text-muted-foreground text-center">
           Kode OTP telah dikirim ke WhatsApp Anda.
         </p>
         {error && <KotakError pesan={error} />}
         <div>
-          <Label htmlFor="inputOTP" className="text-sm text-muted-foreground mb-1.5 block">
+          <Label htmlFor="inputOTP" className="text-sm text-gray-600 mb-1.5 block">
             Kode OTP (6 digit)
           </Label>
           <Input id="inputOTP" type="text" inputMode="numeric" maxLength={6}
@@ -62,7 +57,15 @@ export function OTPStage(props: OTPStageProps) {
         <Button className="w-full"
           disabled={isLoading || otpInput.length !== 6 || batasPercobaan}
           onClick={onVerifikasi}>
-          {isLoading ? 'Memverifikasi...' : 'Verifikasi OTP'}
+          {isLoading ? (
+            <span className="flex items-center gap-2">
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+              </svg>
+              Memverifikasi...
+            </span>
+          ) : 'Verifikasi OTP'}
         </Button>
         {hitunganMundur > 0
           ? <p className="text-xs text-center text-muted-foreground">
@@ -73,6 +76,12 @@ export function OTPStage(props: OTPStageProps) {
               Kirim Ulang
             </Button>
         }
+        {gpsKota && gpsKota !== 'Tidak Diketahui' && (
+          <div className="flex items-center gap-1 pb-1">
+            <span className="text-xs">📍</span>
+            <span className="text-xs text-muted-foreground">{gpsKota}</span>
+          </div>
+        )}
       </CardContent>
     </Wrapper>
   )
