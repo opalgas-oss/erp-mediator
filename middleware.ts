@@ -7,6 +7,11 @@
 //   - Role dibaca dari user.app_metadata.app_role (diisi inject-custom-claims hook)
 //   - Logika routing DASHBOARD_ROLE_MAP + ROLE_REDIRECT: TIDAK BERUBAH
 //   - Logika session timeout: TIDAK BERUBAH
+//
+// PERUBAHAN Sesi #064 (fix double getUser):
+//   - Guard 5: setelah getUser() berhasil, propagate x-user-* headers ke request
+//   - verifyJWT() di layout/Server Component membaca header → skip getUser() ke-2
+//   - Eliminasi 1 network round-trip ke Supabase Auth (~100-150ms) per dashboard request
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse }        from 'next/server'
@@ -114,8 +119,10 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
     // Guard 5 — Proteksi route /dashboard
     if (pathname.startsWith('/dashboard')) {
-      // Setup response yang bisa di-mutasi cookie-nya (untuk refresh token Supabase)
-      let response = NextResponse.next({ request })
+      // Kumpulkan cookie yang perlu di-set ke response (dari setAll callback Supabase)
+      // Pendekatan ini memisahkan cookie collection dari response creation,
+      // sehingga response final bisa dibangun SETELAH header user tersedia
+      const pendingCookies: Array<{ name: string; value: string; options: Record<string, unknown> }> = []
 
       // createServerClient dari @supabase/ssr — full crypto verify, bukan decode base64
       const supabase = createServerClient(
@@ -127,13 +134,13 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
               return request.cookies.getAll()
             },
             setAll(cookiesToSet) {
-              // Propagate cookie refresh ke request dan response
+              // Update request.cookies agar downstream cookie read tetap benar
               cookiesToSet.forEach(({ name, value }) =>
                 request.cookies.set(name, value)
               )
-              response = NextResponse.next({ request })
-              cookiesToSet.forEach(({ name, value, options }) =>
-                response.cookies.set(name, value, options)
+              // Simpan untuk di-apply ke response final — jangan buat response dulu
+              cookiesToSet.forEach(c =>
+                pendingCookies.push(c as typeof pendingCookies[number])
               )
             },
           },
@@ -148,13 +155,12 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
         return NextResponse.redirect(new URL('/login', request.url))
       }
 
-      // Role dibaca dari app_metadata (diisi saat createUser via Admin API)
+      // Role + tenantId dibaca dari app_metadata (diisi saat createUser via Admin API)
       // Fallback: baca dari JWT payload (diisi oleh inject-custom-claims Edge Function)
-      // Dua sumber ini diperlukan karena user lama mungkin tidak punya app_metadata.app_role
       let userRole = user.app_metadata?.['app_role'] as string | undefined
+      let tenantId = user.app_metadata?.['tenant_id'] as string | undefined
 
       if (!userRole) {
-        // Fallback: baca access_token via getSession() untuk ambil custom claims dari JWT
         // getSession() membaca cookie tanpa network call — aman dipakai setelah getUser() verify
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.access_token) {
@@ -163,6 +169,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
             if (parts.length === 3) {
               const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
               userRole = payload['app_role'] as string | undefined
+              if (!tenantId) tenantId = payload['tenant_id'] as string | undefined
             }
           } catch {
             // JWT tidak bisa di-decode — abaikan
@@ -173,6 +180,31 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       if (!userRole) {
         return NextResponse.redirect(new URL('/login', request.url))
       }
+
+      // ── Propagasi user data ke downstream via request headers ───────────────
+      // verifyJWT() di layout/Server Component membaca header ini → skip getUser() ke-2
+      // Security: strip header yang mungkin dikirim client (tidak boleh dipercaya)
+      const displayName = typeof user.user_metadata?.['nama'] === 'string'
+        ? user.user_metadata['nama']
+        : user.email ?? user.id
+
+      const requestHeaders = new Headers(request.headers)
+      requestHeaders.delete('x-user-id')           // strip jika ada dari client
+      requestHeaders.delete('x-user-role')
+      requestHeaders.delete('x-tenant-id')
+      requestHeaders.delete('x-user-display-name')
+      requestHeaders.set('x-user-id',           user.id)
+      requestHeaders.set('x-user-role',          userRole)
+      requestHeaders.set('x-tenant-id',          tenantId ?? '')
+      requestHeaders.set('x-user-display-name',  displayName)
+
+      // Bangun response dengan enriched request headers
+      let response = NextResponse.next({ request: { headers: requestHeaders } })
+
+      // Apply semua cookie yang dikumpulkan dari setAll callback (token refresh dll)
+      pendingCookies.forEach(({ name, value, options }) => {
+        response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2])
+      })
 
       // ── Cek session timeout ─────────────────────────────────────────────────
       // Baca session_timeout_minutes dari cookie — diembed saat login berhasil

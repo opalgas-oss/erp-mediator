@@ -6,10 +6,15 @@
 //   - verifyJWT() sekarang pakai Supabase Auth (bukan Firebase Admin verifyIdToken)
 //   - Dibungkus react.cache() untuk eliminasi delay 1.97 detik dari duplikasi panggilan
 //   - Role dibaca dari app_metadata JWT (diisi oleh Edge Function inject-custom-claims)
+//
+// PERUBAHAN Sesi #064 (fix double getUser):
+//   - verifyJWT() baca x-user-* headers dari middleware dulu
+//   - Jika header tersedia → skip getUser() ke Supabase (hemat ~100-150ms per request)
+//   - Fallback ke getUser() tetap ada untuk request yang tidak lewat middleware Guard 5
 
 import 'server-only'
 import { cache } from 'react'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 
 // ─── Tipe Hasil verifyJWT ──────────────────────────────────────────────────────
@@ -26,6 +31,29 @@ export interface JWTPayload {
 // hanya hit Supabase Auth sekali — eliminasi delay 1.97 detik
 export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
   try {
+    // ── Cek header dari middleware ─────────────────────────────────────────────
+    // middleware.ts Guard 5 set x-user-* setelah getUser() berhasil untuk /dashboard
+    // Jika header tersedia → user sudah diverifikasi, skip getUser() ke Supabase
+    const headerStore  = await headers()
+    const xUserId      = headerStore.get('x-user-id')
+    const xUserRole    = headerStore.get('x-user-role')
+    const xTenantId    = headerStore.get('x-tenant-id')
+    const xDisplayName = headerStore.get('x-user-display-name')
+
+    if (xUserId && xUserRole) {
+      // Header tersedia → middleware sudah lakukan full crypto verify
+      // Tidak perlu getUser() ke Supabase lagi — hemat ~100-150ms per request
+      return {
+        uid:         xUserId,
+        role:        xUserRole,
+        tenantId:    xTenantId    ?? '',
+        displayName: xDisplayName ?? xUserId,
+      }
+    }
+
+    // ── Fallback: header tidak ada ────────────────────────────────────────────
+    // Request tidak lewat middleware Guard 5 (misal: API route langsung)
+    // → verifikasi langsung ke Supabase Auth
     const cookieStore = await cookies()
 
     // createServerClient dari @supabase/ssr membaca session cookie Supabase secara otomatis
