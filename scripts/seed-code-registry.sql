@@ -86,9 +86,9 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- lib/auth-server.ts (1 fungsi)
-INSERT INTO code_registry.cr_functions (func_name, func_type, module_id, layer, file_path, parameters, return_type, description, is_shared, is_deprecated, ai_generated, author)
+INSERT INTO code_registry.cr_functions (func_name, func_type, module_id, layer, file_path, parameters, return_type, description, is_shared, is_deprecated, ai_generated, author, process_type, domain)
 VALUES
-  ('verifyJWT', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'HELPER', 'lib/auth-server.ts', '[]', 'Promise<JWTPayload | null>', 'Verifikasi session Supabase server-side, dibungkus react.cache() untuk eliminasi panggilan duplikat', true, false, true, 'AI:claude')
+  ('verifyJWT', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'HELPER', 'lib/auth-server.ts', '[]', 'Promise<JWTPayload | null>', 'Verifikasi session Supabase server-side, dibungkus react.cache() untuk eliminasi panggilan duplikat', true, false, true, 'AI:claude', 'SECURITY', 'auth')
 ON CONFLICT DO NOTHING;
 
 -- lib/auth.ts (3 fungsi)
@@ -172,22 +172,22 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- lib/services/ (14 fungsi)
-INSERT INTO code_registry.cr_functions (func_name, func_type, module_id, layer, file_path, parameters, return_type, description, is_shared, is_deprecated, ai_generated, author)
+INSERT INTO code_registry.cr_functions (func_name, func_type, module_id, layer, file_path, parameters, return_type, description, is_shared, is_deprecated, ai_generated, author, process_type, domain)
 VALUES
-  ('AccountLockService_getAccountLock', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/account-lock.service.ts', null, 'AccountLockDoc | null', 'Ambil record lock berdasarkan email via repo', true, false, true, 'AI:claude'),
-  ('AccountLockService_incrementLockCount', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/account-lock.service.ts', null, '{locked,lock_until,count,lock_count}', 'Baca config + panggil SP via repo — atomic', true, false, true, 'AI:claude'),
-  ('AccountLockService_sendLockNotificationWA', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/account-lock.service.ts', null, '{success,reason?}', 'Kirim WA via Fonnte — cek config notify dulu', true, false, true, 'AI:claude'),
-  ('AccountLockService_unlockAccount', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/account-lock.service.ts', null, 'UnlockResult', 'Unlock via SP — object param (refactor 5→1)', true, false, true, 'AI:claude'),
-  ('ActivityService_setUserOffline', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/activity.service.ts', null, 'void', 'Set offline via repo — non-throwing', true, false, true, 'AI:claude'),
-  ('ActivityService_updateUserPresence', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/activity.service.ts', null, 'void', 'Update presence via SP — non-throwing', true, false, true, 'AI:claude'),
-  ('ActivityService_writeActivityLog', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/activity.service.ts', null, 'void', 'Cek policy + insert log via repo', true, false, true, 'AI:claude'),
-  ('CredentialService_getCredential', 'ASYNC_FUNCTION', '83403a21-18d7-436f-ac0c-bcf57b89fd8e', 'SERVICE', 'lib/services/credential.service.ts', null, 'string | null', 'Ambil 1 credential — DB cache + env fallback', true, false, true, 'AI:claude'),
-  ('CredentialService_getCredentialsByProvider', 'ASYNC_FUNCTION', '83403a21-18d7-436f-ac0c-bcf57b89fd8e', 'SERVICE', 'lib/services/credential.service.ts', null, 'Record<string,string>', 'Ambil semua credential 1 provider — cache + env', true, false, true, 'AI:claude'),
-  ('OTPService_sendOTP', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/otp.service.ts', null, 'SendOTPResult', 'Generate + save + kirim WA — full orchestration', true, false, true, 'AI:claude'),
-  ('OTPService_verifyAndConsume', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/otp.service.ts', null, 'OTPVerifyResult', 'Verify OTP atomic via SP', true, false, true, 'AI:claude'),
-  ('SessionService_findActiveSessions', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/session.service.ts', null, 'SessionLogRow[]', 'Cari sesi aktif untuk concurrent check', true, false, true, 'AI:claude'),
-  ('SessionService_markLogout', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/session.service.ts', null, 'void', 'Mark semua sesi aktif sebagai logout', true, false, true, 'AI:claude'),
-  ('SessionService_writeSessionLog', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/session.service.ts', null, 'string', 'Buat session log — generate ID + insert', true, false, true, 'AI:claude')
+  ('AccountLockService_getAccountLock', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/account-lock.service.ts', null, 'AccountLockDoc | null', 'Ambil record lock berdasarkan email via repo', true, false, true, 'AI:claude', 'AUTH', 'login'),
+  ('AccountLockService_incrementLockCount', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/account-lock.service.ts', null, '{locked,lock_until,count,lock_count}', 'Baca config + panggil SP via repo — atomic', true, false, true, 'AI:claude', 'AUTH', 'login'),
+  ('AccountLockService_sendLockNotificationWA', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/account-lock.service.ts', null, '{success,reason?}', 'Kirim WA via Fonnte — cek config notify dulu', true, false, true, 'AI:claude', 'NOTIFICATION', 'login'),
+  ('AccountLockService_unlockAccount', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/account-lock.service.ts', null, 'UnlockResult', 'Unlock via SP — object param (refactor 5→1)', true, false, true, 'AI:claude', 'AUTH', 'login'),
+  ('ActivityService_setUserOffline', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/activity.service.ts', null, 'void', 'Set offline via repo — non-throwing', true, false, true, 'AI:claude', null, null),
+  ('ActivityService_updateUserPresence', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/activity.service.ts', null, 'void', 'Update presence via SP — non-throwing', true, false, true, 'AI:claude', null, null),
+  ('ActivityService_writeActivityLog', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/activity.service.ts', null, 'void', 'Cek policy + insert log via repo', true, false, true, 'AI:claude', null, null),
+  ('CredentialService_getCredential', 'ASYNC_FUNCTION', '83403a21-18d7-436f-ac0c-bcf57b89fd8e', 'SERVICE', 'lib/services/credential.service.ts', null, 'string | null', 'Ambil 1 credential — DB cache + env fallback', true, false, true, 'AI:claude', null, null),
+  ('CredentialService_getCredentialsByProvider', 'ASYNC_FUNCTION', '83403a21-18d7-436f-ac0c-bcf57b89fd8e', 'SERVICE', 'lib/services/credential.service.ts', null, 'Record<string,string>', 'Ambil semua credential 1 provider — cache + env', true, false, true, 'AI:claude', null, null),
+  ('OTPService_sendOTP', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/otp.service.ts', null, 'SendOTPResult', 'Generate + save + kirim WA — full orchestration', true, false, true, 'AI:claude', null, null),
+  ('OTPService_verifyAndConsume', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/otp.service.ts', null, 'OTPVerifyResult', 'Verify OTP atomic via SP', true, false, true, 'AI:claude', null, null),
+  ('SessionService_findActiveSessions', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/session.service.ts', null, 'SessionLogRow[]', 'Cari sesi aktif untuk concurrent check', true, false, true, 'AI:claude', null, null),
+  ('SessionService_markLogout', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/session.service.ts', null, 'void', 'Mark semua sesi aktif sebagai logout', true, false, true, 'AI:claude', null, null),
+  ('SessionService_writeSessionLog', 'ASYNC_FUNCTION', 'f5594d70-a7f7-41b3-ba72-9323ef098185', 'SERVICE', 'lib/services/session.service.ts', null, 'string', 'Buat session log — generate ID + insert', true, false, true, 'AI:claude', null, null)
 ON CONFLICT DO NOTHING;
 
 -- lib/session-client.ts (3 fungsi)

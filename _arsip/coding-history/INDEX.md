@@ -31,7 +31,7 @@ _arsip/
 
 ### sesi-057-baseline (26 April 2026)
 
-**Konteks:** Snapshot kondisi login flow di AKHIR Sesi #057 — sebelum refactor arsitektur besar yang direncanakan di Sesi #058 (menghapus 3 blocking API call, menambah Supabase Custom Access Token Hook, implementasi `waitUntil()` pattern).
+**Konteks:** Snapshot kondisi login flow di AKHIR Sesi #057 — sebelum refactor arsitektur besar yang direncanakan di Sesi #058.
 
 **File yang diarsipkan:**
 
@@ -42,75 +42,106 @@ _arsip/
 | `lib/hooks/login/loginSessionHelpers.ts` | Helper ambilNamaSuperadmin + tulisSessionLogSuperadmin + aturCookieSession |
 | `app/api/auth/load-user-profile/route.ts` | Server-side shared function (dengan fix Zod regex BUG-003) |
 
-**Kenapa diarsipkan:**
-- Sesi #058 akan mengubah arsitektur login secara signifikan (target <2,5 detik dari 8-9 detik)
-- Perubahan akan menyentuh `handleSuperadminLogin`, `muatDataUser`, `selesaiLogin`, dan menghapus beberapa blocking call
-- Snapshot ini jadi referensi: "sebelum refactor Sesi #058, kodenya begini"
-- Kalau refactor gagal atau Philips minta rollback → bisa bandingkan/restore dari sini
+**Kenapa diarsipkan:** Sesi #058 akan mengubah arsitektur login secara signifikan (target <2,5 detik dari 8-9 detik).
 
-**Posisi testing saat snapshot diambil:**
-- SuperAdmin login: ✅ berhasil tapi **LAMBAT 8-9 detik** (BUG-006 OPEN)
-- Vendor APPROVED login: ⚠️ sampai OTP screen tapi send-otp return 500 (BUG-005 OPEN)
-- TC-D01 (Vendor PENDING): belum dijalankan di sesi ini
-- TC-D02 (Vendor REVIEW): belum dijalankan di sesi ini
-- TC-D03 (Vendor APPROVED): blocked oleh BUG-005
+**Posisi testing:** SA login LAMBAT 8-9 detik (BUG-006 OPEN). Vendor APPROVED blocked BUG-005.
 
-**Git reference (untuk verifikasi):** branch `dev`, commit setelah fix BUG-004 + BUG-003 push — commit hash terakhir `521a411` (per `git log` Sesi #057).
+**Git reference:** branch `dev`, commit hash terakhir `521a411`.
 
 ---
 
 ### sesi-058-langkah-1 (27 April 2026)
 
-**Konteks:** Snapshot sebelum LANGKAH 1 refactor — mengubah 3 route handler supaya pakai Next.js `after()` untuk post-response background tasks. Target: hilangkan ~1,4 detik blocking dari session-log yang di-await browser.
-
-**Pendekatan satu-per-satu (konsep kerja Philips):** LANGKAH 1 ini satu dari 4 langkah berurutan (semua gratis) — selesaikan satu + test, baru lanjut LANGKAH 2. Tidak dikerjakan paralel.
+**Konteks:** Snapshot sebelum LANGKAH 1 — mengubah 3 route handler pakai Next.js `after()` untuk post-response background tasks.
 
 **File yang diarsipkan:**
 
 | Path | Catatan |
 |---|---|
-| `app/api/auth/session-log/route.ts` | Route handler — sebelum pakai `after()` untuk INSERT session log |
-| `app/api/auth/user-presence/route.ts` | Route handler — sebelum pakai `after()` untuk upsert presence |
-| `app/api/auth/activity-log/route.ts` | Route handler — sebelum pakai `after()` untuk insert activity log |
+| `app/api/auth/session-log/route.ts` | Route handler — sebelum pakai `after()` |
+| `app/api/auth/user-presence/route.ts` | Route handler — sebelum pakai `after()` |
+| `app/api/auth/activity-log/route.ts` | Route handler — sebelum pakai `after()` |
 
-**Kenapa diarsipkan:**
-- LANGKAH 1 mengubah timing eksekusi dari 3 route handler: dulu `await service(...)` lalu return → sekarang return dulu, service jalan di `after()`.
-- Kalau ada regresi (misal session_id tidak sempat di-INSERT saat browser sudah pakai untuk activity-log), bisa compare/rollback dari sini.
-
-**Posisi testing saat snapshot diambil:**
-- Sama dengan sesi-057-baseline (TC-D01~D03 masih blocked oleh BUG-005+006).
-- Login SuperAdmin masih 8-9 detik.
-
-**Hasil LANGKAH 1 (setelah deploy):** `after()` **terbukti bekerja** — baris session_logs masuk ~1 detik SETELAH response terkirim ke client. TAPI total saving dari perspektif browser hanya **~0,3 detik** (7,4s → 7,1s). Sisa bottleneck = `verifyJWT()` (~400ms × 4 route) + cold start serverless function. Bukan DB INSERT yang utama.
+**Hasil LANGKAH 1:** `after()` terbukti bekerja — saving aktual ~0,3 detik. Commit `a36b687c`.
 
 ---
 
 ### sesi-058-langkah-2 (27 April 2026)
 
-**Konteks:** Snapshot sebelum LANGKAH 2 refactor — menggabungkan 5 operasi login SuperAdmin (check-lock + signInWithPassword + load-user-profile + set cookies + session-log/presence) jadi **1 server action** `loginSuperadminAction` di `app/login/actions.ts`. Target: hilangkan 3-4 kali `verifyJWT()` + 3-4 cold start dari blocking path.
-
-**Alasan strategis (dari investigasi LANGKAH 1):** Bottleneck utama BUKAN DB INSERT (itu sudah `after()`), tapi **banyaknya round-trip HTTP dari browser**. Setiap round-trip bayar: cold start + `verifyJWT()` call ke Supabase Auth (~400ms). Gabungkan jadi 1 action → eliminasi 3-4 dari ongkos ini.
-
-**Scope LANGKAH 2 TERBATAS ke SUPERADMIN:**
-- Vendor, Customer, AdminTenant → action signOut() dan return `errorKey='NOT_SUPERADMIN'`, client fallback ke flow lama (TIDAK ada regresi untuk role non-SA).
-- Vendor optimization direncanakan di LANGKAH 3 (beda sesi/langkah).
+**Konteks:** Snapshot sebelum LANGKAH 2 — menggabungkan 5 operasi login SA jadi 1 server action `loginSuperadminAction`.
 
 **File yang diarsipkan:**
 
 | Path | Catatan |
 |---|---|
-| `lib/hooks/useLoginFlow.ts` | Hook login — sebelum `handleLogin` dimodifikasi untuk coba server action dulu |
+| `lib/hooks/useLoginFlow.ts` | Hook login — sebelum `handleLogin` panggil server action |
 
-**File yang AKAN dibuat/dimodifikasi (bukan snapshot, tapi daftar perubahan):**
+**Hasil LANGKAH 2:** Saving aktual ~0,5-1 detik. Commit `644317b4`.
 
-| Path | Jenis perubahan |
+---
+
+### sesi-062-hapus-biometric-login (25 April 2026)
+
+**Konteks:** Keputusan Philips Sesi #061 — Biometric DIHAPUS dari login flow. Biometric hanya ada di Register (ditawarkan jika device support) dan Dashboard Settings. Login post-OTP langsung `selesaiLogin()`.
+
+**File yang diarsipkan:**
+
+| Path | Catatan |
 |---|---|
-| `app/login/actions.ts` | **BARU** — server action `loginSuperadminAction` |
-| `lib/hooks/useLoginFlow.ts` | **DIMODIFIKASI** — `handleLogin` coba action dulu, fallback ke flow lama jika role bukan SA |
+| `app/login/page.tsx` | Orchestrator — sebelum hapus `import BiometricStage` + render block BIOMETRIC |
+| `lib/hooks/useLoginFlow.ts` | Hook — sebelum hapus `useBiometric`, `handleAktifkanBiometric`, `handleLewatiBiometric`, ganti 3x `setTahap('BIOMETRIC')` → `selesaiLogin()` |
 
-**Posisi testing saat snapshot diambil:**
-- LANGKAH 1 sudah merged ke `dev` (commit `a36b687c`).
-- Login SuperAdmin masih ~7,1 detik (target LANGKAH 2: <4,5 detik).
+**Kenapa diarsipkan:** Refactor menyentuh orkestrasi login flow — ubah 9 titik di `useLoginFlow.ts` + 3 titik di `page.tsx`. Rollback diperlukan jika ada regresi flow lama.
+
+**Posisi testing saat snapshot:** TC-D03 Vendor APPROVED LULUS Sesi #061. SA login ~1,34s.
+
+**Hasil setelah refactor:** Build 29/29 ✅. Post-OTP verified → langsung masuk dashboard tanpa layar Biometric ✅.
+
+---
+
+### sesi-062-vendor-ui-layout (25 April 2026)
+
+**Konteks:** Koreksi Philips Sesi #062 — UI/UX dashboard Vendor harus sama dengan SA dashboard. Sebelumnya: standalone page dengan logout button. Sesudah: DashboardShell pattern dengan sidebar + header.
+
+**File yang diarsipkan:**
+
+| Path | Catatan |
+|---|---|
+| `app/dashboard/vendor/layout.tsx` | Layout lama — hanya `<div min-h-screen bg-gray-50>` tanpa DashboardShell |
+| `app/dashboard/vendor/page.tsx` | Page lama — standalone dengan logout button, fetch message_library sendiri |
+
+**File baru yang dibuat (tidak diarsipkan — baru):**
+- `components/VendorSidebarNav.tsx` — 8 menu vendor (Ringkasan, Order Masuk, Bidding Aktif, Order Dikerjakan, Produk, History, Edit Profil, Ganti Password), responsive, GPS info
+- `components/VendorDashboardShell.tsx` — wrapper VendorSidebarNav + DashboardHeader (shared)
+
+**Kenapa diarsipkan:** Rewrite > 20 baris di `layout.tsx` (server component async + VendorDashboardShell) dan `page.tsx` (hapus logout + simplify ke content area).
+
+**Hasil setelah refactor:** Build 29/29 ✅. Sidebar + header live ✅. Logout via DashboardHeader (avatar dropdown) ✅.
+
+---
+
+---
+
+### sesi-064-fix-double-getuser (27 April 2026)
+
+**Konteks:** Fix performa — setiap request ke `/dashboard/*` memanggil `supabase.auth.getUser()` DUA KALI:
+- `middleware.ts` Guard 5 → getUser() #1 (~100-150ms network)
+- `layout.tsx` → `verifyJWT()` → getUser() #2 (~100-150ms network lagi)
+
+**Fix yang diimplementasikan:**
+1. `middleware.ts` — setelah getUser() berhasil, set request headers: `x-user-id`, `x-user-role`, `x-tenant-id`, `x-user-display-name`
+2. `lib/auth-server.ts` — `verifyJWT()` baca headers dulu. Jika ada → pakai langsung, skip getUser()
+
+**File yang diarsipkan:**
+
+| Path | Catatan |
+|---|---|
+| `middleware.ts` | Guard 5 — sebelum tambah propagasi header dan refactor setAll callback |
+| `lib/auth-server.ts` | verifyJWT() — sebelum tambah logika baca x-user-* headers |
+
+**Target performa:** Cold start 550ms → ~350ms (eliminasi 1 network round-trip ke Supabase Auth).
+
+**Posisi testing saat snapshot:** SA login ~1,24s ✅. Build 29/29 commit `543fb3b`.
 
 ---
 
@@ -135,7 +166,7 @@ Kalau yakin mau rollback, copy file arsip ke lokasi aslinya, lalu `npm run build
 1. Tentukan file mana yang akan direfactor
 2. Buat folder: `_arsip/coding-history/sesi-NNN-<label>/` mengikuti struktur path project
 3. Copy isi file (saat ini, sebelum diubah) ke folder snapshot
-4. Update INDEX.md ini dengan entry baru
+4. **Update INDEX.md ini dengan entry baru** ← WAJIB, sering dilupakan
 5. Baru lanjut refactor di file asli
 
 ---
@@ -154,3 +185,7 @@ Kalau yakin mau rollback, copy file arsip ke lokasi aslinya, lalu `npm run build
 | 26 Apr 2026 | #057 | File dibuat. Snapshot `sesi-057-baseline` ditambahkan (4 file login flow). |
 | 27 Apr 2026 | #058 | Snapshot `sesi-058-langkah-1` ditambahkan (3 route handler sebelum pakai `after()`). |
 | 27 Apr 2026 | #058 | Snapshot `sesi-058-langkah-2` ditambahkan (`useLoginFlow.ts` sebelum panggil server action). |
+| **25 Apr 2026** | **#062** | **Snapshot `sesi-062-hapus-biometric-login` ditambahkan (`page.tsx` + `useLoginFlow.ts` sebelum hapus BIOMETRIC stage).** |
+| **25 Apr 2026** | **#062** | **Snapshot `sesi-062-vendor-ui-layout` ditambahkan (`vendor/layout.tsx` + `vendor/page.tsx` sebelum rewrite ke VendorDashboardShell).** |
+| **27 Apr 2026** | **#064** | **Snapshot `sesi-064-fix-double-getuser` ditambahkan (`middleware.ts` + `lib/auth-server.ts` sebelum fix propagasi header untuk eliminasi getUser() ke-2).** |
+| **27 Apr 2026** | **#064** | **Snapshot `sesi-064-layout-perf` ditambahkan (`superadmin/layout.tsx` + `vendor/layout.tsx` sebelum fix: SA pindah unstable_cache ke module-level + hapus getConfigValue TTL; Vendor tambah cache brandName+messages).** |

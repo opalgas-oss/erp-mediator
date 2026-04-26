@@ -124,6 +124,9 @@ CREATE TABLE code_registry.cr_functions (
   status         VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
                    CHECK (status IN ('ACTIVE', 'DEPRECATED', 'REVIEW')),
   author         VARCHAR(100),
+  process_type   VARCHAR(50)  DEFAULT NULL,
+  domain         VARCHAR(50)  DEFAULT NULL,
+  riwayat        JSONB        DEFAULT '[]'::jsonb,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (func_name, module_id, layer)
@@ -199,13 +202,17 @@ SELECT
   f.parameters,
   f.return_type,
   f.description,
+  f.process_type,
+  f.domain,
+  f.riwayat,
   m.module_name,
   f.status
 FROM code_registry.cr_functions f
 JOIN code_registry.cr_modules m ON f.module_id = m.module_id
 WHERE f.is_shared = TRUE
   AND f.is_deprecated = FALSE
-  AND f.status = 'ACTIVE';
+  AND f.status = 'ACTIVE'
+ORDER BY f.process_type NULLS LAST, f.domain, f.func_name;
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- VIEW 2: v_module_summary — Ringkasan total class dan fungsi per modul
