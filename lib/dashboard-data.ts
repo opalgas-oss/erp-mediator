@@ -7,23 +7,25 @@
 //
 // FIX CACHE Sesi #067:
 //   Module-level Map diganti unstable_cache — mengikuti pola message-library.ts.
-//   unstable_cache wrapper dibuat di MODULE LEVEL (bukan di dalam fungsi)
-//   agar cache key stabil dan tidak dibuat ulang setiap request.
+//   unstable_cache wrapper dibuat di MODULE LEVEL agar cache key stabil.
 //   Cache disimpan di Vercel Data Cache (shared lintas semua instance).
-//   Invalidasi: revalidateTag('brand-name') via invalidateBrandCache().
+//
+//   Invalidasi brand cache:
+//   JANGAN panggil revalidateTag di sini — harus dari Server Action / Route Handler.
+//   Export BRAND_CACHE_TAG → import di Server Action → panggil revalidateTag(BRAND_CACHE_TAG) di sana.
 //
 // PENTING:
 //   File ini HANYA berisi data yang truly shared antar role.
 //   Data spesifik per role (featureKeys SA, status vendor) tetap di layout masing-masing.
 
 import 'server-only'
-import { unstable_cache, revalidateTag } from 'next/cache'
-import { createServerSupabaseClient }    from '@/lib/supabase-server'
+import { unstable_cache }          from 'next/cache'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
-// ─── Konstanta ────────────────────────────────────────────────────────────────
+// ─── Konstanta (di-export agar Server Action bisa pakai untuk revalidateTag) ──
 
-const BRAND_CACHE_TTL_S = 30 * 60  // 30 menit dalam detik
-const BRAND_CACHE_TAG   = 'brand-name'
+export const BRAND_CACHE_TAG   = 'brand-name'
+const        BRAND_CACHE_TTL_S = 30 * 60  // 30 menit dalam detik
 
 // ─── FUNGSI INTERNAL: fetchBrandNameFromDB ────────────────────────────────────
 // Tidak di-export — hanya dipanggil via getCachedBrandName di bawah.
@@ -44,8 +46,8 @@ async function fetchBrandNameFromDB(): Promise<string> {
 }
 
 // ─── MODULE-LEVEL CACHE WRAPPER ───────────────────────────────────────────────
-// WAJIB dibuat di module level — bukan di dalam fungsi.
-// Kalau dibuat di dalam fungsi: cache key baru setiap call → cache tidak pernah hit.
+// WAJIB di module level — bukan di dalam fungsi.
+// Kalau di dalam fungsi: cache key baru setiap call → cache tidak pernah hit.
 
 const getCachedBrandName = unstable_cache(
   fetchBrandNameFromDB,
@@ -61,26 +63,20 @@ const getCachedBrandName = unstable_cache(
 /**
  * Ambil nama brand platform dari tabel tenants.
  * Di-cache via unstable_cache (Vercel Data Cache) selama 30 menit.
- * Cache ini shared lintas semua serverless instance — tidak hilang saat cold start.
+ * Cache shared lintas semua serverless instance — tidak hilang saat cold start.
  *
  * Dipakai oleh:
  *   - app/dashboard/superadmin/layout.tsx
  *   - app/dashboard/vendor/layout.tsx
  *   - app/dashboard/admin-tenant/layout.tsx (saat dibuat)
  *
+ * Untuk invalidasi cache dari Server Action:
+ *   import { BRAND_CACHE_TAG } from '@/lib/dashboard-data'
+ *   import { revalidateTag }   from 'next/cache'
+ *   revalidateTag(BRAND_CACHE_TAG)
+ *
  * @returns nama brand dari DB, fallback 'ERP Mediator' jika DB tidak tersedia
  */
 export async function getBrandName(): Promise<string> {
   return getCachedBrandName()
-}
-
-// ─── FUNGSI 2: invalidateBrandCache ──────────────────────────────────────────
-
-/**
- * Invalidasi cache brand name via revalidateTag.
- * Wajib dipanggil dari Server Action atau Route Handler saat SA update nama brand.
- * Setelah dipanggil, request berikutnya ke getBrandName() akan fetch ulang dari DB.
- */
-export function invalidateBrandCache(): void {
-  revalidateTag(BRAND_CACHE_TAG)
 }
