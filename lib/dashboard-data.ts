@@ -6,61 +6,30 @@
 //   masing-masing fetch tenants.nama_brand sendiri, tidak shared. Akibatnya:
 //   2 cache entry terpisah, tidak saling menguntungkan antar role.
 //
-// STRATEGI CACHE:
-//   Module-level Map — pola identik dengan lib/config-registry.ts.
-//   - Warm instance: 0ms (tidak query DB)
-//   - Cold start: 1 DB query → simpan ke Map, dibagi semua layout di instance yang sama
-//   - Update brand: panggil invalidateBrandCache() → Map di-clear
+// FIX CACHE Sesi #067:
+//   Module-level Map diganti unstable_cache — mengikuti pola message-library.ts.
+//   Sebab: module-level Map hanya hidup di RAM satu serverless instance.
+//   Vercel bisa spin up instance baru kapan saja → Map kosong → DB query ulang → 800ms.
+//   unstable_cache disimpan di Vercel Data Cache (shared lintas semua instance) → fast lintas cold start.
+//   Invalidasi: revalidateTag('brand-name') — dipanggil saat SA update nama brand.
 //
 // PENTING:
 //   File ini HANYA berisi data yang truly shared antar role.
 //   Data spesifik per role (featureKeys SA, status vendor) tetap di layout masing-masing.
 
 import 'server-only'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { unstable_cache, revalidateTag } from 'next/cache'
+import { createServerSupabaseClient }    from '@/lib/supabase-server'
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 
-const BRAND_CACHE_TTL_MS = 30 * 60 * 1000 // 30 menit
-const BRAND_CACHE_KEY    = 'platform-brand-name'
+const BRAND_CACHE_TTL_S = 30 * 60  // 30 menit dalam detik (unstable_cache pakai detik)
+const BRAND_CACHE_TAG   = 'brand-name'
 
-// ─── Tipe Data ────────────────────────────────────────────────────────────────
+// ─── FUNGSI INTERNAL: fetchBrandNameFromDB ────────────────────────────────────
+// Tidak di-export — hanya dipanggil via getBrandName() yang sudah di-wrap cache.
 
-interface BrandCacheEntry {
-  nama_brand: string
-  expiredAt:  number
-}
-
-// ─── Module-level Cache ───────────────────────────────────────────────────────
-// Hidup selama serverless instance masih warm.
-// Satu instance melayani semua layout (SA, Vendor, dst) — cache ini shared.
-
-const brandCache = new Map<string, BrandCacheEntry>()
-
-// ─── FUNGSI 1: getBrandName ───────────────────────────────────────────────────
-
-/**
- * Ambil nama brand platform dari tabel tenants.
- * Di-cache di module-level Map selama 30 menit — shared antar semua dashboard layout.
- *
- * Dipakai oleh:
- *   - app/dashboard/superadmin/layout.tsx
- *   - app/dashboard/vendor/layout.tsx
- *   - app/dashboard/admin-tenant/layout.tsx (saat dibuat)
- *
- * TIDAK perlu dipanggil berkali-kali per request — instance yang sama
- * berbagi cache yang sama untuk semua layout yang mengimpor fungsi ini.
- *
- * @param fallback - nilai default jika DB tidak tersedia (default: 'ERP Mediator')
- */
-export async function getBrandName(fallback = 'ERP Mediator'): Promise<string> {
-  const now    = Date.now()
-  const cached = brandCache.get(BRAND_CACHE_KEY)
-
-  // Cache hit — return langsung tanpa query DB
-  if (cached && now < cached.expiredAt) return cached.nama_brand
-
-  // Cache miss / expired — query DB
+async function fetchBrandNameFromDB(): Promise<string> {
   try {
     const db = createServerSupabaseClient()
     const { data } = await db
@@ -69,28 +38,45 @@ export async function getBrandName(fallback = 'ERP Mediator'): Promise<string> {
       .limit(1)
       .single()
 
-    const nama_brand = data?.nama_brand ?? fallback
-
-    // Simpan ke cache — semua layout berikutnya di instance ini dapat 0ms
-    brandCache.set(BRAND_CACHE_KEY, {
-      nama_brand,
-      expiredAt: now + BRAND_CACHE_TTL_MS,
-    })
-
-    return nama_brand
+    return data?.nama_brand ?? 'ERP Mediator'
   } catch {
-    // Kembalikan cache lama jika ada (stale-while-error) atau fallback
-    return cached?.nama_brand ?? fallback
+    return 'ERP Mediator'
   }
+}
+
+// ─── FUNGSI 1: getBrandName ───────────────────────────────────────────────────
+
+/**
+ * Ambil nama brand platform dari tabel tenants.
+ * Di-cache via unstable_cache (Vercel Data Cache) selama 30 menit.
+ * Cache ini shared lintas semua serverless instance — tidak hilang saat cold start.
+ *
+ * Dipakai oleh:
+ *   - app/dashboard/superadmin/layout.tsx
+ *   - app/dashboard/vendor/layout.tsx
+ *   - app/dashboard/admin-tenant/layout.tsx (saat dibuat)
+ *
+ * @returns nama brand dari DB, fallback 'ERP Mediator' jika DB tidak tersedia
+ */
+export async function getBrandName(): Promise<string> {
+  const cached = unstable_cache(
+    fetchBrandNameFromDB,
+    ['brand-name'],
+    {
+      revalidate: BRAND_CACHE_TTL_S,
+      tags: [BRAND_CACHE_TAG],
+    }
+  )
+  return cached()
 }
 
 // ─── FUNGSI 2: invalidateBrandCache ──────────────────────────────────────────
 
 /**
- * Hapus cache brand name.
- * Wajib dipanggil saat SuperAdmin update nama brand via dashboard.
- * Tanpa parameter → invalidate semua (saat ini hanya 1 key).
+ * Invalidasi cache brand name via revalidateTag.
+ * Wajib dipanggil dari server action / API route saat SuperAdmin update nama brand.
+ * Setelah dipanggil, request berikutnya ke getBrandName() akan fetch ulang dari DB.
  */
 export function invalidateBrandCache(): void {
-  brandCache.clear()
+  revalidateTag(BRAND_CACHE_TAG)
 }
