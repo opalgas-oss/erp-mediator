@@ -1,19 +1,11 @@
 // app/dashboard/superadmin/layout.tsx
 //
-// PERUBAHAN Sesi #045 — Fix Performa:
+// PERUBAHAN Sesi #045 — Fix Performa (mengacu PERFORMANCE_STANDARDS_v1.md Poin 6.D):
 //   - getSidebarData: 3 query sequential → Promise.all paralel
-//   - getSidebarData: dibungkus unstable_cache
+//   - getSidebarData: dibungkus unstable_cache, TTL dibaca dari DB
+//     Key: config_registry (platform_general.sidebar_cache_ttl_seconds) — tidak hardcode
+//     Fallback: 1800 detik jika key belum ada di DB
 //   - Cache diinvalidasi via revalidateTag('sidebar-data') di PATCH /api/config
-//
-// PERUBAHAN Sesi #064 — Fix Layout Performance:
-//   - unstable_cache dipindah ke MODULE LEVEL (bukan di dalam component function)
-//   - getConfigValue() untuk baca TTL DIHAPUS dari hot path
-//   - TTL fixed 1800 detik — sama dengan nilai di DB, tidak perlu baca DB tiap request
-//   - Alasan: platform_general.sidebar_cache_ttl_seconds tidak diekspos di UI SA manapun
-//     sehingga fitur "TTL configurable dari UI" belum pernah ada secara praktis
-//   - revalidateTag('sidebar-data') di PATCH /api/config TETAP bekerja — SA update config
-//     akan tetap invalidate cache sidebar secara explicit
-//   - Saving: eliminasi 1 await getConfigValue() ~50-80ms cold start per request dashboard
 
 export const dynamic = 'force-dynamic'
 
@@ -22,9 +14,12 @@ import { unstable_cache }             from 'next/cache'
 import { verifyJWT }                  from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getMessagesByKategori }      from '@/lib/message-library'
+import { getConfigValue }             from '@/lib/config-registry'
 import { DashboardShell }             from '@/components/DashboardShell'
 
-// ─── fetchSidebarData — data platform-level, sama untuk semua SA ──────────────
+// ─── Data sidebar — Promise.all + unstable_cache ──────────────────────────────
+// TTL dibaca dari config_registry agar bisa dikonfigurasi SuperAdmin
+// tanpa menyentuh kode. Fallback 1800 detik (30 menit).
 async function fetchSidebarData(): Promise<{
   brandName:   string
   messages:    Record<string, string>
@@ -63,22 +58,21 @@ async function fetchSidebarData(): Promise<{
   }
 }
 
-// ─── Module-level cache — dibuat SEKALI, tidak dibuat ulang tiap render ───────
-// TTL 1800 detik (30 menit) — konsisten dengan nilai platform_general di DB
-// Tag 'sidebar-data' dipakai oleh PATCH /api/config untuk explicit invalidation
-const getSidebarData = unstable_cache(
-  fetchSidebarData,
-  ['sidebar-data'],
-  { revalidate: 1800, tags: ['sidebar-data'] }
-)
-
-// ─── Layout ───────────────────────────────────────────────────────────────────
 export default async function SuperAdminLayout({ children }: { children: React.ReactNode }) {
-  // verifyJWT() membaca x-user-* headers dari middleware — skip getUser() ke Supabase
   const payload = await verifyJWT()
   if (!payload || payload.role !== 'SUPERADMIN') redirect('/login')
 
-  // getSidebarData() — module-level unstable_cache, tidak ada DB call jika cache warm
+  // Baca TTL sidebar cache dari config_registry — tidak hardcode
+  const ttlStr   = await getConfigValue('platform_general', 'sidebar_cache_ttl_seconds', '1800')
+  const revalidate = Number(ttlStr) || 1800
+
+  // unstable_cache dengan TTL dari DB dan tag untuk explicit invalidation
+  const getSidebarData = unstable_cache(
+    fetchSidebarData,
+    ['sidebar-data'],
+    { revalidate, tags: ['sidebar-data'] }
+  )
+
   const { brandName, messages, featureKeys } = await getSidebarData()
 
   return (
