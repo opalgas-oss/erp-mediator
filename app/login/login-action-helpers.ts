@@ -13,14 +13,19 @@
 //   F. jalankanAfterTasksLogin()    — 3 background tasks via after()
 //   G. buildLoginFormSchema()       — Zod schema validasi input login
 //   H. buatSupabaseSSR()            — buat Supabase SSR client + return cookieStore
-//   I. prosesGagalLogin()           — increment lock + return error key
-//   J. ambilNamaUser()              — query nama user dari tabel users
+//   I. prosesGagalLogin()           — increment lock + kirim WA notif + return error key
+//   J. ambilNamaUser()              — query nama user dari tabel users (SA only)
 //
 // FIX REGRESI Sesi #060:
 //   cookies() hanya boleh dipanggil SEKALI per request — di buatSupabaseSSR().
-//   setCookiesLoginServer() menerima cookieStore sebagai parameter, tidak panggil cookies() sendiri.
-//   Sebelumnya: 2x await cookies() → +700ms latency.
-//   Sekarang: 1x await cookies() → shared ke Supabase SSR client + cookie setter.
+//
+// FIX BUG-011 Sesi #063:
+//   prosesGagalLogin() sebelumnya hanya query tabel users → Vendor/AdminTenant/Customer tidak ditemukan.
+//   Fix: pakai findByEmail() dari user.repository yang cek 3 tabel (users → user_profiles → auth).
+//   Fix: pass nomor_wa aktual dari hasil lookup (bukan '' hardcoded kosong).
+//   Fix: panggil sendLockNotificationWA() saat akun baru dikunci.
+//   WA notif dikirim ke nomor_wa USER SENDIRI (bukan hanya SuperAdmin).
+//   Template pesan sudah berisi: "Jika bukan Anda, hubungi SuperAdmin: {superadmin_email}".
 
 import { cookies }                from 'next/headers'
 import { after }                  from 'next/server'
@@ -30,9 +35,17 @@ import type { ReadonlyRequestCookies } from 'next/dist/server/web/spec-extension
 import { createServerSupabaseClient }  from '@/lib/supabase-server'
 import { create as createSessionLog }  from '@/lib/repositories/session-log.repository'
 import { updateUserPresence }          from '@/lib/services/activity.service'
-import { unlockAccount, incrementLockCount } from '@/lib/services/account-lock.service'
+import {
+  unlockAccount,
+  incrementLockCount,
+  sendLockNotificationWA,
+} from '@/lib/services/account-lock.service'
+import {
+  findByEmail as findUserByEmail,
+  findSuperAdminEmail,
+} from '@/lib/repositories/user.repository'
 import { getPlatformTimezone, getConfigValues, parseConfigNumber } from '@/lib/config-registry'
-import { ROLES, UNLOCK_METHOD }        from '@/lib/constants'
+import { ROLES, UNLOCK_METHOD } from '@/lib/constants'
 
 // ─── Tipe Shared ─────────────────────────────────────────────────────────────
 
@@ -193,7 +206,6 @@ export function buildLoginFormSchema(passwordMinLength = 8) {
 /**
  * Buat Supabase SSR client + return cookieStore.
  * cookies() hanya dipanggil SEKALI di sini — cookieStore di-share ke setCookiesLoginServer().
- * Mencegah double cookies() call yang menyebabkan +700ms latency.
  * @returns { supabase, cookieStore }
  */
 export async function buatSupabaseSSR(): Promise<SupabaseSSRResult> {
@@ -216,29 +228,71 @@ export async function buatSupabaseSSR(): Promise<SupabaseSSRResult> {
 }
 
 // ─── I. prosesGagalLogin ──────────────────────────────────────────────────────
+/**
+ * Proses login gagal: increment lock counter + kirim WA notif ke user jika terkunci.
+ * FIX BUG-011 Sesi #063:
+ *   - Pakai findByEmail() yang cek 3 tabel: users → user_profiles → auth
+ *   - Pass nomor_wa aktual dari lookup (bukan hardcoded kosong)
+ *   - Panggil sendLockNotificationWA() ke nomor_wa USER SENDIRI saat dikunci
+ * @param email    - Email yang gagal login
+ * @param tenantId - Tenant ID (dari JWT atau dari lookup)
+ * @param authMsg  - Pesan error dari Supabase Auth
+ */
 export async function prosesGagalLogin(
   email:    string,
   tenantId: string | null,
   authMsg:  string,
 ): Promise<GagalLoginResult> {
-  const adminDb = createServerSupabaseClient()
-  const { data: userRow } = await adminDb
-    .from('users').select('id, nama').eq('email', email).maybeSingle()
-  if (userRow) {
+  // Lookup user via 3 tabel: users (SA) → user_profiles (Vendor/AT/Customer) → auth
+  const user = await findUserByEmail(email)
+
+  if (user) {
     try {
       const incResult = await incrementLockCount({
-        uid: userRow.id, email, nama: userRow.nama ?? '', nomor_wa: '', tenantId,
+        uid:      user.uid,
+        email,
+        nama:     user.nama,
+        nomor_wa: user.nomor_wa,
+        tenantId: tenantId ?? user.tenant_id,
       })
+
+      // Akun baru saja dikunci — kirim WA notif ke nomor user yang bersangkutan
       if (incResult.locked && incResult.lock_until) {
+        if (user.nomor_wa) {
+          try {
+            const superadminEmail = await findSuperAdminEmail() ?? ''
+            const cfg             = await getConfigValues('security_login')
+            const maxAttempts     = parseConfigNumber(cfg['max_login_attempts'], 5)
+            await sendLockNotificationWA({
+              nomor_wa:           user.nomor_wa,
+              nama:               user.nama,
+              lock_until:         new Date(incResult.lock_until),
+              max_login_attempts: maxAttempts,
+              superadmin_email:   superadminEmail,
+              tenantId:           tenantId ?? user.tenant_id,
+            })
+          } catch (err) {
+            console.error('[prosesGagalLogin] sendLockNotificationWA gagal:', err)
+          }
+        }
         const lock_until_wib = await formatLockUntilWIB(incResult.lock_until)
         return { ok: false, errorKey: 'login_error_akun_dikunci', errorVars: { lock_until_wib } }
       }
-    } catch (err) { console.error('[prosesGagalLogin] incrementLockCount gagal:', err) }
+    } catch (err) {
+      console.error('[prosesGagalLogin] incrementLockCount gagal:', err)
+    }
   }
+
   return { ok: false, errorKey: mapSupabaseErrorKey(authMsg) }
 }
 
 // ─── J. ambilNamaUser ─────────────────────────────────────────────────────────
+/**
+ * Ambil nama SuperAdmin dari tabel users berdasarkan uid.
+ * Khusus SA — dipanggil setelah loginSuperadminAction berhasil.
+ * @param uid - UID SuperAdmin dari JWT
+ * @returns Nama SA, string kosong jika tidak ditemukan
+ */
 export async function ambilNamaUser(uid: string): Promise<string> {
   try {
     const adminDb = createServerSupabaseClient()
