@@ -3,15 +3,14 @@
 //
 // DIBUAT Sesi #065 — BUG-013:
 //   Lahir dari pelanggaran ATURAN 11 — vendor/layout.tsx dan superadmin/layout.tsx
-//   masing-masing fetch tenants.nama_brand sendiri, tidak shared. Akibatnya:
-//   2 cache entry terpisah, tidak saling menguntungkan antar role.
+//   masing-masing fetch tenants.nama_brand sendiri, tidak shared.
 //
 // FIX CACHE Sesi #067:
 //   Module-level Map diganti unstable_cache — mengikuti pola message-library.ts.
-//   Sebab: module-level Map hanya hidup di RAM satu serverless instance.
-//   Vercel bisa spin up instance baru kapan saja → Map kosong → DB query ulang → 800ms.
-//   unstable_cache disimpan di Vercel Data Cache (shared lintas semua instance) → fast lintas cold start.
-//   Invalidasi: revalidateTag('brand-name') — dipanggil saat SA update nama brand.
+//   unstable_cache wrapper dibuat di MODULE LEVEL (bukan di dalam fungsi)
+//   agar cache key stabil dan tidak dibuat ulang setiap request.
+//   Cache disimpan di Vercel Data Cache (shared lintas semua instance).
+//   Invalidasi: revalidateTag('brand-name') via invalidateBrandCache().
 //
 // PENTING:
 //   File ini HANYA berisi data yang truly shared antar role.
@@ -23,11 +22,11 @@ import { createServerSupabaseClient }    from '@/lib/supabase-server'
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 
-const BRAND_CACHE_TTL_S = 30 * 60  // 30 menit dalam detik (unstable_cache pakai detik)
+const BRAND_CACHE_TTL_S = 30 * 60  // 30 menit dalam detik
 const BRAND_CACHE_TAG   = 'brand-name'
 
 // ─── FUNGSI INTERNAL: fetchBrandNameFromDB ────────────────────────────────────
-// Tidak di-export — hanya dipanggil via getBrandName() yang sudah di-wrap cache.
+// Tidak di-export — hanya dipanggil via getCachedBrandName di bawah.
 
 async function fetchBrandNameFromDB(): Promise<string> {
   try {
@@ -44,6 +43,19 @@ async function fetchBrandNameFromDB(): Promise<string> {
   }
 }
 
+// ─── MODULE-LEVEL CACHE WRAPPER ───────────────────────────────────────────────
+// WAJIB dibuat di module level — bukan di dalam fungsi.
+// Kalau dibuat di dalam fungsi: cache key baru setiap call → cache tidak pernah hit.
+
+const getCachedBrandName = unstable_cache(
+  fetchBrandNameFromDB,
+  ['brand-name'],
+  {
+    revalidate: BRAND_CACHE_TTL_S,
+    tags:       [BRAND_CACHE_TAG],
+  }
+)
+
 // ─── FUNGSI 1: getBrandName ───────────────────────────────────────────────────
 
 /**
@@ -59,22 +71,14 @@ async function fetchBrandNameFromDB(): Promise<string> {
  * @returns nama brand dari DB, fallback 'ERP Mediator' jika DB tidak tersedia
  */
 export async function getBrandName(): Promise<string> {
-  const cached = unstable_cache(
-    fetchBrandNameFromDB,
-    ['brand-name'],
-    {
-      revalidate: BRAND_CACHE_TTL_S,
-      tags: [BRAND_CACHE_TAG],
-    }
-  )
-  return cached()
+  return getCachedBrandName()
 }
 
 // ─── FUNGSI 2: invalidateBrandCache ──────────────────────────────────────────
 
 /**
  * Invalidasi cache brand name via revalidateTag.
- * Wajib dipanggil dari server action / API route saat SuperAdmin update nama brand.
+ * Wajib dipanggil dari Server Action atau Route Handler saat SA update nama brand.
  * Setelah dipanggil, request berikutnya ke getBrandName() akan fetch ulang dari DB.
  */
 export function invalidateBrandCache(): void {
