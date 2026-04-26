@@ -9,8 +9,8 @@
 //
 // PERUBAHAN Sesi #064 (fix double getUser):
 //   - verifyJWT() baca x-user-* headers dari middleware dulu
-//   - Jika header tersedia → skip getUser() ke Supabase (hemat ~100-150ms per request)
-//   - Fallback ke getUser() tetap ada untuk request yang tidak lewat middleware Guard 5
+//   - Jika header tersedia → skip getUser() ke Supabase (~100-150ms hemat)
+//   - Fallback ke getUser() tetap ada untuk request non-dashboard
 
 import 'server-only'
 import { cache } from 'react'
@@ -18,22 +18,18 @@ import { cookies, headers } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 
 // ─── Tipe Hasil verifyJWT ──────────────────────────────────────────────────────
-// Interface tidak berubah — caller tidak perlu diupdate
 export interface JWTPayload {
-  uid:         string   // Supabase user ID
-  role:        string   // dari app_metadata: SUPERADMIN, ADMIN_TENANT, VENDOR, CUSTOMER
-  tenantId:    string   // dari app_metadata: id tenant
-  displayName: string   // nama user untuk sapaan di UI
+  uid:         string
+  role:        string
+  tenantId:    string
+  displayName: string
 }
 
 // ─── verifyJWT ────────────────────────────────────────────────────────────────
-// Dibungkus react.cache() agar panggilan berulang dalam satu request
-// hanya hit Supabase Auth sekali — eliminasi delay 1.97 detik
 export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
   try {
-    // ── Cek header dari middleware ─────────────────────────────────────────────
-    // middleware.ts Guard 5 set x-user-* setelah getUser() berhasil untuk /dashboard
-    // Jika header tersedia → user sudah diverifikasi, skip getUser() ke Supabase
+    // ── Cek header dari middleware dulu ────────────────────────────────────────
+    // Jika middleware sudah verify → pakai langsung, skip getUser() ke Supabase
     const headerStore  = await headers()
     const xUserId      = headerStore.get('x-user-id')
     const xUserRole    = headerStore.get('x-user-role')
@@ -41,8 +37,6 @@ export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
     const xDisplayName = headerStore.get('x-user-display-name')
 
     if (xUserId && xUserRole) {
-      // Header tersedia → middleware sudah lakukan full crypto verify
-      // Tidak perlu getUser() ke Supabase lagi — hemat ~100-150ms per request
       return {
         uid:         xUserId,
         role:        xUserRole,
@@ -51,37 +45,24 @@ export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
       }
     }
 
-    // ── Fallback: header tidak ada ────────────────────────────────────────────
-    // Request tidak lewat middleware Guard 5 (misal: API route langsung)
-    // → verifikasi langsung ke Supabase Auth
+    // ── Fallback: verifikasi langsung ke Supabase ──────────────────────────────
     const cookieStore = await cookies()
 
-    // createServerClient dari @supabase/ssr membaca session cookie Supabase secara otomatis
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll() {
-            // Server Component tidak bisa set cookie — diabaikan
-          }
+          getAll() { return cookieStore.getAll() },
+          setAll() { /* Server Component tidak bisa set cookie */ }
         }
       }
     )
 
-    // Verifikasi session — getUser() melakukan full crypto verify ke Supabase Auth server
     const { data: { user }, error } = await supabase.auth.getUser()
-
     if (error || !user) return null
 
-    // Role dan tenantId dibaca dari app_metadata (diisi saat createUser via Admin API)
-    // Fallback: baca dari JWT payload via getSession() — diisi oleh inject-custom-claims hook
-    // Fallback diperlukan untuk user yang dibuat sebelum app_metadata di-set dengan benar
     const appMeta = user.app_metadata || {}
-
     let role     = typeof appMeta['app_role']  === 'string' ? appMeta['app_role']  : ''
     let tenantId = typeof appMeta['tenant_id'] === 'string' ? appMeta['tenant_id'] : ''
 
@@ -96,9 +77,7 @@ export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
             if (typeof payload['app_role']  === 'string') role     = payload['app_role']
             if (typeof payload['tenant_id'] === 'string') tenantId = payload['tenant_id']
           }
-        } catch {
-          // JWT tidak bisa di-decode — abaikan
-        }
+        } catch { /* abaikan */ }
       }
     }
 
@@ -111,7 +90,6 @@ export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
         : user.email ?? user.id,
     }
   } catch {
-    // Session tidak valid atau error — perlakukan sebagai belum login
     return null
   }
 })
