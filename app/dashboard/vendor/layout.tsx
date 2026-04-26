@@ -7,49 +7,25 @@
 // REFACTOR Sesi #062:
 //   Tambah VendorDashboardShell — samakan UI/UX dengan SA dashboard.
 //
-// FIX BUG-013 Sesi #065:
-//   Pisah brandName + messages ke fetchVendorSidebarData() → unstable_cache.
+// FIX BUG-013 Sesi #065 (FINAL):
+//   brandName → pakai getBrandName() dari lib/dashboard-data.ts (shared, module-level cache).
+//   messages  → getMessagesByKategori() sudah punya unstable_cache internal — tidak perlu wrapper.
 //   user_profiles.status TETAP fresh (security — tidak boleh di-cache).
-//   TTL dari config_registry key sidebar_cache_ttl_seconds (tidak hardcode).
-//   Pola identik dengan superadmin/layout.tsx.
+//   fetchVendorSidebarData() DIHAPUS — tidak lagi duplikasi logika SA layout.
+//
+// KENAPA LEBIH BAIK DARI VERSI SEBELUMNYA:
+//   SA layout dan Vendor layout kini pakai getBrandName() yang SAMA.
+//   Saat SA memperbarui cache brand → Vendor langsung dapat dari cache yang sama (0ms).
 
 export const dynamic = 'force-dynamic'
 
-import { redirect }                   from 'next/navigation'
-import { unstable_cache }             from 'next/cache'
-import { verifyJWT }                  from '@/lib/auth-server'
+import { redirect }              from 'next/navigation'
+import { verifyJWT }             from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { getMessagesByKategori }      from '@/lib/message-library'
-import { getConfigValue }             from '@/lib/config-registry'
-import { VENDOR_LOGIN_ALLOWED }       from '@/lib/constants'
-import { VendorDashboardShell }       from '@/components/VendorDashboardShell'
-
-// ─── Data sidebar — bisa di-cache karena tidak berubah per request ────────────
-// brandName (tenants) + messages — statis, tidak sensitif terhadap sesi user.
-// Pola identik dengan superadmin/layout.tsx fetchSidebarData().
-async function fetchVendorSidebarData(): Promise<{
-  brandName: string
-  messages:  Record<string, string>
-}> {
-  try {
-    const db = createServerSupabaseClient()
-
-    const [tenantResult, messages] = await Promise.all([
-      db.from('tenants').select('nama_brand').limit(1).single(),
-      getMessagesByKategori(['sidebar_ui', 'header_ui', 'vendor_ui']),
-    ])
-
-    return {
-      brandName: tenantResult.data?.nama_brand ?? 'ERP Mediator',
-      messages:  messages ?? {},
-    }
-  } catch {
-    return {
-      brandName: 'ERP Mediator',
-      messages:  {},
-    }
-  }
-}
+import { getMessagesByKategori } from '@/lib/message-library'
+import { getBrandName }          from '@/lib/dashboard-data'
+import { VENDOR_LOGIN_ALLOWED }  from '@/lib/constants'
+import { VendorDashboardShell }  from '@/components/VendorDashboardShell'
 
 export default async function VendorLayout({ children }: { children: React.ReactNode }) {
   // ── Lapis 1: verifikasi JWT + role ──────────────────────────────────────────
@@ -70,21 +46,16 @@ export default async function VendorLayout({ children }: { children: React.React
     redirect('/login?error=vendor_not_approved')
   }
 
-  // ── Data sidebar — cached via unstable_cache ────────────────────────────────
-  // TTL dibaca dari config_registry — tidak hardcode. Fallback 1800 detik.
-  const ttlStr    = await getConfigValue('platform_general', 'sidebar_cache_ttl_seconds', '1800')
-  const revalidate = Number(ttlStr) || 1800
-
-  const getVendorSidebarData = unstable_cache(
-    fetchVendorSidebarData,
-    ['vendor-sidebar-data'],
-    { revalidate, tags: ['vendor-sidebar-data', 'sidebar-data'] }
-  )
-
-  const { brandName, messages } = await getVendorSidebarData()
+  // ── Data sidebar — shared cache + internal cache ────────────────────────────
+  // getBrandName()          → module-level Map di lib/dashboard-data.ts (shared SA+Vendor)
+  // getMessagesByKategori() → unstable_cache internal di lib/message-library.ts
+  const [brandName, messages] = await Promise.all([
+    getBrandName(),
+    getMessagesByKategori(['sidebar_ui', 'header_ui', 'vendor_ui']),
+  ])
 
   return (
-    <VendorDashboardShell brandName={brandName} messages={messages}>
+    <VendorDashboardShell brandName={brandName} messages={messages ?? {}}>
       {children}
     </VendorDashboardShell>
   )
