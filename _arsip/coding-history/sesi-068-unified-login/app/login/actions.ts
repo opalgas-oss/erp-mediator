@@ -1,14 +1,5 @@
 // app/login/actions.ts
-// Server Actions login — Unified action untuk semua role.
-//
-// REFACTOR Sesi #068 — loginUnifiedAction():
-//   Sebelumnya: 3 action terpisah (SA → Vendor → AdminTenant) dipanggil sequential.
-//   Masalah: setiap login non-SA memanggil signInWithPassword 2-3x, buang ~1.290ms+.
-//   Masalah SA: ambilNamaUser() + getConfigValues() jalan sequential setelah signIn.
-//   Fix: 1 action, 1 signInWithPassword, baca role dari JWT, parallelkan DB calls per role.
-//
-//   loginSuperadminAction + loginVendorAction + loginAdminTenantAction
-//   DIPERTAHANKAN untuk backward compatibility — dipanggil dari flow lama (AdminTenant, Customer).
+// Server Actions login — SuperAdmin, Vendor, AdminTenant.
 //
 // PENTING: buatSupabaseSSR() memanggil cookies() SEKALI → return { supabase, cookieStore }.
 // cookieStore di-pass ke setCookiesLoginServer() — tidak ada double cookies() call.
@@ -16,6 +7,10 @@
 //
 // FIX Sesi #061:
 //   BUG-010 — loginVendorAction query user_profiles pakai .eq('uid') padahal kolom namanya 'id'.
+//   Akibat: profileRow selalu null → semua Vendor APPROVED diblokir dengan 'belum diaktifkan'.
+//   Fix: ganti .eq('uid', uid) → .eq('id', uid). Tambah nomor_wa ke select.
+//   Tambah tenantId + nomorWa ke LoginActionResult agar useLoginFlow tidak perlu
+//   fetchLoadUserProfile(uid, null) yang salah (null = dianggap SuperAdmin oleh route).
 
 'use server'
 
@@ -65,110 +60,7 @@ async function cekLockAwal(email: string): Promise<
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// loginUnifiedAction — BARU Sesi #068
-// 1 signInWithPassword → baca role dari JWT → route sesuai role
-// SA:          parallelkan ambilNamaUser + getConfigValues (dari setCookiesLoginServer)
-// Vendor:      parallelkan profileQuery + getConfigValues
-// AdminTenant: parallelkan ambilNamaUser + getConfigValues
-// ═════════════════════════════════════════════════════════════════════════════
-
-export async function loginUnifiedAction(params: LoginActionParams): Promise<LoginActionResult> {
-  const { email, password, device, gpsKota, redirectTo } = params
-
-  // Validasi input
-  if (!buildLoginFormSchema().safeParse({ email, password }).success)
-    return { ok: false, errorKey: 'login_error_umum' }
-
-  // Cek lock — 1x saja untuk semua role
-  const lock = await cekLockAwal(email)
-  if (lock.locked) return lock.result
-
-  // 1x signInWithPassword — tidak ada lagi double/triple call
-  const { supabase, cookieStore } = await buatSupabaseSSR()
-  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
-
-  if (authError || !authData?.session || !authData?.user) {
-    // Lookup tenantId untuk prosesGagalLogin (lock counter + WA notif)
-    const adminDb = createServerSupabaseClient()
-    const { data: userRow } = await adminDb
-      .from('users').select('tenant_id').eq('email', email).maybeSingle()
-    return prosesGagalLogin(email, userRow?.tenant_id ?? null, authError?.message ?? '')
-  }
-
-  // Baca role dari JWT — 1x decode, tidak ada signOut untuk role mismatch
-  const claims = decodeAppClaims(authData.session.access_token)
-  const { role, tenantId: claimTenantId } = claims
-  const uid = authData.user.id
-  const sessionId = crypto.randomUUID()
-
-  // ── SUPERADMIN ────────────────────────────────────────────────────────────
-  if (role === ROLES.SUPERADMIN) {
-    // Parallel: ambilNamaUser + setCookiesLoginServer (yang di dalamnya getConfigValues)
-    const [nama] = await Promise.all([
-      ambilNamaUser(uid),
-      setCookiesLoginServer({ role: ROLES.SUPERADMIN, tenantId: '', gpsKota }, cookieStore),
-    ])
-    jalankanAfterTasksLogin(
-      { uid, tenantId: null, nama, role: ROLES.SUPERADMIN, device, gpsKota, hadAttempts: lock.hadAttempts, email },
-      sessionId
-    )
-    return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.SUPERADMIN, redirectTo), nama, uid }
-  }
-
-  // ── Semua role non-SA wajib punya tenantId di JWT ─────────────────────────
-  if (!claimTenantId) {
-    try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
-    return { ok: false, errorKey: 'login_error_config_belum_lengkap' }
-  }
-
-  // ── VENDOR ────────────────────────────────────────────────────────────────
-  if (role === ROLES.VENDOR) {
-    const adminDb = createServerSupabaseClient()
-
-    // Parallel: profileQuery + setCookiesLoginServer (getConfigValues)
-    const [profileResult] = await Promise.all([
-      adminDb.from('user_profiles')
-        .select('status, nama, nomor_wa')
-        .eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle(),
-      setCookiesLoginServer({ role: ROLES.VENDOR, tenantId: claimTenantId, gpsKota }, cookieStore),
-    ])
-
-    const profileRow = profileResult.data
-    if ((profileRow?.status ?? '').toUpperCase() !== 'APPROVED') {
-      try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
-      return { ok: false, errorKey: 'login_error_akun_belum_aktif' }
-    }
-
-    const nama    = profileRow?.nama     ?? (await ambilNamaUser(uid))
-    const nomorWa = profileRow?.nomor_wa ?? ''
-    jalankanAfterTasksLogin(
-      { uid, tenantId: claimTenantId, nama, role: ROLES.VENDOR, device, gpsKota, hadAttempts: lock.hadAttempts, email },
-      sessionId
-    )
-    return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo), nama, uid, tenantId: claimTenantId, nomorWa }
-  }
-
-  // ── ADMIN TENANT ──────────────────────────────────────────────────────────
-  if (role === ROLES.ADMIN_TENANT) {
-    // Parallel: ambilNamaUser + setCookiesLoginServer (getConfigValues)
-    const [nama] = await Promise.all([
-      ambilNamaUser(uid),
-      setCookiesLoginServer({ role: ROLES.ADMIN_TENANT, tenantId: claimTenantId, gpsKota }, cookieStore),
-    ])
-    jalankanAfterTasksLogin(
-      { uid, tenantId: claimTenantId, nama, role: ROLES.ADMIN_TENANT, device, gpsKota, hadAttempts: lock.hadAttempts, email },
-      sessionId
-    )
-    return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.ADMIN_TENANT, redirectTo), nama, uid, tenantId: claimTenantId }
-  }
-
-  // ── Role tidak dikenal ────────────────────────────────────────────────────
-  try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
-  return { ok: false, errorKey: 'login_error_role_tidak_ditemukan' }
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// loginSuperadminAction — DIPERTAHANKAN untuk backward compatibility
+// loginSuperadminAction
 // ═════════════════════════════════════════════════════════════════════════════
 
 export async function loginSuperadminAction(params: LoginActionParams): Promise<LoginActionResult> {
@@ -202,7 +94,7 @@ export async function loginSuperadminAction(params: LoginActionParams): Promise<
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// loginVendorAction — DIPERTAHANKAN untuk backward compatibility
+// loginVendorAction
 // ═════════════════════════════════════════════════════════════════════════════
 
 export async function loginVendorAction(params: LoginActionParams): Promise<LoginActionResult> {
@@ -254,7 +146,7 @@ export async function loginVendorAction(params: LoginActionParams): Promise<Logi
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// loginAdminTenantAction — DIPERTAHANKAN untuk backward compatibility
+// loginAdminTenantAction
 // ═════════════════════════════════════════════════════════════════════════════
 
 export async function loginAdminTenantAction(params: LoginActionParams): Promise<LoginActionResult> {

@@ -3,13 +3,6 @@
 // Panggil repository B-03 (otp) + CredentialService (Fonnte token).
 // Dibuat: Sesi #052 — BLOK C-04 TODO_ARSITEKTUR_LAYER_v1
 //
-// PERUBAHAN Sesi #068:
-//   sendOTP() — 6 DB call sequential → Promise.all paralel (5 call sekaligus).
-//   Call yang diparallelkan: getConfigValues + getCredential + getNamaPlatform
-//   + getPlatformTimezone + getMessage (semua independen, tidak saling bergantung).
-//   otpUpsert tetap sequential setelah Promise.all (butuh hasil cfg untuk expiredAt).
-//   Estimasi dampak: send-otp 311ms → ~150ms.
-//
 // ARSITEKTUR:
 //   Route Handler → OTPService → OTPRepository + CredentialService + MessageLibrary
 //   OTPService juga panggil: config-registry untuk config OTP.
@@ -80,48 +73,22 @@ async function getNamaPlatform(tenantId?: string): Promise<string> {
 /**
  * Generate OTP, simpan ke DB via repository, kirim via Fonnte WhatsApp.
  * Semua config OTP (digits, expiry, max_attempts, cooldown) dari config_registry.
- *
- * OPTIMASI Sesi #068 — Promise.all untuk 5 DB call independen:
- *   GRUP A (parallel): getConfigValues + getCredential + getNamaPlatform
- *                      + getPlatformTimezone + getMessage
- *   GRUP B (sequential): otpUpsert → fetch Fonnte
- *
  * @param params - SendOTPParams berisi uid, tenantId, role, nomorWa, nama
  * @returns SendOTPResult berisi success, config OTP untuk client (expiry, max_attempts, cooldown)
  */
 export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
-
-  // ── GRUP A: 5 DB call jalan paralel — tidak saling bergantung ─────────────
-  const FALLBACK =
-    '*Kode OTP Anda: {otp_code}*\n\n' +
-    'Untuk masuk sebagai *{role}* di {nama_platform}.\n\n' +
-    '⏰ Berlaku hingga pukul *{expired_jam} WIB* tanggal {expired_tanggal}.\n\n' +
-    '🚫 *JANGAN berikan kode ini kepada siapapun*.'
-
-  const [cfg, apiKey, namaPlatform, timezone, template] = await Promise.all([
-    getConfigValues('security_login'),          // config OTP (digits, expiry, dll)
-    getCredential('fonnte', 'api_token'),        // Fonnte token untuk kirim WA
-    getNamaPlatform(params.tenantId),            // nama brand tenant
-    getPlatformTimezone(),                       // timezone untuk format waktu
-    getMessage('notif_wa_otp_login', FALLBACK),  // template pesan WA
-  ])
-
-  // ── Fail fast: cek apiKey sebelum lanjut ─────────────────────────────────
-  if (!apiKey) {
-    console.error('[OTPService] Fonnte api_token tidak ditemukan')
-    return { success: false, message: 'Konfigurasi WhatsApp belum siap' }
-  }
-
-  // ── Parse config + generate OTP (sync — butuh hasil cfg dari Grup A) ─────
+  // Baca config OTP dari config_registry
+  const cfg = await getConfigValues('security_login')
   const otpDigits         = parseConfigNumber(cfg['otp_digits'], 6)
   const otpExpiryMenit    = parseConfigNumber(cfg['otp_expiry_minutes'], 5)
   const otpMaxAttempts    = parseConfigNumber(cfg['otp_max_attempts'], 3)
   const otpResendCooldown = parseConfigNumber(cfg['otp_resend_cooldown_seconds'], 60)
 
+  // Generate kode OTP
   const kodeOTP   = generateOTPCode(otpDigits)
   const expiredAt = new Date(Date.now() + otpExpiryMenit * 60 * 1000)
 
-  // ── GRUP B: simpan OTP ke DB — harus setelah cfg tersedia ────────────────
+  // Simpan ke DB via repository (hapus lama + insert baru)
   try {
     await otpUpsert({
       uid:       params.uid,
@@ -134,7 +101,18 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     return { success: false, message: 'Gagal menyiapkan OTP' }
   }
 
-  // ── Format waktu expired + bangun pesan (sync — butuh hasil Grup A) ──────
+  // Ambil Fonnte token via CredentialService
+  const apiKey = await getCredential('fonnte', 'api_token')
+  if (!apiKey) {
+    console.error('[OTPService] Fonnte api_token tidak ditemukan')
+    return { success: false, message: 'Konfigurasi WhatsApp belum siap' }
+  }
+
+  // Ambil nama platform
+  const namaPlatform = await getNamaPlatform(params.tenantId)
+
+  // Format waktu expired — timezone dari config_registry
+  const timezone = await getPlatformTimezone()
   const expiredJam = expiredAt.toLocaleTimeString('id-ID', {
     hour: '2-digit', minute: '2-digit', timeZone: timezone, hour12: false,
   })
@@ -142,7 +120,15 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     day: '2-digit', month: 'long', year: 'numeric', timeZone: timezone,
   })
 
-  const pesan = interpolate(template, {
+  // Baca template pesan dari message_library
+  const FALLBACK =
+    '*Kode OTP Anda: {otp_code}*\n\n' +
+    'Untuk masuk sebagai *{role}* di {nama_platform}.\n\n' +
+    '⏰ Berlaku hingga pukul *{expired_jam} WIB* tanggal {expired_tanggal}.\n\n' +
+    '🚫 *JANGAN berikan kode ini kepada siapapun*.'
+
+  const template = await getMessage('notif_wa_otp_login', FALLBACK)
+  const pesan    = interpolate(template, {
     otp_code:        kodeOTP,
     nama:            params.nama || params.role,
     role:            params.role,
@@ -151,7 +137,7 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     expired_tanggal: expiredTanggal,
   })
 
-  // ── Kirim via Fonnte API ──────────────────────────────────────────────────
+  // Kirim via Fonnte API
   try {
     const response = await fetch('https://api.fonnte.com/send', {
       method:  'POST',

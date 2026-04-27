@@ -189,3 +189,5 @@ Kalau yakin mau rollback, copy file arsip ke lokasi aslinya, lalu `npm run build
 | **25 Apr 2026** | **#062** | **Snapshot `sesi-062-vendor-ui-layout` ditambahkan (`vendor/layout.tsx` + `vendor/page.tsx` sebelum rewrite ke VendorDashboardShell).** |
 | **27 Apr 2026** | **#064** | **Snapshot `sesi-064-fix-double-getuser` ditambahkan (`middleware.ts` + `lib/auth-server.ts` sebelum fix propagasi header untuk eliminasi getUser() ke-2).** |
 | **27 Apr 2026** | **#064** | **Snapshot `sesi-064-layout-perf` ditambahkan (`superadmin/layout.tsx` + `vendor/layout.tsx` sebelum fix: SA pindah unstable_cache ke module-level + hapus getConfigValue TTL; Vendor tambah cache brandName+messages).** |
+| **27 Apr 2026** | **#068** | **Snapshot `sesi-068-sendotp-parallel` ditambahkan (`lib/services/otp.service.ts` sebelum refactor sendOTP() dari 6 sequential call → Promise.all 5 call paralel).** |
+| **27 Apr 2026** | **#068** | **Snapshot `sesi-068-unified-login` ditambahkan (`app/login/actions.ts` + `lib/hooks/useLoginFlow.ts` sebelum refactor ke loginUnifiedAction() — 1 signInWithPassword untuk semua role).** |
