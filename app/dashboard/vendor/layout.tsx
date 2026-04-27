@@ -1,30 +1,41 @@
 // app/dashboard/vendor/layout.tsx
 //
-// PERUBAHAN Sesi #067 — Loading Skeleton (Streaming):
-//   SEBELUM: layout async blocking — verifyJWT + DB query + getBrandName semua di-await
-//            sebelum render apapun. User lihat blank screen ~700ms.
-//   SESUDAH: layout pure static wrapper dengan <Suspense fallback={<VendorLoading />}>
-//            di sekitar VendorShellWithData (async).
-//            User langsung lihat skeleton (0ms), konten stream masuk setelah server selesai.
-//
-//   Referensi: nextjs.org/learn/dashboard-app/streaming + Vercel Academy.
-//   Pattern: pisah layout menjadi static shell wrapper + async data fetcher.
-//
-// ARSIP file lama: _arsip/coding-history/sesi-067-loading-skeleton/app/dashboard/vendor/layout.tsx
+// ROLLBACK Sesi #067:
+//   Dikembalikan ke versi Sesi #064 (sebelum shared getBrandName() dan Suspense refactor).
+//   Alasan: shared function + Suspense menyebabkan regresi dan hasil tidak konsisten.
+//   Akan dipelajari ulang arsitektur yang benar sebelum lanjut.
 
-import { Suspense }    from 'react'
-import VendorLoading   from './loading'
-import VendorShellWithData from './VendorShellWithData'
+export const dynamic = 'force-dynamic'
 
-// Layout ini TIDAK punya export dynamic = 'force-dynamic'
-// dan TIDAK mengakses runtime APIs (headers, cookies).
-// VendorShellWithData yang async → otomatis dynamic.
-// Ini yang membuat <Suspense fallback> bisa trigger segera.
+import { redirect }                   from 'next/navigation'
+import { verifyJWT }                  from '@/lib/auth-server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { getMessagesByKategori }      from '@/lib/message-library'
+import { VENDOR_LOGIN_ALLOWED }       from '@/lib/constants'
+import { VendorDashboardShell }       from '@/components/VendorDashboardShell'
 
-export default function VendorLayout({ children }: { children: React.ReactNode }) {
+export default async function VendorLayout({ children }: { children: React.ReactNode }) {
+  const payload = await verifyJWT()
+  if (!payload || payload.role !== 'VENDOR') redirect('/login')
+
+  const db = createServerSupabaseClient()
+
+  const [profileResult, tenantResult, messages] = await Promise.all([
+    db.from('user_profiles').select('status').eq('id', payload.uid).single(),
+    db.from('tenants').select('nama_brand').limit(1).single(),
+    getMessagesByKategori(['sidebar_ui', 'header_ui', 'vendor_ui']),
+  ])
+
+  const statusVendor = (profileResult.data?.status || '').toUpperCase()
+  if (!VENDOR_LOGIN_ALLOWED.map(s => s.toUpperCase()).includes(statusVendor)) {
+    redirect('/login?error=vendor_not_approved')
+  }
+
+  const brandName = tenantResult.data?.nama_brand ?? 'ERP Mediator'
+
   return (
-    <Suspense fallback={<VendorLoading />}>
-      <VendorShellWithData>{children}</VendorShellWithData>
-    </Suspense>
+    <VendorDashboardShell brandName={brandName} messages={messages ?? {}}>
+      {children}
+    </VendorDashboardShell>
   )
 }

@@ -1,14 +1,16 @@
 // app/dashboard/superadmin/layout.tsx
 //
-// PERUBAHAN Sesi #045 — Fix Performa:
-//   - fetchSidebarData: 3 query sequential → Promise.all paralel
-//   - fetchSidebarData: dibungkus unstable_cache, TTL dibaca dari DB
+// PERUBAHAN Sesi #045 — Fix Performa (mengacu PERFORMANCE_STANDARDS_v1.md Poin 6.D):
+//   - getSidebarData: 3 query sequential → Promise.all paralel
+//   - getSidebarData: dibungkus unstable_cache, TTL dibaca dari DB
+//     Key: config_registry (platform_general.sidebar_cache_ttl_seconds) — tidak hardcode
+//     Fallback: 1800 detik jika key belum ada di DB
+//   - Cache diinvalidasi via revalidateTag('sidebar-data') di PATCH /api/config
 //
-// PERUBAHAN Sesi #065 — Shared getBrandName():
-//   - tenants query DIHAPUS dari fetchSidebarData()
-//   - brandName kini pakai getBrandName() dari lib/dashboard-data.ts
-//   - Shared antara SA dan Vendor: 1 cache entry, bukan 2
-//   - fetchSidebarData kini hanya berisi data SA-spesifik: messages + featureKeys
+// ROLLBACK Sesi #067:
+//   Dikembalikan ke versi Sesi #064 (sebelum shared getBrandName()).
+//   Alasan: shared function dashboard menyebabkan regresi SA loading.
+//   Akan dipelajari ulang arsitektur yang benar sebelum lanjut.
 
 export const dynamic = 'force-dynamic'
 
@@ -18,21 +20,18 @@ import { verifyJWT }                  from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getMessagesByKategori }      from '@/lib/message-library'
 import { getConfigValue }             from '@/lib/config-registry'
-import { getBrandName }               from '@/lib/dashboard-data'
 import { DashboardShell }             from '@/components/DashboardShell'
 
-// ─── Data SA-spesifik — unstable_cache ────────────────────────────────────────
-// featureKeys dari config_registry — spesifik SA, bukan shared.
-// messages sudah punya internal cache di getMessagesByKategori().
-// brandName TIDAK lagi di sini — sudah di lib/dashboard-data.ts (shared).
 async function fetchSidebarData(): Promise<{
+  brandName:   string
   messages:    Record<string, string>
   featureKeys: string[]
 }> {
   try {
     const db = createServerSupabaseClient()
 
-    const [messages, configResult] = await Promise.all([
+    const [tenantResult, messages, configResult] = await Promise.all([
+      db.from('tenants').select('nama_brand').limit(1).single(),
       getMessagesByKategori(['sidebar_ui', 'page_ui', 'header_ui']),
       db.from('config_registry')
         .select('feature_key')
@@ -47,11 +46,13 @@ async function fetchSidebarData(): Promise<{
     ]
 
     return {
+      brandName:   tenantResult.data?.nama_brand ?? 'ERP Mediator',
       messages:    messages ?? {},
       featureKeys: featureKeys.length > 0 ? featureKeys : ['security_login'],
     }
   } catch {
     return {
+      brandName:   'ERP Mediator',
       messages:    {},
       featureKeys: ['security_login'],
     }
@@ -62,22 +63,16 @@ export default async function SuperAdminLayout({ children }: { children: React.R
   const payload = await verifyJWT()
   if (!payload || payload.role !== 'SUPERADMIN') redirect('/login')
 
-  // Baca TTL sidebar cache dari config_registry — tidak hardcode
-  const ttlStr     = await getConfigValue('platform_general', 'sidebar_cache_ttl_seconds', '1800')
+  const ttlStr   = await getConfigValue('platform_general', 'sidebar_cache_ttl_seconds', '1800')
   const revalidate = Number(ttlStr) || 1800
 
-  // unstable_cache untuk data SA-spesifik (featureKeys + messages)
   const getSidebarData = unstable_cache(
     fetchSidebarData,
     ['sidebar-data'],
     { revalidate, tags: ['sidebar-data'] }
   )
 
-  // brandName dari shared cache — parallel dengan getSidebarData
-  const [{ messages, featureKeys }, brandName] = await Promise.all([
-    getSidebarData(),
-    getBrandName(),
-  ])
+  const { brandName, messages, featureKeys } = await getSidebarData()
 
   return (
     <DashboardShell brandName={brandName} messages={messages} featureKeys={featureKeys}>
