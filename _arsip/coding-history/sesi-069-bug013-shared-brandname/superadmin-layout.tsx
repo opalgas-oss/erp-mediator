@@ -1,3 +1,7 @@
+// ARSIP — app/dashboard/superadmin/layout.tsx
+// Snapshot SEBELUM refactor Sesi #069: shared getBrandName() dari lib/dashboard-data.ts
+// Tanggal arsip: Sesi #069 — 27 April 2026
+
 // app/dashboard/superadmin/layout.tsx
 //
 // PERUBAHAN Sesi #045 — Fix Performa (mengacu PERFORMANCE_STANDARDS_v1.md Poin 6.D):
@@ -7,10 +11,10 @@
 //     Fallback: 1800 detik jika key belum ada di DB
 //   - Cache diinvalidasi via revalidateTag('sidebar-data') di PATCH /api/config
 //
-// REFACTOR Sesi #069 — BUG-013 fix:
-//   getBrandName() dipindah ke lib/dashboard-data.ts (shared, unstable_cache module-level).
-//   fetchSidebarData() tidak lagi fetch tenants.nama_brand sendiri.
-//   brandName diambil parallel dengan getSidebarData() di layout component.
+// ROLLBACK Sesi #067:
+//   Dikembalikan ke versi Sesi #064 (sebelum shared getBrandName()).
+//   Alasan: shared function dashboard menyebabkan regresi SA loading.
+//   Akan dipelajari ulang arsitektur yang benar sebelum lanjut.
 
 export const dynamic = 'force-dynamic'
 
@@ -20,17 +24,18 @@ import { verifyJWT }                  from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getMessagesByKategori }      from '@/lib/message-library'
 import { getConfigValue }             from '@/lib/config-registry'
-import { getBrandName }               from '@/lib/dashboard-data'
 import { DashboardShell }             from '@/components/DashboardShell'
 
 async function fetchSidebarData(): Promise<{
+  brandName:   string
   messages:    Record<string, string>
   featureKeys: string[]
 }> {
   try {
     const db = createServerSupabaseClient()
 
-    const [messages, configResult] = await Promise.all([
+    const [tenantResult, messages, configResult] = await Promise.all([
+      db.from('tenants').select('nama_brand').limit(1).single(),
       getMessagesByKategori(['sidebar_ui', 'page_ui', 'header_ui']),
       db.from('config_registry')
         .select('feature_key')
@@ -45,11 +50,13 @@ async function fetchSidebarData(): Promise<{
     ]
 
     return {
+      brandName:   tenantResult.data?.nama_brand ?? 'ERP Mediator',
       messages:    messages ?? {},
       featureKeys: featureKeys.length > 0 ? featureKeys : ['security_login'],
     }
   } catch {
     return {
+      brandName:   'ERP Mediator',
       messages:    {},
       featureKeys: ['security_login'],
     }
@@ -69,10 +76,7 @@ export default async function SuperAdminLayout({ children }: { children: React.R
     { revalidate, tags: ['sidebar-data'] }
   )
 
-  const [{ messages, featureKeys }, brandName] = await Promise.all([
-    getSidebarData(),
-    getBrandName(),
-  ])
+  const { brandName, messages, featureKeys } = await getSidebarData()
 
   return (
     <DashboardShell brandName={brandName} messages={messages} featureKeys={featureKeys}>
