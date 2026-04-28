@@ -1,0 +1,54 @@
+# .github/workflows/keep-warm.yml
+# Backup scheduler untuk keep-warm endpoint ERP Mediator Hyperlocal.
+#
+# Tujuan:
+#   Menjaga Vercel serverless functions tetap warm sebagai lapis kedua
+#   di samping cron-job.org (lapis pertama).
+#   Jika cron-job.org gagal, GitHub Actions tetap ping endpoint ini
+#   setiap 3 menit sehingga cold start tidak terjadi.
+#
+# Catatan:
+#   - PREVIEW_URL  : URL branch dev (Vercel Preview)
+#   - CRON_SECRET  : Wajib didaftarkan di GitHub Secrets
+#     (Settings → Secrets and variables → Actions → New repository secret)
+
+name: Keep Warm — ERP Mediator
+
+on:
+  schedule:
+    # Ping setiap 3 menit sebagai backup scheduler
+    # GitHub Actions cron menggunakan UTC
+    - cron: '*/3 * * * *'
+  workflow_dispatch:
+    # Bisa dijalankan manual dari GitHub Actions tab jika perlu
+
+jobs:
+  ping:
+    name: Ping keep-warm endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Ping Preview URL (branch dev)
+        run: |
+          echo "Pinging Preview URL..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://erp-mediator-git-dev-philips-liemenas-projects.vercel.app/api/keep-warm")
+
+          echo "HTTP Status: $HTTP_STATUS"
+
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "GAGAL: Endpoint mengembalikan status $HTTP_STATUS"
+            exit 1
+          fi
+
+          echo "OK: Endpoint warm, status 200"
+
+      - name: Ping Cronping heartbeat
+        # Memberitahu Cronping bahwa backup scheduler masih hidup
+        run: |
+          echo "Pinging Cronping heartbeat..."
+          curl -s -o /dev/null \
+            "https://ping.cronping.com/AbkmZkGdxjXVFh6joxb0lY_G"
+          echo "Cronping heartbeat terkirim"
