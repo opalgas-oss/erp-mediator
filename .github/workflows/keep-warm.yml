@@ -4,23 +4,22 @@
 # Tujuan:
 #   Menjaga Vercel serverless functions tetap warm sebagai lapis kedua
 #   di samping cron-job.org (lapis pertama).
-#   Jika cron-job.org gagal, GitHub Actions tetap ping endpoint ini
-#   setiap 3 menit sehingga cold start tidak terjadi.
+#   Cek config_registry (keep_warm_enabled) sebelum ping — jika SuperAdmin
+#   menonaktifkan keep-warm via dashboard, workflow ini berhenti otomatis.
 #
-# Catatan:
-#   - PREVIEW_URL  : URL branch dev (Vercel Preview)
-#   - CRON_SECRET  : Wajib didaftarkan di GitHub Secrets
-#     (Settings → Secrets and variables → Actions → New repository secret)
+# GitHub Secrets yang dibutuhkan (Settings → Secrets and variables → Actions):
+#   CRON_SECRET        : Nilai yang sama dengan di Vercel
+#   SUPABASE_URL       : https://mnxagwrgcpgozmcatfkw.supabase.co
+#   SUPABASE_ANON_KEY  : anon key dari Supabase dashboard
 
 name: Keep Warm — ERP Mediator
 
 on:
   schedule:
-    # Ping setiap 3 menit sebagai backup scheduler
-    # GitHub Actions cron menggunakan UTC
+    # Ping setiap 3 menit sebagai backup scheduler (UTC)
     - cron: '*/3 * * * *'
   workflow_dispatch:
-    # Bisa dijalankan manual dari GitHub Actions tab jika perlu
+    # Bisa dijalankan manual dari GitHub Actions tab
 
 jobs:
   ping:
@@ -29,7 +28,31 @@ jobs:
     timeout-minutes: 2
 
     steps:
+      - name: Cek keep_warm_enabled dari config_registry
+        id: config_check
+        run: |
+          echo "Membaca keep_warm_enabled dari config_registry..."
+
+          RESPONSE=$(curl -s -X POST \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/get_keep_warm_enabled" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+
+          echo "Response: $RESPONSE"
+
+          # Jika response = true maka lanjut ping, jika false maka skip
+          if [ "$RESPONSE" = "true" ]; then
+            echo "keep_warm_enabled = true → lanjut ping"
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          else
+            echo "keep_warm_enabled = false → skip ping"
+            echo "enabled=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Ping Preview URL (branch dev)
+        if: steps.config_check.outputs.enabled == 'true'
         run: |
           echo "Pinging Preview URL..."
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -46,9 +69,14 @@ jobs:
           echo "OK: Endpoint warm, status 200"
 
       - name: Ping Cronping heartbeat
-        # Memberitahu Cronping bahwa backup scheduler masih hidup
+        if: steps.config_check.outputs.enabled == 'true'
         run: |
           echo "Pinging Cronping heartbeat..."
           curl -s -o /dev/null \
             "https://ping.cronping.com/AbkmZkGdxjXVFh6joxb0lY_G"
           echo "Cronping heartbeat terkirim"
+
+      - name: Skip — keep_warm_enabled = false
+        if: steps.config_check.outputs.enabled == 'false'
+        run: |
+          echo "Keep-warm dinonaktifkan via config_registry. Ping di-skip."
