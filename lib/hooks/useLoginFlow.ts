@@ -317,17 +317,32 @@ export function useLoginFlow(): LoginFlowState {
     try {
       const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || '480')
 
-      // OPTIMASI Sesi #068 — fetchSessionLog + fetchUserPresence jalan paralel.
-      // fetchUserPresence tidak butuh session_id → independen dari fetchSessionLog.
-      // Saving: ~427ms (sequential 436ms+427ms → parallel max(436ms,427ms)).
-      const [slData] = await Promise.all([
-        fetchSessionLog({ uid, tenantId: tenantId || null, role: roleDipilih, gpsKota: gpsRef.current?.kota ?? '' }),
-        fetchUserPresence({ uid, tenantId: tenantId || null, nama, role: roleDipilih, currentPage: '/login', currentPageLabel: 'Halaman Login' }),
-      ])
+      // OPTIMASI Sesi #076 — Temuan 1: eliminasi blocking ~172ms sebelum redirect
+      // Sebelumnya: await Promise.all([fetchSessionLog, fetchUserPresence]) → blocking round-trip
+      // Sekarang:
+      //   1. Generate sessionId di client (crypto.randomUUID — tidak perlu tunggu server)
+      //   2. aturCookieSession dulu — cookie harus set sebelum redirect
+      //   3. fetchSessionLog + fetchUserPresence fire-and-forget — tidak blocking
+      //   4. kirimActivityLoginBerhasil dengan sessionId yang sama
+      //   5. router.push LANGSUNG tanpa tunggu apapun
+      // Saving: ~172ms per login Vendor (post-OTP), ~172ms untuk role lain
+      const sessionId = crypto.randomUUID()
 
-      const sessionId = slData.session_id ?? ''
       aturCookieSession({ roleDipilih, tenantId, gpsKota: gpsRef.current?.kota ?? null, sessionTimeoutMinutes })
+
+      // Fire-and-forget — tidak blocking redirect
+      fetchSessionLog({
+        uid, tenantId: tenantId || null, role: roleDipilih,
+        gpsKota: gpsRef.current?.kota ?? '', sessionId,
+      }).catch(err => console.error('[selesaiLogin] session-log gagal:', err))
+
+      fetchUserPresence({
+        uid, tenantId: tenantId || null, nama, role: roleDipilih,
+        currentPage: '/login', currentPageLabel: 'Halaman Login',
+      }).catch(err => console.error('[selesaiLogin] user-presence gagal:', err))
+
       kirimActivityLoginBerhasil(uid, tenantId, nama, roleDipilih, sessionId, gpsRef.current?.kota ?? null)
+
       router.push(hitungTujuanRedirect(roleDipilih, redirectTo))
     } catch {
       setError(m('login_error_gagal_selesaikan')); setTahap('KREDENSIAL'); setIsLoading(false)
@@ -425,7 +440,13 @@ export function useLoginFlow(): LoginFlowState {
         setError(m(result.errorKey, result.errorVars)); setIsLoading(false); return
       }
     } catch (err) {
-      console.error('[handleLogin] unified action error:', err)
+      console.error('[handleLogin] unified action error — koneksi gagal:', err)
+      // PERBAIKAN Sesi #076 — Temuan 2: cegah double signInWithPassword
+      // Sebelumnya: catch jatuh ke runFlowLama() → memanggil signInWithPassword kedua kali dari client
+      // Sekarang: tampilkan error koneksi, tidak fallback ke flow lama
+      setError(m('login_error_koneksi_gagal'))
+      setIsLoading(false)
+      return
     }
 
     // ─── Fallback: flow lama untuk Customer atau role tidak dikenal ──────────

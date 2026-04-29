@@ -11,6 +11,11 @@
 //   getBrandName() dipindah ke lib/dashboard-data.ts (shared, unstable_cache module-level).
 //   fetchSidebarData() tidak lagi fetch tenants.nama_brand sendiri.
 //   brandName diambil parallel dengan getSidebarData() di layout component.
+//
+// UPDATE Sesi #076 — I-05:
+//   cekSesiParalel() ditambahkan ke Promise.all yang sudah ada → 0 tambahan latency.
+//   Hasilnya diteruskan ke DashboardShell sebagai prop sesiParalel.
+//   Jika tidak ada sesi paralel (adaSesi=false): tidak ada perubahan visual.
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +26,8 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getMessagesByKategori }      from '@/lib/message-library'
 import { getConfigValue }             from '@/lib/config-registry'
 import { getBrandName }               from '@/lib/dashboard-data'
+import { cekSesiParalel }             from '@/app/login/login-session-check'
+import { ROLES }                      from '@/lib/constants'
 import { DashboardShell }             from '@/components/DashboardShell'
 
 async function fetchSidebarData(): Promise<{
@@ -60,7 +67,7 @@ export default async function SuperAdminLayout({ children }: { children: React.R
   const payload = await verifyJWT()
   if (!payload || payload.role !== 'SUPERADMIN') redirect('/login')
 
-  const ttlStr   = await getConfigValue('platform_general', 'sidebar_cache_ttl_seconds', '1800')
+  const ttlStr     = await getConfigValue('platform_general', 'sidebar_cache_ttl_seconds', '1800')
   const revalidate = Number(ttlStr) || 1800
 
   const getSidebarData = unstable_cache(
@@ -69,13 +76,24 @@ export default async function SuperAdminLayout({ children }: { children: React.R
     { revalidate, tags: ['sidebar-data'] }
   )
 
-  const [{ messages, featureKeys }, brandName] = await Promise.all([
+  // cekSesiParalel dijalankan PARALLEL dengan query lain → 0 tambahan latency ke RSC
+  // SA tidak punya tenantId — dikirim string kosong sesuai pattern existing
+  const [{ messages, featureKeys }, brandName, hasilCekSesi] = await Promise.all([
     getSidebarData(),
     getBrandName(),
+    cekSesiParalel(payload.uid, '', ROLES.SUPERADMIN),
   ])
 
+  // Teruskan data sesi ke DashboardShell hanya jika ada sesi paralel aktif
+  const sesiParalel = hasilCekSesi.adaSesi ? hasilCekSesi.sesiData : undefined
+
   return (
-    <DashboardShell brandName={brandName} messages={messages} featureKeys={featureKeys}>
+    <DashboardShell
+      brandName={brandName}
+      messages={messages}
+      featureKeys={featureKeys}
+      sesiParalel={sesiParalel}
+    >
       {children}
     </DashboardShell>
   )

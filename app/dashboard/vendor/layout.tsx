@@ -3,6 +3,11 @@
 // REFACTOR Sesi #069 — BUG-013 fix:
 //   getBrandName() dari lib/dashboard-data.ts (shared, unstable_cache module-level).
 //   tenants.nama_brand tidak lagi di-fetch sendiri di layout ini.
+//
+// UPDATE Sesi #076 — I-05:
+//   cekSesiParalel() ditambahkan ke Promise.all yang sudah ada → 0 tambahan latency.
+//   Hasilnya diteruskan ke VendorDashboardShell sebagai prop sesiParalel.
+//   Jika tidak ada sesi paralel (adaSesi=false): tidak ada perubahan visual.
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +16,8 @@ import { verifyJWT }                  from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getMessagesByKategori }      from '@/lib/message-library'
 import { getBrandName }               from '@/lib/dashboard-data'
-import { VENDOR_LOGIN_ALLOWED }       from '@/lib/constants'
+import { VENDOR_LOGIN_ALLOWED, ROLES } from '@/lib/constants'
+import { cekSesiParalel }             from '@/app/login/login-session-check'
 import { VendorDashboardShell }       from '@/components/VendorDashboardShell'
 
 export default async function VendorLayout({ children }: { children: React.ReactNode }) {
@@ -20,10 +26,12 @@ export default async function VendorLayout({ children }: { children: React.React
 
   const db = createServerSupabaseClient()
 
-  const [profileResult, brandName, messages] = await Promise.all([
+  // cekSesiParalel dijalankan PARALLEL dengan query lain → 0 tambahan latency ke RSC
+  const [profileResult, brandName, messages, hasilCekSesi] = await Promise.all([
     db.from('user_profiles').select('status').eq('id', payload.uid).single(),
     getBrandName(),
     getMessagesByKategori(['sidebar_ui', 'header_ui', 'vendor_ui']),
+    cekSesiParalel(payload.uid, payload.tenantId, ROLES.VENDOR),
   ])
 
   const statusVendor = (profileResult.data?.status || '').toUpperCase()
@@ -31,8 +39,15 @@ export default async function VendorLayout({ children }: { children: React.React
     redirect('/login?error=vendor_not_approved')
   }
 
+  // Teruskan data sesi ke VendorDashboardShell hanya jika ada sesi paralel aktif
+  const sesiParalel = hasilCekSesi.adaSesi ? hasilCekSesi.sesiData : undefined
+
   return (
-    <VendorDashboardShell brandName={brandName} messages={messages ?? {}}>
+    <VendorDashboardShell
+      brandName={brandName}
+      messages={messages ?? {}}
+      sesiParalel={sesiParalel}
+    >
       {children}
     </VendorDashboardShell>
   )

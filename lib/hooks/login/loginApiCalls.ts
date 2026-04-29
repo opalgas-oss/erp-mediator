@@ -52,10 +52,11 @@ export interface ParamVerifyOTP {
 }
 
 export interface ParamSessionLog {
-  uid:      string
-  tenantId: string | null
-  role:     string
-  gpsKota:  string
+  uid:       string
+  tenantId:  string | null
+  role:      string
+  gpsKota:   string
+  sessionId?: string  // opsional — jika diisi, server pakai ID ini (tanpa round-trip generate)
 }
 
 export interface ParamUserPresence {
@@ -175,7 +176,8 @@ export async function fetchVerifyOTP(params: ParamVerifyOTP) {
 // ─── FUNGSI: fetchSessionLog ─────────────────────────────────────────────────
 /**
  * Tulis session log saat login berhasil — /api/auth/session-log.
- * @param params - uid, tenantId, role, gpsKota
+ * OPTIMASI Sesi #076: terima sessionId dari client agar tidak perlu tunggu server generate.
+ * @param params - uid, tenantId, role, gpsKota, sessionId (opsional)
  * @returns success, session_id
  */
 export async function fetchSessionLog(params: ParamSessionLog) {
@@ -184,6 +186,7 @@ export async function fetchSessionLog(params: ParamSessionLog) {
     body: JSON.stringify({
       uid: params.uid, tenant_id: params.tenantId,
       role: params.role, device: getDeviceInfo(), gps_kota: params.gpsKota,
+      session_id: params.sessionId,  // opsional — server pakai ini jika tersedia
     }),
   })
   return res.json()

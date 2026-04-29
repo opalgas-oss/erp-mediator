@@ -22,11 +22,12 @@ import { writeSessionLog }           from '@/lib/services/session.service'
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
 
 const RequestSchema = z.object({
-  uid:       z.string().min(1, 'uid wajib diisi'),
-  tenant_id: z.string().nullable(),
-  role:      z.string().min(1, 'role wajib diisi'),
-  device:    z.string().min(1, 'device wajib diisi'),
-  gps_kota:  z.string().default('Tidak Diketahui'),
+  uid:        z.string().min(1, 'uid wajib diisi'),
+  tenant_id:  z.string().nullable(),
+  role:       z.string().min(1, 'role wajib diisi'),
+  device:     z.string().min(1, 'device wajib diisi'),
+  gps_kota:   z.string().default('Tidak Diketahui'),
+  session_id: z.string().optional(),  // OPTIMASI Sesi #076 — dari client jika fire-and-forget
 })
 
 // ─── Handler POST ─────────────────────────────────────────────────────────────
@@ -53,11 +54,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { uid, tenant_id, role, device, gps_kota } = parsed.data
+    const { uid, tenant_id, role, device, gps_kota, session_id } = parsed.data
 
-    // ── Generate sessionId dulu supaya bisa di-return ke client segera ─────────
-    // INSERT DB dijadwal ke after() — client tidak menunggu.
-    const sessionId = crypto.randomUUID()
+    // OPTIMASI Sesi #076: pakai sessionId dari client jika tersedia (fire-and-forget pattern)
+    // Jika tidak ada (flow lama yg await), generate UUID baru seperti sebelumnya
+    const sessionId = session_id ?? crypto.randomUUID()
 
     after(async () => {
       try {
