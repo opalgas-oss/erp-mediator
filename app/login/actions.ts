@@ -111,11 +111,15 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
   // ── VENDOR ────────────────────────────────────────────────────────────────
   if (role === ROLES.VENDOR) {
     const adminDb = createServerSupabaseClient()
-    const [profileResult] = await Promise.all([
+
+    // FIX Sesi #074 PERF: cekSesiParalel dimasukkan ke Promise.all yang sama
+    // agar tidak jadi sequential setelah profileQuery+setCookies — hemat ~300-600ms
+    const [profileResult, , cekSesiResult] = await Promise.all([
       adminDb.from('user_profiles')
         .select('status, nama, nomor_wa')
         .eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle(),
       setCookiesLoginServer({ role: ROLES.VENDOR, tenantId: claimTenantId, gpsKota }, cookieStore),
+      cekSesiParalel(uid, claimTenantId, ROLES.VENDOR),
     ])
     const profileRow = profileResult.data
     if ((profileRow?.status ?? '').toUpperCase() !== 'APPROVED') {
@@ -125,13 +129,11 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     const nama    = profileRow?.nama     ?? (await ambilNamaUser(uid))
     const nomorWa = profileRow?.nomor_wa ?? ''
 
-    // Cek sesi paralel setelah auth berhasil, sebelum OTP
-    const { adaSesi, sesiData } = await cekSesiParalel(uid, claimTenantId, ROLES.VENDOR)
-    if (adaSesi && sesiData) {
+    if (cekSesiResult.adaSesi && cekSesiResult.sesiData) {
       return {
         ok: true, uid, tenantId: claimTenantId, nama, nomorWa,
         redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo),
-        sesiParalelAda: true, sesiParalelData: sesiData,
+        sesiParalelAda: true, sesiParalelData: cekSesiResult.sesiData,
       }
     }
 
@@ -144,18 +146,18 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
 
   // ── ADMIN TENANT ──────────────────────────────────────────────────────────
   if (role === ROLES.ADMIN_TENANT) {
-    const [nama] = await Promise.all([
+    // FIX Sesi #074 PERF: cekSesiParalel dimasukkan ke Promise.all yang sama
+    const [nama, , cekSesiResult] = await Promise.all([
       ambilNamaUser(uid),
       setCookiesLoginServer({ role: ROLES.ADMIN_TENANT, tenantId: claimTenantId, gpsKota }, cookieStore),
+      cekSesiParalel(uid, claimTenantId, ROLES.ADMIN_TENANT),
     ])
 
-    // Cek sesi paralel setelah auth berhasil, sebelum redirect
-    const { adaSesi, sesiData } = await cekSesiParalel(uid, claimTenantId, ROLES.ADMIN_TENANT)
-    if (adaSesi && sesiData) {
+    if (cekSesiResult.adaSesi && cekSesiResult.sesiData) {
       return {
         ok: true, uid, tenantId: claimTenantId, nama,
         redirectTo: hitungTujuanRedirectServer(ROLES.ADMIN_TENANT, redirectTo),
-        sesiParalelAda: true, sesiParalelData: sesiData,
+        sesiParalelAda: true, sesiParalelData: cekSesiResult.sesiData,
       }
     }
 
