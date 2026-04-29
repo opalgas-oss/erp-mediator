@@ -400,21 +400,6 @@ export function useLoginFlow(): LoginFlowState {
         const roleFromResult = result.tenantId === undefined ? ROLES.SUPERADMIN
           : result.nomorWa !== undefined ? ROLES.VENDOR : ROLES.ADMIN_TENANT
 
-        // FIX Sesi #074 — handle sesi paralel dari unified action
-        // Berlaku untuk Vendor dan AdminTenant (SA dan Customer tidak dicek)
-        if (result.sesiParalelAda && result.sesiParalelData) {
-          setUid(result.uid)
-          setTenantId(result.tenantId ?? '')
-          setUserEmail(email)
-          if (result.nama)    setNama(result.nama)
-          if (result.nomorWa) setNomorWA(result.nomorWa)
-          setRoleDipilih(roleFromResult)
-          setSesiParalel(result.sesiParalelData as DataSesiParalel)
-          setTahap('SESI_PARALEL')
-          setIsLoading(false)
-          return
-        }
-
         // Vendor: perlu OTP sebelum redirect
         if (roleFromResult === ROLES.VENDOR && result.nama) {
           const tid = result.tenantId ?? ''

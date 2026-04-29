@@ -16,7 +16,6 @@ import {
   setCookiesLoginServer, jalankanAfterTasksLogin, ambilNamaUser,
   buildLoginFormSchema, buatSupabaseSSR, prosesGagalLogin,
 } from './login-action-helpers'
-import { cekSesiParalel } from './login-session-check'
 
 // ─── Tipe ────────────────────────────────────────────────────────────────────
 
@@ -29,21 +28,14 @@ export interface LoginActionParams {
 }
 
 export interface LoginActionResult {
-  ok:               boolean
-  errorKey?:        string
-  errorVars?:       Record<string, string>
-  redirectTo?:      string
-  nama?:            string
-  uid?:             string
-  tenantId?:        string
-  nomorWa?:         string
-  sesiParalelAda?:  boolean
-  sesiParalelData?: {
-    device:   string
-    gps_kota: string
-    login_at: string | null
-    role:     string
-  }
+  ok:           boolean
+  errorKey?:    string
+  errorVars?:   Record<string, string>
+  redirectTo?:  string
+  nama?:        string
+  uid?:         string
+  tenantId?:    string
+  nomorWa?:     string
 }
 
 // ─── Helper: cek lock sebelum proses ─────────────────────────────────────────
@@ -111,15 +103,11 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
   // ── VENDOR ────────────────────────────────────────────────────────────────
   if (role === ROLES.VENDOR) {
     const adminDb = createServerSupabaseClient()
-
-    // FIX Sesi #074 PERF: cekSesiParalel dimasukkan ke Promise.all yang sama
-    // agar tidak jadi sequential setelah profileQuery+setCookies — hemat ~300-600ms
-    const [profileResult, , cekSesiResult] = await Promise.all([
+    const [profileResult] = await Promise.all([
       adminDb.from('user_profiles')
         .select('status, nama, nomor_wa')
         .eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle(),
       setCookiesLoginServer({ role: ROLES.VENDOR, tenantId: claimTenantId, gpsKota }, cookieStore),
-      cekSesiParalel(uid, claimTenantId, ROLES.VENDOR),
     ])
     const profileRow = profileResult.data
     if ((profileRow?.status ?? '').toUpperCase() !== 'APPROVED') {
@@ -128,15 +116,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     }
     const nama    = profileRow?.nama     ?? (await ambilNamaUser(uid))
     const nomorWa = profileRow?.nomor_wa ?? ''
-
-    if (cekSesiResult.adaSesi && cekSesiResult.sesiData) {
-      return {
-        ok: true, uid, tenantId: claimTenantId, nama, nomorWa,
-        redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo),
-        sesiParalelAda: true, sesiParalelData: cekSesiResult.sesiData,
-      }
-    }
-
     jalankanAfterTasksLogin(
       { uid, tenantId: claimTenantId, nama, role: ROLES.VENDOR, device, gpsKota, hadAttempts: lock.hadAttempts, email },
       sessionId
@@ -146,21 +125,10 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
 
   // ── ADMIN TENANT ──────────────────────────────────────────────────────────
   if (role === ROLES.ADMIN_TENANT) {
-    // FIX Sesi #074 PERF: cekSesiParalel dimasukkan ke Promise.all yang sama
-    const [nama, , cekSesiResult] = await Promise.all([
+    const [nama] = await Promise.all([
       ambilNamaUser(uid),
       setCookiesLoginServer({ role: ROLES.ADMIN_TENANT, tenantId: claimTenantId, gpsKota }, cookieStore),
-      cekSesiParalel(uid, claimTenantId, ROLES.ADMIN_TENANT),
     ])
-
-    if (cekSesiResult.adaSesi && cekSesiResult.sesiData) {
-      return {
-        ok: true, uid, tenantId: claimTenantId, nama,
-        redirectTo: hitungTujuanRedirectServer(ROLES.ADMIN_TENANT, redirectTo),
-        sesiParalelAda: true, sesiParalelData: cekSesiResult.sesiData,
-      }
-    }
-
     jalankanAfterTasksLogin(
       { uid, tenantId: claimTenantId, nama, role: ROLES.ADMIN_TENANT, device, gpsKota, hadAttempts: lock.hadAttempts, email },
       sessionId
