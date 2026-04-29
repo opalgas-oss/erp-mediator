@@ -34,6 +34,7 @@ export interface ParamUnlockAccount {
 export interface ParamCheckSession {
   uid:      string
   tenantId: string
+  role?:    string
 }
 
 export interface ParamSendOTP {
@@ -133,7 +134,7 @@ export function fetchUnlockAccount(params: ParamUnlockAccount): void {
 export async function fetchCheckSession(params: ParamCheckSession) {
   const res = await fetch('/api/auth/check-session', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ uid: params.uid, tenant_id: params.tenantId }),
+    body: JSON.stringify({ uid: params.uid, tenant_id: params.tenantId, role: params.role }),
   })
   return res.json()
 }
