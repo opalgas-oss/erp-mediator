@@ -50,8 +50,13 @@ import { ROLES, UNLOCK_METHOD } from '@/lib/constants'
 // ─── Tipe Shared ─────────────────────────────────────────────────────────────
 
 export interface AppClaims {
-  role:     string
-  tenantId: string
+  role:          string
+  tenantId:      string
+  // BARU Sesi #075 — tersedia setelah Custom Access Token Hook aktif
+  // (atau dari user_metadata sebelum hook — nama sudah ada di JWT dari awal)
+  nama:          string
+  vendorStatus?: string   // APPROVED/PENDING/dll — dari hook, untuk skip DB query saat login Vendor
+  nomorWa?:      string   // nomor WhatsApp — dari hook, untuk skip DB query OTP Vendor
 }
 
 export interface SetCookiesParams {
@@ -93,18 +98,49 @@ export const SUPABASE_ERROR_MAP: Record<string, string> = {
 }
 
 // ─── A. decodeAppClaims ───────────────────────────────────────────────────────
+/**
+ * Decode JWT access token → AppClaims.
+ *
+ * STRUKTUR JWT dari inject-custom-claims Edge Function:
+ *   payload['app_role']      — top level claim (dari hook)
+ *   payload['tenant_id']     — top level claim (dari hook)
+ *   payload['nama']          — top level claim (BARU Sesi #075, dari hook)
+ *   payload['vendor_status'] — top level claim (BARU Sesi #075, dari hook)
+ *   payload['nomor_wa']      — top level claim (BARU Sesi #075, dari hook)
+ *   payload['app_metadata']  — nested object dari raw_app_meta_data (fallback)
+ *   payload['user_metadata'] — nested object dari raw_user_meta_data (fallback nama)
+ */
 export function decodeAppClaims(token: string): AppClaims {
   try {
     const parts = token.split('.')
-    if (parts.length !== 3) return { role: '', tenantId: '' }
-    const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-    const claims = JSON.parse(Buffer.from(padded, 'base64').toString('utf-8')) as Record<string, unknown>
+    if (parts.length !== 3) return { role: '', tenantId: '', nama: '' }
+    const padded   = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const payload  = JSON.parse(Buffer.from(padded, 'base64').toString('utf-8')) as Record<string, unknown>
+
+    // Nested objects sebagai fallback
+    const appMeta  = (typeof payload['app_metadata']  === 'object' && payload['app_metadata']  !== null)
+                   ? payload['app_metadata']  as Record<string, unknown> : {}
+    const userMeta = (typeof payload['user_metadata'] === 'object' && payload['user_metadata'] !== null)
+                   ? payload['user_metadata'] as Record<string, unknown> : {}
+
     return {
-      role:     typeof claims['app_role']  === 'string' ? claims['app_role']  : '',
-      tenantId: typeof claims['tenant_id'] === 'string' ? claims['tenant_id'] : '',
+      // app_role: dari top level (hook) atau app_metadata (raw_app_meta_data)
+      role:         typeof payload['app_role']         === 'string' ? payload['app_role']
+                  : typeof appMeta['app_role']          === 'string' ? appMeta['app_role']         : '',
+      // tenant_id: dari top level (hook) atau app_metadata
+      tenantId:     typeof payload['tenant_id']        === 'string' ? payload['tenant_id']
+                  : typeof appMeta['tenant_id']         === 'string' ? appMeta['tenant_id']        : '',
+      // nama: dari top level (hook, Sesi #075) atau app_metadata atau user_metadata (selalu ada)
+      nama:         typeof payload['nama']              === 'string' ? payload['nama']
+                  : typeof appMeta['nama']              === 'string' ? appMeta['nama']
+                  : typeof userMeta['nama']             === 'string' ? userMeta['nama']             : '',
+      // vendor_status: dari top level (hook, Sesi #075) — hanya ada setelah Edge Function v5
+      vendorStatus: typeof payload['vendor_status']    === 'string' ? payload['vendor_status']     : undefined,
+      // nomor_wa: dari top level (hook, Sesi #075) — hanya ada setelah Edge Function v5
+      nomorWa:      typeof payload['nomor_wa']         === 'string' ? payload['nomor_wa']          : undefined,
     }
   } catch {
-    return { role: '', tenantId: '' }
+    return { role: '', tenantId: '', nama: '' }
   }
 }
 

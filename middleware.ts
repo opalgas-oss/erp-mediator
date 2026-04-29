@@ -1,18 +1,21 @@
 // middleware.ts — letaknya di ROOT folder, sejajar dengan folder app/
 // Berjalan di Edge Runtime — tidak boleh import library Node.js
 //
-// PERUBAHAN dari versi Firebase:
-//   - Ganti decode base64 JWT → full crypto verify via Supabase SSR getUser()
-//   - createServerClient dari @supabase/ssr membaca session cookie Supabase otomatis
-//   - Role dibaca dari user.app_metadata.app_role (diisi inject-custom-claims hook)
-//   - Logika routing DASHBOARD_ROLE_MAP + ROLE_REDIRECT: TIDAK BERUBAH
-//   - Logika session timeout: TIDAK BERUBAH
+// OPTIMASI Sesi #075 — getClaims() fast path:
+//   Guard 5 sekarang pakai getClaims() DULU sebelum getUser().
+//   getClaims() memverifikasi JWT lokal via cached JWKS (tidak ada network call ke Supabase Auth).
+//   Jika JWT valid: ~1ms vs getUser() ~150-300ms — hemat ~150-300ms per setiap request dashboard.
+//   Jika JWT expired/invalid: fallback otomatis ke getUser() untuk refresh.
+//   SYARAT aktif: Supabase Dashboard → Authentication → JWT Signing Key → RS256
+//   Sebelum RS256 diaktifkan: getClaims() return error → fallback ke getUser() (backward compat).
 //
 // PERUBAHAN Sesi #064 (fix double getUser):
-//   - Guard 5: setelah getUser() berhasil, set x-user-* di request headers
-//   - verifyJWT() di layout membaca header → skip getUser() ke-2
-//   - Set-Cookie dari token refresh di-copy ke enriched response via getSetCookie()
-//   - Pendekatan ini aman untuk GET dan POST (server action) request
+//   Guard 5: setelah verify berhasil, set x-user-* di request headers
+//   verifyJWT() di layout membaca header → skip getUser() ke-2
+//
+// PERUBAHAN dari versi Firebase:
+//   - Ganti decode base64 JWT → full crypto verify via Supabase SSR
+//   - Role dibaca dari user.app_metadata.app_role (diisi custom_access_token_hook)
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse }        from 'next/server'
@@ -34,7 +37,7 @@ const PUBLIC_PATHS: string[] = [
 
 const STATIC_EXTENSIONS = /\.(png|jpg|jpeg|svg|ico|css|js|webp|woff|woff2|ttf)$/i
 
-// ─── Pemetaan Dashboard per Role — TIDAK BERUBAH ─────────────────────────────
+// ─── Pemetaan Dashboard per Role ─────────────────────────────────────────────
 const DASHBOARD_ROLE_MAP: Record<string, string> = {
   '/dashboard/customer':   ROLES.CUSTOMER,
   '/dashboard/vendor':     ROLES.VENDOR,
@@ -47,6 +50,14 @@ const ROLE_REDIRECT: Record<string, string> = {
   [ROLES.VENDOR]:       '/dashboard/vendor',
   [ROLES.ADMIN_TENANT]: '/dashboard/admin',
   [ROLES.SUPERADMIN]:   '/dashboard/superadmin',
+}
+
+// ─── Helper: extract role + tenantId dari claims/user ────────────────────────
+function extractRoleFromAppMeta(appMeta: Record<string, unknown>): { role?: string; tenantId?: string } {
+  return {
+    role:     typeof appMeta['app_role']  === 'string' ? appMeta['app_role']  : undefined,
+    tenantId: typeof appMeta['tenant_id'] === 'string' ? appMeta['tenant_id'] : undefined,
+  }
 }
 
 // ─── Middleware Utama ─────────────────────────────────────────────────────────
@@ -112,7 +123,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
     // Guard 5 — Proteksi route /dashboard
     if (pathname.startsWith('/dashboard')) {
-      // Setup response awal — dipakai setAll untuk cookie refresh (pola original)
       let response = NextResponse.next({ request })
 
       const supabase = createServerClient(
@@ -120,14 +130,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
           cookies: {
-            getAll() {
-              return request.cookies.getAll()
-            },
+            getAll() { return request.cookies.getAll() },
             setAll(cookiesToSet) {
-              // Pola original dipertahankan — aman untuk GET dan POST (server action)
-              cookiesToSet.forEach(({ name, value }) =>
-                request.cookies.set(name, value)
-              )
+              cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
               response = NextResponse.next({ request })
               cookiesToSet.forEach(({ name, value, options }) =>
                 response.cookies.set(name, value, options)
@@ -137,61 +142,94 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
         }
       )
 
-      // Full crypto verify — getUser() memvalidasi JWT ke Supabase Auth server
-      const { data: { user } } = await supabase.auth.getUser()
+      // ── OPTIMASI #075: getClaims() fast path (tidak ada network call) ─────
+      // getClaims() aktif setelah RS256 diaktifkan di Supabase Dashboard.
+      // Sebelum RS256: getClaims() return error → fallback ke getUser() (backward compat).
+      let userRole: string | undefined
+      let tenantId: string | undefined
+      let userId:   string | undefined
+      let displayName: string | undefined
+      let tokenRefreshNeeded = false
 
-      if (!user) {
-        return NextResponse.redirect(new URL('/login', request.url))
-      }
+      // Coba getClaims() dulu — fast path jika JWT valid
+      try {
+        const claimsResult = await (supabase.auth as unknown as {
+          getClaims: () => Promise<{ data: { claims: Record<string, unknown> } | null; error: unknown }>
+        }).getClaims()
 
-      // Role + tenantId dari app_metadata, fallback ke JWT payload
-      let userRole = user.app_metadata?.['app_role'] as string | undefined
-      let tenantId = user.app_metadata?.['tenant_id'] as string | undefined
+        if (!claimsResult.error && claimsResult.data?.claims) {
+          const c       = claimsResult.data.claims
+          const appMeta = (typeof c['app_metadata'] === 'object' && c['app_metadata'] !== null)
+                        ? c['app_metadata'] as Record<string, unknown> : {}
+          const umeta   = (typeof c['user_metadata'] === 'object' && c['user_metadata'] !== null)
+                        ? c['user_metadata'] as Record<string, unknown> : {}
 
-      if (!userRole) {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session?.access_token) {
-          try {
-            const parts = session.access_token.split('.')
-            if (parts.length === 3) {
-              const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
-              userRole = payload['app_role'] as string | undefined
-              if (!tenantId) tenantId = payload['tenant_id'] as string | undefined
-            }
-          } catch { /* abaikan */ }
+          const extracted = extractRoleFromAppMeta(appMeta)
+          userRole    = extracted.role
+          tenantId    = extracted.tenantId
+          userId      = typeof c['sub'] === 'string' ? c['sub'] : undefined
+          displayName = typeof appMeta['nama']  === 'string' ? appMeta['nama']
+                      : typeof umeta['nama']    === 'string' ? umeta['nama']
+                      : typeof c['email']       === 'string' ? c['email'] : userId
+        }
+      } catch { /* getClaims() belum tersedia atau RS256 belum aktif — lanjut ke fallback */ }
+
+      // Fallback ke getUser() jika getClaims() tidak berhasil
+      if (!userRole || !userId) {
+        const { data: { user } } = await supabase.auth.getUser()
+
+        if (!user) {
+          return NextResponse.redirect(new URL('/login', request.url))
+        }
+
+        userId      = user.id
+        userRole    = user.app_metadata?.['app_role'] as string | undefined
+        tenantId    = user.app_metadata?.['tenant_id'] as string | undefined
+        displayName = typeof user.user_metadata?.['nama'] === 'string'
+                    ? user.user_metadata['nama']
+                    : user.email ?? user.id
+        tokenRefreshNeeded = true
+
+        // Fallback decode JWT jika app_metadata kosong
+        if (!userRole) {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (session?.access_token) {
+            try {
+              const parts = session.access_token.split('.')
+              if (parts.length === 3) {
+                const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+                if (!userRole  && typeof payload['app_role']  === 'string') userRole  = payload['app_role']
+                if (!tenantId  && typeof payload['tenant_id'] === 'string') tenantId  = payload['tenant_id']
+              }
+            } catch { /* abaikan */ }
+          }
         }
       }
 
-      if (!userRole) {
+      if (!userRole || !userId) {
         return NextResponse.redirect(new URL('/login', request.url))
       }
 
-      // ── Propagasi user data ke Server Components via request headers ─────────
-      // verifyJWT() baca header ini → skip getUser() ke-2 → hemat ~100-150ms
-      // Security: strip header dari client sebelum set
-      const displayName = typeof user.user_metadata?.['nama'] === 'string'
-        ? user.user_metadata['nama']
-        : user.email ?? user.id
-
+      // ── Propagasi user data ke Server Components via request headers ──────
       const requestHeaders = new Headers(request.headers)
       requestHeaders.delete('x-user-id')
       requestHeaders.delete('x-user-role')
       requestHeaders.delete('x-tenant-id')
       requestHeaders.delete('x-user-display-name')
-      requestHeaders.set('x-user-id',           user.id)
+      requestHeaders.set('x-user-id',           userId)
       requestHeaders.set('x-user-role',          userRole)
       requestHeaders.set('x-tenant-id',          tenantId ?? '')
-      requestHeaders.set('x-user-display-name',  displayName)
+      requestHeaders.set('x-user-display-name',  displayName ?? userId)
 
-      // Buat enriched response dengan request headers baru
-      // Copy Set-Cookie dari response original (token refresh) — aman via getSetCookie()
       const enrichedResponse = NextResponse.next({ request: { headers: requestHeaders } })
-      response.headers.getSetCookie().forEach(cookie => {
-        enrichedResponse.headers.append('Set-Cookie', cookie)
-      })
+      if (tokenRefreshNeeded) {
+        response.headers.getSetCookie().forEach(cookie => {
+          enrichedResponse.headers.append('Set-Cookie', cookie)
+        })
+      }
       response = enrichedResponse
 
-      // ── Cek session timeout ─────────────────────────────────────────────────
+      // ── Cek session timeout ───────────────────────────────────────────────
       const timeoutMenit = (() => {
         const raw = request.cookies.get('session_timeout_minutes')?.value
         const val = raw ? parseInt(raw, 10) : NaN
@@ -210,7 +248,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
         }
       }
 
-      // Tentukan role yang dibutuhkan berdasarkan path
+      // ── Cek role sesuai dashboard path ────────────────────────────────────
       let requiredRole: string | null = null
       for (const [dashboardPath, role] of Object.entries(DASHBOARD_ROLE_MAP)) {
         if (pathname.startsWith(dashboardPath)) {

@@ -1,8 +1,14 @@
 // app/login/actions.ts
 // Server Actions login — Unified action untuk semua role.
 //
+// OPTIMASI Sesi #075 — Custom Access Token Hook + eliminasi DB query:
+//   1. cekLockAwal() + signInWithPassword() PARALLEL (~80ms saving)
+//   2. nama diambil dari JWT claims (user_metadata.nama selalu ada) — tidak perlu ambilNamaUser()
+//   3. Vendor: progressive enhancement — jika hook aktif, vendorStatus+nomorWa dari JWT
+//      (skip DB query sepenuhnya). Jika hook belum aktif, fallback ke DB query.
+//
 // SPLIT Sesi #074: dipecah dari 15.8 KB → actions.ts + actions-legacy.ts + login-session-check.ts
-// FIX Sesi #074: tambah concurrent session check (Vendor, AdminTenant) + Customer handler.
+// FIX Sesi #074: tambah Customer handler.
 // REFACTOR Sesi #068: 1 signInWithPassword untuk semua role.
 // PENTING: buatSupabaseSSR() → 1x cookies() → tidak ada regresi double-cookies +700ms.
 
@@ -13,7 +19,7 @@ import { getAccountLock }              from '@/lib/services/account-lock.service
 import { ROLES, ACCOUNT_LOCK_STATUS }  from '@/lib/constants'
 import {
   decodeAppClaims, formatLockUntilWIB, hitungTujuanRedirectServer,
-  setCookiesLoginServer, jalankanAfterTasksLogin, ambilNamaUser,
+  setCookiesLoginServer, jalankanAfterTasksLogin,
   buildLoginFormSchema, buatSupabaseSSR, prosesGagalLogin,
 } from './login-action-helpers'
 
@@ -63,11 +69,24 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
   if (!buildLoginFormSchema().safeParse({ email, password }).success)
     return { ok: false, errorKey: 'login_error_umum' }
 
-  const lock = await cekLockAwal(email)
-  if (lock.locked) return lock.result
-
+  // ── OPTIMASI #075: buatSupabaseSSR dulu, lalu cekLockAwal + signInWithPassword PARALLEL ──
   const { supabase, cookieStore } = await buatSupabaseSSR()
-  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+
+  const [lock, authResult] = await Promise.all([
+    cekLockAwal(email),
+    supabase.auth.signInWithPassword({ email, password }),
+  ])
+
+  // Jika akun terkunci: pastikan session di-clear dulu baru return error
+  if (lock.locked) {
+    if (!authResult.error && authResult.data?.session) {
+      try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
+    }
+    return lock.result
+  }
+
+  const authData  = authResult.data
+  const authError = authResult.error
 
   if (authError || !authData?.session || !authData?.user) {
     const adminDb = createServerSupabaseClient()
@@ -76,6 +95,7 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     return prosesGagalLogin(email, userRow?.tenant_id ?? null, authError?.message ?? '')
   }
 
+  // claims sekarang berisi: role, tenantId, nama, vendorStatus?, nomorWa?
   const claims    = decodeAppClaims(authData.session.access_token)
   const { role, tenantId: claimTenantId } = claims
   const uid       = authData.user.id
@@ -83,10 +103,9 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
 
   // ── SUPERADMIN ────────────────────────────────────────────────────────────
   if (role === ROLES.SUPERADMIN) {
-    const [nama] = await Promise.all([
-      ambilNamaUser(uid),
-      setCookiesLoginServer({ role: ROLES.SUPERADMIN, tenantId: '', gpsKota }, cookieStore),
-    ])
+    // OPTIMASI #075: nama dari JWT claims — tidak perlu DB query ambilNamaUser()
+    const nama = claims.nama
+    await setCookiesLoginServer({ role: ROLES.SUPERADMIN, tenantId: '', gpsKota }, cookieStore)
     jalankanAfterTasksLogin(
       { uid, tenantId: null, nama, role: ROLES.SUPERADMIN, device, gpsKota, hadAttempts: lock.hadAttempts, email },
       sessionId
@@ -102,10 +121,28 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
 
   // ── VENDOR ────────────────────────────────────────────────────────────────
   if (role === ROLES.VENDOR) {
+    const nama = claims.nama
+
+    // OPTIMASI #075 — Progressive Enhancement:
+    // PATH CEPAT: jika hook aktif → vendorStatus + nomorWa ada di JWT → skip DB query
+    if (claims.vendorStatus !== undefined && claims.nomorWa !== undefined) {
+      if (claims.vendorStatus.toUpperCase() !== 'APPROVED') {
+        try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
+        return { ok: false, errorKey: 'login_error_akun_belum_aktif' }
+      }
+      await setCookiesLoginServer({ role: ROLES.VENDOR, tenantId: claimTenantId, gpsKota }, cookieStore)
+      jalankanAfterTasksLogin(
+        { uid, tenantId: claimTenantId, nama, role: ROLES.VENDOR, device, gpsKota, hadAttempts: lock.hadAttempts, email },
+        sessionId
+      )
+      return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo), nama, uid, tenantId: claimTenantId, nomorWa: claims.nomorWa }
+    }
+
+    // PATH FALLBACK: sebelum hook aktif → query DB untuk status + nomor_wa
     const adminDb = createServerSupabaseClient()
     const [profileResult] = await Promise.all([
       adminDb.from('user_profiles')
-        .select('status, nama, nomor_wa')
+        .select('status, nomor_wa')
         .eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle(),
       setCookiesLoginServer({ role: ROLES.VENDOR, tenantId: claimTenantId, gpsKota }, cookieStore),
     ])
@@ -114,7 +151,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
       try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
       return { ok: false, errorKey: 'login_error_akun_belum_aktif' }
     }
-    const nama    = profileRow?.nama     ?? (await ambilNamaUser(uid))
     const nomorWa = profileRow?.nomor_wa ?? ''
     jalankanAfterTasksLogin(
       { uid, tenantId: claimTenantId, nama, role: ROLES.VENDOR, device, gpsKota, hadAttempts: lock.hadAttempts, email },
@@ -125,10 +161,9 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
 
   // ── ADMIN TENANT ──────────────────────────────────────────────────────────
   if (role === ROLES.ADMIN_TENANT) {
-    const [nama] = await Promise.all([
-      ambilNamaUser(uid),
-      setCookiesLoginServer({ role: ROLES.ADMIN_TENANT, tenantId: claimTenantId, gpsKota }, cookieStore),
-    ])
+    // OPTIMASI #075: nama dari JWT claims — tidak perlu DB query
+    const nama = claims.nama
+    await setCookiesLoginServer({ role: ROLES.ADMIN_TENANT, tenantId: claimTenantId, gpsKota }, cookieStore)
     jalankanAfterTasksLogin(
       { uid, tenantId: claimTenantId, nama, role: ROLES.ADMIN_TENANT, device, gpsKota, hadAttempts: lock.hadAttempts, email },
       sessionId
@@ -137,12 +172,10 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
   }
 
   // ── CUSTOMER ──────────────────────────────────────────────────────────────
-  // Customer tidak dicek sesi paralel — per research industri always diizinkan
   if (role === ROLES.CUSTOMER) {
-    const [nama] = await Promise.all([
-      ambilNamaUser(uid),
-      setCookiesLoginServer({ role: ROLES.CUSTOMER, tenantId: claimTenantId, gpsKota }, cookieStore),
-    ])
+    // OPTIMASI #075: nama dari JWT claims — tidak perlu DB query
+    const nama = claims.nama
+    await setCookiesLoginServer({ role: ROLES.CUSTOMER, tenantId: claimTenantId, gpsKota }, cookieStore)
     jalankanAfterTasksLogin(
       { uid, tenantId: claimTenantId, nama, role: ROLES.CUSTOMER, device, gpsKota, hadAttempts: lock.hadAttempts, email },
       sessionId
