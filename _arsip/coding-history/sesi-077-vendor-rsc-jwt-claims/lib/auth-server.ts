@@ -19,15 +19,10 @@ import { createServerClient } from '@supabase/ssr'
 
 // ─── Tipe Hasil verifyJWT ──────────────────────────────────────────────────────
 export interface JWTPayload {
-  uid:           string
-  role:          string
-  tenantId:      string
-  displayName:   string
-  // BARU Sesi #077: status vendor dari JWT (Edge Function v5).
-  // Vendor layout pakai value ini untuk skip query DB user_profiles.status.
-  // Optional karena hanya ada di JWT vendor (SA/AT/Customer = undefined).
-  // Optional juga karena JWT lama (sebelum hook v5) belum punya field ini.
-  vendorStatus?: string
+  uid:         string
+  role:        string
+  tenantId:    string
+  displayName: string
 }
 
 // ─── verifyJWT ────────────────────────────────────────────────────────────────
@@ -35,20 +30,18 @@ export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
   try {
     // ── Cek header dari middleware dulu ────────────────────────────────────────
     // Jika middleware sudah verify → pakai langsung, skip getUser() ke Supabase
-    const headerStore   = await headers()
-    const xUserId       = headerStore.get('x-user-id')
-    const xUserRole     = headerStore.get('x-user-role')
-    const xTenantId     = headerStore.get('x-tenant-id')
-    const xDisplayName  = headerStore.get('x-user-display-name')
-    const xVendorStatus = headerStore.get('x-vendor-status')
+    const headerStore  = await headers()
+    const xUserId      = headerStore.get('x-user-id')
+    const xUserRole    = headerStore.get('x-user-role')
+    const xTenantId    = headerStore.get('x-tenant-id')
+    const xDisplayName = headerStore.get('x-user-display-name')
 
     if (xUserId && xUserRole) {
       return {
-        uid:           xUserId,
-        role:          xUserRole,
-        tenantId:      xTenantId    ?? '',
-        displayName:   xDisplayName ?? xUserId,
-        vendorStatus:  xVendorStatus ?? undefined,
+        uid:         xUserId,
+        role:        xUserRole,
+        tenantId:    xTenantId    ?? '',
+        displayName: xDisplayName ?? xUserId,
       }
     }
 
@@ -70,11 +63,10 @@ export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
     if (error || !user) return null
 
     const appMeta = user.app_metadata || {}
-    let role         = typeof appMeta['app_role']      === 'string' ? appMeta['app_role']      : ''
-    let tenantId     = typeof appMeta['tenant_id']     === 'string' ? appMeta['tenant_id']     : ''
-    let vendorStatus = typeof appMeta['vendor_status'] === 'string' ? appMeta['vendor_status'] : undefined
+    let role     = typeof appMeta['app_role']  === 'string' ? appMeta['app_role']  : ''
+    let tenantId = typeof appMeta['tenant_id'] === 'string' ? appMeta['tenant_id'] : ''
 
-    if (!role || !vendorStatus) {
+    if (!role) {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.access_token) {
         try {
@@ -82,22 +74,20 @@ export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
           if (parts.length === 3) {
             const pad     = parts[1].replace(/-/g, '+').replace(/_/g, '/')
             const payload = JSON.parse(Buffer.from(pad, 'base64').toString('utf-8'))
-            if (!role         && typeof payload['app_role']      === 'string') role         = payload['app_role']
-            if (!tenantId     && typeof payload['tenant_id']     === 'string') tenantId     = payload['tenant_id']
-            if (!vendorStatus && typeof payload['vendor_status'] === 'string') vendorStatus = payload['vendor_status']
+            if (typeof payload['app_role']  === 'string') role     = payload['app_role']
+            if (typeof payload['tenant_id'] === 'string') tenantId = payload['tenant_id']
           }
         } catch { /* abaikan */ }
       }
     }
 
     return {
-      uid:           user.id,
+      uid:         user.id,
       role,
       tenantId,
       displayName: typeof user.user_metadata?.['nama'] === 'string'
         ? user.user_metadata['nama']
         : user.email ?? user.id,
-      vendorStatus,
     }
   } catch {
     return null

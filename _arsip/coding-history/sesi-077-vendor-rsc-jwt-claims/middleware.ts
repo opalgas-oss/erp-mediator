@@ -145,15 +145,10 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       // ── OPTIMASI #075: getClaims() fast path (tidak ada network call) ─────
       // getClaims() aktif setelah RS256 diaktifkan di Supabase Dashboard.
       // Sebelum RS256: getClaims() return error → fallback ke getUser() (backward compat).
-      //
-      // OPTIMASI #077 (Vendor RSC fix): tambah ekstrak vendor_status dari claims.
-      // Edge Function v5 inject vendor_status sebagai top-level claim.
-      // Vendor layout pakai value ini untuk skip query DB user_profiles.status.
       let userRole: string | undefined
       let tenantId: string | undefined
       let userId:   string | undefined
       let displayName: string | undefined
-      let vendorStatus: string | undefined
       let tokenRefreshNeeded = false
 
       // Coba getClaims() dulu — fast path jika JWT valid
@@ -176,9 +171,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
           displayName = typeof appMeta['nama']  === 'string' ? appMeta['nama']
                       : typeof umeta['nama']    === 'string' ? umeta['nama']
                       : typeof c['email']       === 'string' ? c['email'] : userId
-          // vendor_status: top-level claim dulu (Edge Function v5), fallback ke app_metadata
-          vendorStatus = typeof c['vendor_status']      === 'string' ? c['vendor_status']
-                       : typeof appMeta['vendor_status'] === 'string' ? appMeta['vendor_status'] : undefined
         }
       } catch { /* getClaims() belum tersedia atau RS256 belum aktif — lanjut ke fallback */ }
 
@@ -196,21 +188,18 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
         displayName = typeof user.user_metadata?.['nama'] === 'string'
                     ? user.user_metadata['nama']
                     : user.email ?? user.id
-        vendorStatus = typeof user.app_metadata?.['vendor_status'] === 'string'
-                     ? user.app_metadata['vendor_status'] : undefined
         tokenRefreshNeeded = true
 
         // Fallback decode JWT jika app_metadata kosong
-        if (!userRole || !vendorStatus) {
+        if (!userRole) {
           const { data: { session } } = await supabase.auth.getSession()
           if (session?.access_token) {
             try {
               const parts = session.access_token.split('.')
               if (parts.length === 3) {
                 const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
-                if (!userRole     && typeof payload['app_role']      === 'string') userRole     = payload['app_role']
-                if (!tenantId     && typeof payload['tenant_id']     === 'string') tenantId     = payload['tenant_id']
-                if (!vendorStatus && typeof payload['vendor_status'] === 'string') vendorStatus = payload['vendor_status']
+                if (!userRole  && typeof payload['app_role']  === 'string') userRole  = payload['app_role']
+                if (!tenantId  && typeof payload['tenant_id'] === 'string') tenantId  = payload['tenant_id']
               }
             } catch { /* abaikan */ }
           }
@@ -227,15 +216,10 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       requestHeaders.delete('x-user-role')
       requestHeaders.delete('x-tenant-id')
       requestHeaders.delete('x-user-display-name')
-      requestHeaders.delete('x-vendor-status')
       requestHeaders.set('x-user-id',           userId)
       requestHeaders.set('x-user-role',          userRole)
       requestHeaders.set('x-tenant-id',          tenantId ?? '')
       requestHeaders.set('x-user-display-name',  displayName ?? userId)
-      // x-vendor-status: hanya di-set jika ada di JWT (skip header kalau undefined → vendor layout fallback DB)
-      if (vendorStatus) {
-        requestHeaders.set('x-vendor-status', vendorStatus)
-      }
 
       const enrichedResponse = NextResponse.next({ request: { headers: requestHeaders } })
       if (tokenRefreshNeeded) {

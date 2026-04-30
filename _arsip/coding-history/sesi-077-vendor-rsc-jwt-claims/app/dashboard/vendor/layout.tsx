@@ -8,12 +8,6 @@
 //   cekSesiParalel() ditambahkan ke Promise.all yang sudah ada → 0 tambahan latency.
 //   Hasilnya diteruskan ke VendorDashboardShell sebagai prop sesiParalel.
 //   Jika tidak ada sesi paralel (adaSesi=false): tidak ada perubahan visual.
-//
-// OPTIMASI Sesi #077 — Vendor RSC fix (target <200ms warm):
-//   Status vendor dibaca dari JWT claims (payload.vendorStatus) yang di-inject
-//   Edge Function v5 (Sesi #075). Skip 1 DB query user_profiles.status per request.
-//   Fallback: jika JWT belum punya vendor_status (JWT lama / hook gagal) →
-//   query DB sebagai safety net. Setelah semua user re-login, fallback tidak terpakai.
 
 export const dynamic = 'force-dynamic'
 
@@ -30,29 +24,17 @@ export default async function VendorLayout({ children }: { children: React.React
   const payload = await verifyJWT()
   if (!payload || payload.role !== 'VENDOR') redirect('/login')
 
-  // Status vendor: utamakan dari JWT (Edge Function v5), fallback ke DB query.
-  // hitung secara parallel dengan brandName + messages + cekSesiParalel.
-  const fetchStatusVendor = async (): Promise<string> => {
-    if (payload.vendorStatus) return payload.vendorStatus
-    // Safety net: JWT lama belum punya vendor_status → query DB sekali.
-    const db = createServerSupabaseClient()
-    const { data } = await db
-      .from('user_profiles')
-      .select('status')
-      .eq('id', payload.uid)
-      .single()
-    return data?.status ?? ''
-  }
+  const db = createServerSupabaseClient()
 
   // cekSesiParalel dijalankan PARALLEL dengan query lain → 0 tambahan latency ke RSC
-  const [statusRaw, brandName, messages, hasilCekSesi] = await Promise.all([
-    fetchStatusVendor(),
+  const [profileResult, brandName, messages, hasilCekSesi] = await Promise.all([
+    db.from('user_profiles').select('status').eq('id', payload.uid).single(),
     getBrandName(),
     getMessagesByKategori(['sidebar_ui', 'header_ui', 'vendor_ui']),
     cekSesiParalel(payload.uid, payload.tenantId, ROLES.VENDOR),
   ])
 
-  const statusVendor = (statusRaw || '').toUpperCase()
+  const statusVendor = (profileResult.data?.status || '').toUpperCase()
   if (!VENDOR_LOGIN_ALLOWED.map(s => s.toUpperCase()).includes(statusVendor)) {
     redirect('/login?error=vendor_not_approved')
   }
