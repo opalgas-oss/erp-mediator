@@ -5,23 +5,21 @@
 // Kiri  : hamburger mobile + judul halaman (besar) — deskripsi (kecil, inline kanan)
 // Kanan : avatar + dropdown logout
 
+// REFACTOR Sesi #079 — DRY fix (BLOK B):
+//   Hapus inline getCookie → import dari lib/utils-client
+
 import { useState, useEffect, useRef } from 'react'
 import { usePathname }                 from 'next/navigation'
 import { LogOut, ChevronDown, Menu }   from 'lucide-react'
 import { createBrowserSupabaseClient } from '@/lib/supabase-client'
 import { logoutAction }                from '@/app/auth/logout-action'
+import { getCookie }                   from '@/lib/utils-client'
 
 interface UserInfo { nama: string; email: string; role: string }
 
 interface DashboardHeaderProps {
   messages?:    Record<string, string>
   onMenuClick?: () => void
-}
-
-function getCookie(name: string): string {
-  if (typeof document === 'undefined') return ''
-  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
-  return match ? decodeURIComponent(match[2]) : ''
 }
 
 function getInisial(nama: string, email: string): string {

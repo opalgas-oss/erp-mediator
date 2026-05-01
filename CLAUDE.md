@@ -1,41 +1,10 @@
 # ERP Mediator Hyperlocal — Konteks Project untuk Claude Code
 # Sprint 1 — Login & Auth Lengkap
-# Terakhir diupdate: 24 April 2026 — Sesi #054 (Audit Dokumen)
-# Perubahan Sesi #054 (Audit Dokumen):
-#   - SUMBER KEBENARAN: Tambah tabel referensi per topik → dokumen audit baru
-#   - REFERENSI DOKUMEN: Update semua versi lama ke versi baru hasil audit
-#   - SESI #053 INFO: 4 route baru, tenant.repository, ATURAN_CODING_AI_v2, cr_functions 64
-# Perubahan Sesi #052:
-#   - SERVICE LAYER (auth): 5 file BARU di lib/services/ — account-lock, credential, activity, otp, session (total 27.70 KB)
-#   - CLIENT HELPER: lib/session-client.ts BARU — getDeviceInfo, getGPSLocation, generateOTP (dipecah dari session.ts)
-#   - HOOK: lib/hooks/useBiometric.ts BARU — register + verify WebAuthn (dipecah dari session.ts)
-#   - DEPRECATED: lib/account-lock.ts, lib/credential-reader.ts, lib/session.ts, lib/activity.ts — digantikan Service layer
-#   - ROUTE HANDLERS: 7 route auth diupdate import ke Service layer
-#   - CONSTANTS: lib/auth.ts + middleware.ts + useLoginFlow.ts sekarang import ROLES dari lib/constants
-#   - REGISTRY DB: 6 constants + 32 fungsi baru di cr_functions (total 61)
-#   - BUILD: npm run build LULUS 0 error. Login SuperAdmin LULUS.
-# Perubahan dari Sesi #032 (tetap berlaku):
-#   - IDENTITAS PROJECT: Stack diupdate — Firebase/Firestore → Supabase/PostgreSQL
-#   - FILE LIB: Diupdate total — hapus Firebase, tambah Supabase + Repository/Service/Adapter
-#   - ATURAN COOKIE SESSION: Firebase JWT → Supabase JWT
-#   - ATURAN CODING: Tambah aturan Supabase + API Layer + Database Standards
-#   - PATH DATABASE: Firestore paths → PostgreSQL tables
-#   - TIGA SISTEM REALTIME: onSnapshot → Supabase Realtime
-#   - STANDAR CACHE: Diupdate — unstable_cache + react.cache() + Upstash Redis
-# Perubahan Sesi #044:
-#   - SPRINT AKTIF: FASE M SELESAI. TAHAP P0 SELESAI. TAHAP 3 Responsive SELESAI.
-#   - FILE PENTING: settings/config/ → settings/security-login/ (rename sesuai feature_key)
-#   - KOMPONEN BARU: DashboardShell.tsx. SidebarNav.tsx REWRITE. DashboardHeader.tsx UPDATE.
-#   - STAGING URL PERMANEN: erp-mediator-git-dev-philips-liemenas-projects.vercel.app
-#   - RESTART SERVER: dev.ps1 (klik kanan → Run with PowerShell) — JANGAN npm run dev manual
-# Perubahan Sesi #045:
-#   - lib/redis.ts: BARU — Redis client lazy init via getCredential() + env fallback
-#   - STANDAR CACHE: Tambah Redis L1 cache pattern untuk API route handlers
-#   - scripts/add-redis-cache-ttl-config.sql: BARU — 4 key config_registry (platform_general)
-#   - app/api/config/[feature_key]/route.ts: Redis L1 cache-aside + invalidation
-#   - app/login/page.tsx: dedup config fetch (3→1), guard unlock-account with had_attempts
-#   - app/dashboard/superadmin/layout.tsx: Promise.all + unstable_cache TTL dari DB
-#   - Vercel Fluid Compute: AKTIF (dikonfirmasi Sesi #045)
+# Terakhir diupdate: 30 April 2026 — Sesi #077
+#
+# CATATAN: Reference ke dokumen lain TIDAK menyertakan nomor versi.
+# Versi aktif setiap dokumen ada di DOCUMENT_REGISTRY (master list).
+# Riwayat update CLAUDE.md: Sesi #032 (pivot Supabase), #044, #045, #052, #054 (audit), #077 (update menyeluruh).
 
 ---
 
@@ -64,20 +33,23 @@ Semua credential service disimpan terenkripsi di database — TIDAK ada di .env 
 
 | Topik | File Sumber | Keterangan |
 |---|---|---|
-| Anti-hardcode | TECHNICAL_STANDARDS_v3 bab 8 | Prosedur, larangan, pengecualian |
-| Identitas + Stack | ARSITEKTUR_FONDASI_v1 | Fondasi teknis platform |
-| 3 Layer | API_AND_DATABASE_STANDARDS_v2 bab 2-3 | Route → Service → Repository |
-| 3 Modul Dashboard | DASHBOARD_MODULES_SPEC_v3 | Config, Message, Credential |
-| Config Schema | CONFIG_REGISTRY_CORE/INTEGRATION/UI_OPTIONS_v1 | Semua item konfigurasi |
-| Credential Schema | CREDENTIAL_SYSTEM_SPEC_v1 | 4 tabel credential terenkripsi |
-| Policy 2 Level | POLICY_INHERITANCE_SPEC_v3 | getEffectivePolicy() |
-| Naming Convention | CODING_RULES_AI_v1 | Per layer, per file |
-| SOP Coding | CODING_SOP_AI_v1 | 5 fase + checklist |
-| Code Registry | CODE_REGISTRY_SPEC_v1 | DDL 7 tabel + query AI |
-| Alur Login | WORKFLOW_LOGIN_ALUR_UTAMA_v1 | 8 tahap + aturan |
-| OTP/Bio/Lock | WORKFLOW_LOGIN_FITUR_LANJUTAN_v1 | Detail 3 mode |
-| Testing | CARA_KERJA_TESTING_v3 | 7 komitmen |
-| Performa | PERFORMANCE_STANDARDS_v2 | Metrik + cache |
+| Anti-hardcode | TECHNICAL_STANDARDS bab 8 | Prosedur, larangan, pengecualian |
+| Identitas + Stack | ARSITEKTUR_FONDASI | Fondasi teknis platform |
+| 3 Layer | API_AND_DATABASE_STANDARDS bab 2-3 | Route → Service → Repository |
+| 3 Modul Dashboard | DASHBOARD_MODULES_SPEC | Config, Message, Credential |
+| Config Schema | CONFIG_REGISTRY_CORE/INTEGRATION/UI_OPTIONS | Semua item konfigurasi |
+| Credential Schema | CREDENTIAL_SYSTEM_SPEC | 4 tabel credential terenkripsi |
+| Policy 2 Level | POLICY_INHERITANCE_SPEC | getEffectivePolicy() |
+| Naming Convention | CODING_RULES_NAMING | Per layer, per file |
+| SOP Coding | CODING_SOP_AI | 5 fase + checklist + BAB 4 Shared Logic |
+| Coding Rules | CODING_RULES_AI | 17 aturan coding |
+| Code Registry | CODE_REGISTRY_SPEC | DDL 7 tabel + query AI |
+| Alur Login | WORKFLOW_LOGIN_ALUR_UTAMA | 8 tahap + aturan |
+| OTP/Bio/Lock | WORKFLOW_LOGIN_FITUR_LANJUTAN | Detail 3 mode |
+| Testing | CARA_KERJA_TESTING | 8 komitmen |
+| Performa | PERFORMANCE_STANDARDS | Metrik + cache + data warm aktual |
+| Bug Tracker | BUG_TRACKER | 13 bug, root cause, fix |
+| Pelanggaran | CODING_SOP_LAMPIRAN | Pola kesalahan Sesi #053–#076 |
 | File Lib | CLAUDE.md (INI) | Sumber kebenaran mapping lib/ |
 
 ---
@@ -133,22 +105,35 @@ WAJIB diikuti untuk setiap perubahan kode, penambahan fitur, atau perbaikan bug:
 ---
 
 ## SPRINT AKTIF
-(Update Sesi #045)
+(Update Sesi #077 — 30 April 2026)
 
 - Sprint: Sprint 1 — Login & Auth Lengkap
-- FASE M: ✅ SELESAI PENUH (Sesi #033–#044)
-- TAHAP P0: ✅ SELESAI (otomatis dalam FASE M)
-- TAHAP 3 Responsive Design: ✅ SELESAI (Sesi #044)
-- Vercel Fluid Compute: ✅ AKTIF (dikonfirmasi Sesi #045)
-- Performance fix code: ✅ SELESAI (Sesi #045) — BELUM PUSH ke dev
-- SQL new config keys: ✅ Script siap (Sesi #045) — BELUM DIJALANKAN di DB
-- TC lulus: 13/36 — TC-D01-D03 prioritas berikutnya di staging URL
-- Yang dikerjakan berikutnya:
-  1. Restart Claude Desktop → Supabase MCP akan bisa execute_sql
-  2. Jalankan scripts/add-redis-cache-ttl-config.sql via Supabase MCP
-  3. Push ke dev → Vercel deploy
-  4. TC-D01-D03 di staging URL
-- Referensi UI: UI_UX_Approved\dashboard_config_login_sesi025_v1.html
+- FASE M: ✅ SELESAI PENUH
+- Build: **31/31** ✅ (commit `c74593a` branch `dev` Sesi #075)
+- BLOK aktif: **BLOK I — Test Menyeluruh**
+- Branch: `dev` (aktif), `main` (production — belum merge)
+- Vercel region: **sin1** (Singapore) — `vercel.json` di root project
+
+**Status BLOK I:**
+- I-01 BUILD 31/31 ✅
+- I-02 Login SA ✅ warm 834ms
+- I-03 Login Vendor ✅ warm 533ms
+- I-04 Account lock ✅
+- I-05 Concurrent session banner ⏳ menunggu TC-E02 + TC-E03
+- I-06 Regresi check 🔴 BLOCKED menunggu I-05
+- Merge dev→main ❌ BELUM
+
+**Optimasi login yang sudah dikerjakan s/d Sesi #076:**
+1. Keep-warm cron 3 lapis (cron-job.org + GitHub Actions + Cronping)
+2. getClaims() middleware — ECC P-256 ~1ms fast path
+3. JWT Custom Claims via Edge Function v5 (nama, vendor_status, nomor_wa)
+4. loginUnifiedAction — 1 signInWithPassword untuk semua role
+5. sendOTP Promise.all — 6 sequential → parallel
+6. selesaiLogin() non-blocking — session-log + user-presence fire-and-forget
+7. LOGIN_FORM_SCHEMA module-level + getConfigValues parallel
+8. Region sin1 matching Supabase Singapore
+
+**Referensi detail:** STATUS_PROJECT_SESI076, PERFORMANCE_STANDARDS, PROMPT_SESI_077
 
 ---
 
@@ -272,15 +257,17 @@ Cek di: Vercel → erp-mediator → Settings → Environment Variables.
 
 ---
 
-## ATURAN PENTING COOKIE SESSION
-(Update Sesi #032 — tidak berubah)
+## ATURAN AUTH & SESSION
+(Update Sesi #077 — getClaims() + Edge Function v5)
 
-KONDISI AKTIF (setelah FASE M selesai):
-- Cookie 'session' berisi Supabase JWT
-- Middleware verifikasi full crypto dengan Supabase JWT secret
-- verifyJWT() verifikasi via Supabase Auth, dibungkus react.cache()
-- Custom claims (app_role, tenant_id) diinjeksi via Custom Access Token Hook
-- SUPERADMIN: login page set cookie 'session' = Supabase JWT
+- Auth: Supabase Auth (JWT + Custom Claims via Edge Function v5 HTTPS endpoint)
+- Custom Claims di JWT: `app_role`, `tenant_id`, `nama`, `vendor_status`, `nomor_wa`
+- Middleware: getClaims() fast path (ECC P-256, ~1ms) → getUser() fallback saja
+- Login: `loginUnifiedAction` server action — 1 `signInWithPassword` untuk semua role
+- selesaiLogin(): fire-and-forget (session-log + user-presence tidak blocking redirect)
+- Session ID: generate di client via `crypto.randomUUID()`
+- Concurrent session: `cekSesiParalel()` di layout RSC, banner amber dismissible
+- Keep-warm: 3 lapis (cron-job.org + GitHub Actions backup + Cronping dead man's switch)
 
 ---
 
@@ -457,6 +444,6 @@ Implementasi: TAHAP 5 (F) di sprint plan.
 
 ---
 
-*CLAUDE.md — 24 April 2026 — Sesi #054 (Audit Dokumen)*
-*Tambah SUMBER KEBENARAN PER TOPIK. Update referensi dokumen ke versi audit baru.*
-*Dokumen referensi sekarang di: Dokumen_Hasil_Audit/*
+*CLAUDE.md — 30 April 2026 — Sesi #077*
+*Update: header disederhanakan, SUMBER KEBENARAN tanpa versi, SPRINT AKTIF Sesi #076-077, AUTH → getClaims() + Edge Function v5.*
+*Reference ke dokumen lain tanpa nomor versi — versi aktif di DOCUMENT_REGISTRY.*

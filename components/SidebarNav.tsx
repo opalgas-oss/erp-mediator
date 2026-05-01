@@ -7,17 +7,23 @@
 //   Mobile  (<md, <768px)  : hidden default → fixed overlay saat mobileOpen
 //   Tablet  (md–lg)        : icon-only 52px, label + sub-menu tersembunyi
 //   Desktop (lg+, ≥1024px) : full 256px dengan label dan sub-menu
+//
+// REFACTOR Sesi #079 — DRY fix (BLOK B):
+//   - Hapus inline getCookie → import dari lib/utils-client
+//   - Hapus inline interpolate → import dari lib/utils-client
+//   - Hapus GPS useEffect → pakai useGpsInfo hook dari lib/hooks/useGpsInfo
+//   - Hapus prop mobileOpen + onMobileClose → pakai useMobileSidebar() context
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
-import { Settings, MapPin, X } from 'lucide-react'
+import { useState, useEffect }   from 'react'
+import { Settings, MapPin, X }   from 'lucide-react'
+import { interpolate }           from '@/lib/utils-client'
+import { useGpsInfo }            from '@/lib/hooks/useGpsInfo'
+import { useMobileSidebar }      from '@/components/DashboardShell'
 
 // ─── Nav Position — urutan sidebar didefinisikan di KODE, bukan di DB ────────
 // Pola: WooCommerce-style numeric position (float-friendly untuk sisipan).
-// Untuk tambah item baru: pakai angka di antara nilai yang ada (misal 25 untuk
-// posisi antara register_user:20 dan register_vendor:30) — tanpa ubah nilai lain.
-// feature_key yang TIDAK ada di sini tidak akan tampil di sidebar.
 const NAV_POSITION: Record<string, number> = {
   security_login:   10,
   register_user:    20,
@@ -31,39 +37,29 @@ const NAV_POSITION: Record<string, number> = {
   pilihan_opsi:    100,
 }
 
-// ─── URL derivation dari feature_key — TIDAK disimpan di DB ──────────────────
-// Pola: feature_key → kebab-case slug → path URL
-// Contoh: security_login → security-login → /dashboard/superadmin/settings/security-login
+// ─── URL derivation dari feature_key ─────────────────────────────────────────
 function featureKeyToPath(key: string): string {
   return `/dashboard/superadmin/settings/${key.replace(/_/g, '-')}`
 }
 
-// ─── Interpolate teks lokal — tidak import server-only lib ───────────────────
-function interpolate(teks: string, vars: Record<string, string>): string {
-  return teks.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`)
-}
-
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface SidebarNavProps {
-  brandName:     string                  // dari tenants.nama_brand
-  messages:      Record<string, string>  // dari message_library kategori sidebar_ui
-  featureKeys:   string[]                // distinct feature_key dari config_registry
-  mobileOpen:    boolean                 // dikontrol DashboardShell
-  onMobileClose: () => void              // callback tutup sidebar mobile
+  brandName:   string                  // dari tenants.nama_brand
+  messages:    Record<string, string>  // dari message_library kategori sidebar_ui
+  featureKeys: string[]                // distinct feature_key dari config_registry
 }
 
-export function SidebarNav({
-  brandName,
-  messages,
-  featureKeys,
-  mobileOpen,
-  onMobileClose,
-}: SidebarNavProps) {
+export function SidebarNav({ brandName, messages, featureKeys }: SidebarNavProps) {
   const pathname = usePathname()
   const router   = useRouter()
 
+  // Mobile state dari DashboardShell context — tidak perlu prop drilling
+  const { mobileOpen, onMobileClose } = useMobileSidebar()
+
   const [open, setOpen] = useState(() => pathname.includes('/settings'))
-  const [gpsInfo, setGpsInfo] = useState({ kota: '', loginAt: '' })
+
+  // GPS info dari shared hook — menggantikan inline useEffect + getCookie
+  const gpsInfo = useGpsInfo(m('sidebar_gps_kota_fallback'))
 
   function m(key: string, vars?: Record<string, string>): string {
     const teks = messages[key] ?? key
@@ -73,25 +69,6 @@ export function SidebarNav({
   useEffect(() => {
     if (pathname.includes('/settings')) setOpen(true)
   }, [pathname])
-
-  useEffect(() => {
-    function getCookie(name: string) {
-      const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
-      return match ? decodeURIComponent(match[2]) : ''
-    }
-    const kota    = getCookie('gps_kota')
-    const loginAt = getCookie('session_login_at')
-    let waktu = ''
-    if (loginAt) {
-      try {
-        waktu = new Date(loginAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-      } catch { /* skip */ }
-    }
-    setGpsInfo({
-      kota:    kota || m('sidebar_gps_kota_fallback'),
-      loginAt: waktu,
-    })
-  }, [messages])
 
   const sortedNavItems = featureKeys
     .filter(k => k in NAV_POSITION)
@@ -120,19 +97,13 @@ export function SidebarNav({
 
       {/* ─── Header Sidebar — h-14 sama tinggi dengan DashboardHeader ────────── */}
       <div className="h-14 border-b border-slate-200 shrink-0 flex items-center px-6 md:justify-center md:px-0 lg:justify-start lg:px-6">
-
-        {/* Nama brand + sublabel — tersembunyi di tablet */}
         <div className="flex-1 md:hidden lg:block">
           <p className="text-sm font-bold text-slate-900 leading-tight">{brandName}</p>
           <p className="text-xs text-slate-400 mt-0.5">{m('sidebar_brand_sublabel')}</p>
         </div>
-
-        {/* Icon placeholder tablet (icon-only mode) */}
         <div className="hidden md:flex lg:hidden items-center justify-center w-8 h-8">
           <Settings size={18} className="text-slate-400" />
         </div>
-
-        {/* Tombol tutup — mobile only */}
         <button
           onClick={onMobileClose}
           className="md:hidden p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
@@ -144,7 +115,6 @@ export function SidebarNav({
 
       {/* ─── Navigasi ───────────────────────────────────────────────────────── */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 flex flex-col md:px-0 md:items-center lg:px-2 lg:items-stretch">
-
         <button
           onClick={handleKonfigurasiClick}
           title={m('sidebar_menu_konfigurasi')}
@@ -160,7 +130,6 @@ export function SidebarNav({
           </span>
         </button>
 
-        {/* Sub-menu — tersembunyi di tablet */}
         {open && (
           <div className="mt-0.5 md:hidden lg:block">
             {sortedNavItems.map((key) => (

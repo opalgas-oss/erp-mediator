@@ -17,6 +17,11 @@
 //   Hasilnya diteruskan ke DashboardShell sebagai prop sesiParalel.
 //   Jika tidak ada sesi paralel (adaSesi=false): tidak ada perubahan visual.
 
+// UPDATE Sesi #079 — DRY fix (BLOK B):
+//   DashboardShell sekarang generic — sidebar di-inject sebagai ReactNode.
+//   SidebarNav menerima brandName + messages + featureKeys langsung dari layout.
+//   mobileOpen/onMobileClose tidak lagi di-pass — dibaca via useMobileSidebar() context.
+
 export const dynamic = 'force-dynamic'
 
 import { redirect }                   from 'next/navigation'
@@ -29,6 +34,7 @@ import { getBrandName }               from '@/lib/dashboard-data'
 import { cekSesiParalel }             from '@/app/login/login-session-check'
 import { ROLES }                      from '@/lib/constants'
 import { DashboardShell }             from '@/components/DashboardShell'
+import { SidebarNav }                 from '@/components/SidebarNav'
 
 async function fetchSidebarData(): Promise<{
   messages:    Record<string, string>
@@ -89,9 +95,14 @@ export default async function SuperAdminLayout({ children }: { children: React.R
 
   return (
     <DashboardShell
-      brandName={brandName}
+      sidebar={
+        <SidebarNav
+          brandName={brandName}
+          messages={messages}
+          featureKeys={featureKeys}
+        />
+      }
       messages={messages}
-      featureKeys={featureKeys}
       sesiParalel={sesiParalel}
     >
       {children}

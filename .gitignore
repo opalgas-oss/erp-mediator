@@ -62,3 +62,6 @@ firebase-prod-service-account.json
 # Claude Desktop config — mengandung token sensitif, jangan pernah commit
 _arsip/claude_desktop_config.json
 **/claude_desktop_config.json
+# Tambah Sesi #079: cover semua variasi nama file config Claude Desktop (termasuk yang ada tanggal)
+*claude_desktop_config*.json
+_arsip/*claude_desktop*.json

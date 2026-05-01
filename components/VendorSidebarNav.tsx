@@ -6,20 +6,28 @@
 // Alasan tidak reuse SidebarNav: routing SA ke /settings/{feature_key},
 // Vendor ke halaman fitur statis — struktur fundamental berbeda (ATURAN 11).
 //
-// Menu sesuai VENDOR_DASHBOARD_SPEC_v1.md Bab 1.2:
+// Menu sesuai VENDOR_DASHBOARD_SPEC Bab 1.2:
 //   Ringkasan, Order Masuk, Bidding Aktif, Order Dikerjakan,
 //   History Transaksi, Produk, Edit Profil, Ganti Password
 //
-// Dibuat: Sesi #062 — samakan UI/UX Vendor dengan SA
+// REFACTOR Sesi #079 — DRY fix (BLOK B + B4):
+//   - Hapus inline getCookie → import dari lib/utils-client
+//   - Hapus GPS useEffect → pakai useGpsInfo hook dari lib/hooks/useGpsInfo
+//   - Hapus prop mobileOpen + onMobileClose → pakai useMobileSidebar() context
+//   - Fix hardcode 'Tidak Diketahui' → messages['sidebar_gps_kota_fallback'] (ATURAN 4)
+//   - Fix hardcode 'Login {waktu}' → m('sidebar_gps_login_prefix', { waktu }) (ATURAN 4)
+//   - Tambah dukungan interpolate di fungsi m() — konsisten dengan SidebarNav SA
 
-import Link        from 'next/link'
+import Link           from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, ShoppingBag, Clock,
   Package, History, Store, User, Lock,
   MapPin, X,
 } from 'lucide-react'
+import { interpolate }      from '@/lib/utils-client'
+import { useGpsInfo }       from '@/lib/hooks/useGpsInfo'
+import { useMobileSidebar } from '@/components/DashboardShell'
 
 // ─── Daftar menu vendor — urutan sesuai spec ─────────────────────────────────
 const VENDOR_MENU = [
@@ -33,35 +41,26 @@ const VENDOR_MENU = [
   { key: 'password',    label: 'Ganti Password',      href: '/dashboard/vendor/ganti-password',   icon: Lock            },
 ] as const
 
+// ─── Props ────────────────────────────────────────────────────────────────────
 interface VendorSidebarNavProps {
-  brandName:     string
-  messages:      Record<string, string>
-  mobileOpen:    boolean
-  onMobileClose: () => void
+  brandName: string
+  messages:  Record<string, string>
 }
 
-export function VendorSidebarNav({
-  brandName, messages, mobileOpen, onMobileClose,
-}: VendorSidebarNavProps) {
+export function VendorSidebarNav({ brandName, messages }: VendorSidebarNavProps) {
   const pathname = usePathname()
-  const [gpsInfo, setGpsInfo] = useState({ kota: '', loginAt: '' })
 
-  function m(key: string): string { return messages[key] ?? '' }
+  // Mobile state dari DashboardShell context — tidak perlu prop drilling
+  const { mobileOpen, onMobileClose } = useMobileSidebar()
 
-  useEffect(() => {
-    function getCookie(name: string) {
-      const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
-      return match ? decodeURIComponent(match[2]) : ''
-    }
-    const kota    = getCookie('gps_kota')
-    const loginAt = getCookie('session_login_at')
-    let waktu = ''
-    if (loginAt) {
-      try { waktu = new Date(loginAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) }
-      catch { /* skip */ }
-    }
-    setGpsInfo({ kota: kota || 'Tidak Diketahui', loginAt: waktu })
-  }, [])
+  // Helper pesan dengan interpolasi — konsisten dengan SidebarNav SA
+  function m(key: string, vars?: Record<string, string>): string {
+    const teks = messages[key] ?? key
+    return vars ? interpolate(teks, vars) : teks
+  }
+
+  // GPS info dari shared hook — fallback dari message_library (bukan hardcode)
+  const gpsInfo = useGpsInfo(m('sidebar_gps_kota_fallback'))
 
   return (
     <aside className={[
@@ -77,14 +76,16 @@ export function VendorSidebarNav({
       <div className="h-14 border-b border-slate-200 shrink-0 flex items-center px-6 md:justify-center md:px-0 lg:justify-start lg:px-6">
         <div className="flex-1 md:hidden lg:block">
           <p className="text-sm font-bold text-slate-900 leading-tight">{brandName}</p>
-          <p className="text-xs text-slate-400 mt-0.5">{m('sidebar_brand_sublabel') || 'Vendor Dashboard'}</p>
+          <p className="text-xs text-slate-400 mt-0.5">{m('sidebar_brand_sublabel')}</p>
         </div>
         <div className="hidden md:flex lg:hidden items-center justify-center w-8 h-8">
           <Store size={18} className="text-slate-400" />
         </div>
-        <button onClick={onMobileClose}
+        <button
+          onClick={onMobileClose}
           className="md:hidden p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
-          aria-label="Tutup sidebar">
+          aria-label="Tutup sidebar"
+        >
           <X size={16} />
         </button>
       </div>
@@ -118,12 +119,13 @@ export function VendorSidebarNav({
             <p className="text-xs text-slate-500 leading-tight">{gpsInfo.kota}</p>
             {gpsInfo.loginAt && (
               <p className="text-xs text-slate-400 leading-tight mt-0.5">
-                Login {gpsInfo.loginAt}
+                {m('sidebar_gps_login_prefix', { waktu: gpsInfo.loginAt })}
               </p>
             )}
           </div>
         </div>
       </div>
+
     </aside>
   )
 }
