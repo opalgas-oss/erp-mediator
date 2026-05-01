@@ -83,10 +83,10 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
   return (
     <header className="h-14 shrink-0 bg-white border-b border-slate-200 flex items-center px-4 gap-3">
 
-      {/* Hamburger — mobile only */}
+      {/* Hamburger — mobile only (< 768px). Tablet ke atas: sidebar selalu tampil (icon-only atau full). */}
       {onMenuClick && (
         <button onClick={onMenuClick}
-          className="lg:hidden p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500 shrink-0"
+          className="md:hidden p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500 shrink-0"
           aria-label="Buka menu">
           <Menu size={20} />
         </button>
