@@ -95,11 +95,12 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
       {/* Judul besar — tanda — — deskripsi kecil, satu baris */}
       {pageTitle ? (
         <div className="flex-1 min-w-0 flex items-baseline gap-2.5 overflow-hidden">
-          <span className="text-xl font-bold text-slate-900 shrink-0">{pageTitle}</span>
+          {/* FIX Sesi #081 — judul responsive: truncate di mobile, deskripsi hidden di <640px */}
+          <span className="text-base sm:text-xl font-bold text-slate-900 truncate">{pageTitle}</span>
           {pageDesc && (
             <>
-              <span className="text-slate-300 shrink-0 select-none">—</span>
-              <span className="text-xs text-slate-400 truncate">{pageDesc}</span>
+              <span className="text-slate-300 shrink-0 select-none hidden sm:inline">—</span>
+              <span className="text-xs text-slate-400 truncate hidden sm:inline">{pageDesc}</span>
             </>
           )}
         </div>
