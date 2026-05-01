@@ -8,6 +8,14 @@
 //   Root cause: Vercel bisa split route handlers ke bundle berbeda jika bundle besar.
 //   Fix: ping /api/auth/warmup secara parallel saat keep-warm dipanggil.
 //
+// OPTIMASI Sesi #080: tambah fan-out ping ke /dashboard/superadmin dan /dashboard/vendor
+//   Tujuan: memastikan dashboard RSC lambda ikut warm — bukan hanya API bundle.
+//   Latar belakang: SA RSC cold 710ms terukur di Sesi #080 karena dashboard lambda
+//   tidak pernah ter-warm oleh cron (hanya API routes yang dipanggil).
+//   Fix: ping dashboard routes secara parallel. Middleware akan redirect (302) karena
+//   tidak ada auth, tapi Edge function + routing infrastructure tetap ter-warm.
+//   Pakai redirect: 'manual' agar fetch tidak follow redirect ke /login.
+//
 // Dilindungi CRON_SECRET via header Authorization: Bearer <secret>.
 
 import { NextResponse } from 'next/server'
@@ -29,10 +37,19 @@ export async function GET(request: Request) {
       : null)
 
   if (baseUrl) {
-    try {
-      await fetch(`${baseUrl}/api/auth/warmup`, { method: 'GET' })
-        .catch(() => { /* abaikan — fan-out bersifat best-effort */ })
-    } catch { /* abaikan */ }
+    // Fan-out semua target secara PARALLEL — best-effort, tidak blocking response
+    const targets = [
+      `${baseUrl}/api/auth/warmup`,
+      `${baseUrl}/dashboard/superadmin`,
+      `${baseUrl}/dashboard/vendor`,
+    ]
+
+    await Promise.allSettled(
+      targets.map(url =>
+        fetch(url, { method: 'GET', redirect: 'manual' })
+          .catch(() => { /* abaikan — fan-out bersifat best-effort */ })
+      )
+    )
   }
 
   return NextResponse.json(
@@ -40,7 +57,7 @@ export async function GET(request: Request) {
       status:    'warm',
       timestamp: new Date().toISOString(),
       service:   'ERP Mediator Hyperlocal',
-      warmed:    ['api-bundle', 'auth-bundle'],
+      warmed:    ['api-bundle', 'auth-bundle', 'dashboard-sa', 'dashboard-vendor'],
     },
     {
       status: 200,
