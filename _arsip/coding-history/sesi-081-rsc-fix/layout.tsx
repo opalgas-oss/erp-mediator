@@ -25,6 +25,7 @@
 export const dynamic = 'force-dynamic'
 
 import { redirect }                   from 'next/navigation'
+import { unstable_cache }             from 'next/cache'
 import { verifyJWT }                  from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getMessagesByKategori }      from '@/lib/message-library'
@@ -72,18 +73,22 @@ export default async function SuperAdminLayout({ children }: { children: React.R
   const payload = await verifyJWT()
   if (!payload || payload.role !== 'SUPERADMIN') redirect('/login')
 
-  // FIX Sesi #081 — getConfigValue dipindah ke dalam Promise.all (hilangkan waterfall sequential)
-  // Catatan: unstable_cache tidak efektif saat force-dynamic aktif (BUG-015)
-  // TTL tetap diambil untuk dipakai saat force-dynamic dihapus (Tahap 2)
-  const [ttlStr, { messages, featureKeys }, brandName, hasilCekSesi] = await Promise.all([
-    getConfigValue('platform_general', 'sidebar_cache_ttl_seconds', '1800'),
-    fetchSidebarData(),
+  const ttlStr     = await getConfigValue('platform_general', 'sidebar_cache_ttl_seconds', '1800')
+  const revalidate = Number(ttlStr) || 1800
+
+  const getSidebarData = unstable_cache(
+    fetchSidebarData,
+    ['sidebar-data'],
+    { revalidate, tags: ['sidebar-data'] }
+  )
+
+  // cekSesiParalel dijalankan PARALLEL dengan query lain → 0 tambahan latency ke RSC
+  // SA tidak punya tenantId — dikirim string kosong sesuai pattern existing
+  const [{ messages, featureKeys }, brandName, hasilCekSesi] = await Promise.all([
+    getSidebarData(),
     getBrandName(),
     cekSesiParalel(payload.uid, '', ROLES.SUPERADMIN),
   ])
-
-  // TTL disimpan — akan dipakai unstable_cache setelah force-dynamic dihapus (Tahap 2)
-  const _revalidate = Number(ttlStr) || 1800
 
   // Teruskan data sesi ke DashboardShell hanya jika ada sesi paralel aktif
   const sesiParalel = hasilCekSesi.adaSesi ? hasilCekSesi.sesiData : undefined

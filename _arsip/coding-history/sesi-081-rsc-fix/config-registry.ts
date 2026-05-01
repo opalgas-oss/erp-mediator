@@ -16,7 +16,6 @@
 //   Ini pattern umum di aplikasi produksi (Google, Tokopedia, dll).
 
 import 'server-only'
-import { cache } from 'react'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 // ─── Tipe Data ────────────────────────────────────────────────────────────────
@@ -68,12 +67,7 @@ export function invalidateConfigCache(featureKey?: string): void {
  * Di-cache di module-level Map selama 5 menit — tidak query DB setiap request.
  * Contoh: getConfigValues('security_login') → { max_login_attempts: '5', ... }
  */
-// FIX Sesi #081 — dibungkus React cache() untuk deduplikasi per-request render.
-// Jika featureKey sama dipanggil >1x dalam 1 render → hanya 1 eksekusi.
-// Complementary dengan module-level Map cache (cross-request, TTL 5 menit).
-export const getConfigValues = cache(_getConfigValuesImpl)
-
-async function _getConfigValuesImpl(featureKey: string): Promise<Record<string, string>> {
+export async function getConfigValues(featureKey: string): Promise<Record<string, string>> {
   const now    = Date.now()
   const cached = configCache.get(featureKey)
 

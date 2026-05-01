@@ -7,13 +7,6 @@ const withBundleAnalyzer = bundleAnalyzer({
 })
 
 const nextConfig: NextConfig = {
-  // FIX Sesi #081 — collapse per-segment RSC request jadi 1 response
-  // Trade-off: shared layout data diduplikasi, tapi request count turun
-  // Ref: Next.js 16.2 release notes + research Sesi #080
-  experimental: {
-    prefetchInlining: true,
-  },
-
   images: {
     remotePatterns: [
       {
