@@ -65,3 +65,8 @@ _arsip/claude_desktop_config.json
 # Tambah Sesi #079: cover semua variasi nama file config Claude Desktop (termasuk yang ada tanggal)
 *claude_desktop_config*.json
 _arsip/*claude_desktop*.json
+
+# Tambah Sesi #084: backup tools personal Philips (Supabase backup script, dll) — tidak masuk codebase aplikasi
+backup-storage.mjs
+backup-*.mjs
+backup-*.js
