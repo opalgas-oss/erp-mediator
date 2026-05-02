@@ -1,3 +1,8 @@
+// ARSIP — lib/services/otp.service.ts
+// Snapshot SEBELUM fix TC-E04: type mismatch Redis get<string>() — Sesi #085
+// Bug: Upstash auto-JSON.parse("817193") → number 817193, storedCode === inputCode selalu false
+// Fix: String(storedCode) === params.inputCode di baris verifyAndConsume
+
 // lib/services/otp.service.ts
 // Service layer untuk OTP — generate, simpan, kirim WA, verifikasi.
 // Panggil repository B-03 (otp) + CredentialService (Fonnte token).
@@ -18,12 +23,6 @@
 //                        Redis hit + mismatch → 'WRONG' langsung (tanpa DB call).
 //                        Redis miss → fallback PostgreSQL SP (path lama).
 //   Estimasi dampak: verify-otp warm 580ms → ~130ms.
-//
-// PERUBAHAN Sesi #085 — Fix TC-E04 type mismatch Redis:
-//   verifyAndConsume() — Upstash get<string>() auto-JSON.parse numeric string menjadi number.
-//                        "817193" tersimpan sebagai string, tapi get() return 817193 (number).
-//                        Strict equality 817193 === "817193" selalu false → OTP selalu WRONG.
-//                        Fix: String(storedCode) === params.inputCode (safe untuk string & number).
 //
 // ARSITEKTUR:
 //   Route Handler → OTPService → OTPRepository + CredentialService + MessageLibrary
@@ -99,20 +98,8 @@ async function getNamaPlatform(tenantId?: string): Promise<string> {
 }
 
 // ─── FUNGSI: sendOTP ──────────────────────────────────────────────────────────
-/**
- * Generate OTP, simpan ke Redis (primary) dan PostgreSQL (async audit trail).
- * Kirim via Fonnte WhatsApp. Semua config OTP dari config_registry.
- *
- * OPTIMASI Sesi #068 — Promise.all untuk 5 call independen (GRUP A).
- * PERUBAHAN Sesi #084 — Redis primary, PostgreSQL async audit (GRUP B).
- *   Fallback: jika Redis down → PostgreSQL sync (path lama, aman).
- *
- * @param params - uid, tenantId, role, nomorWa, nama
- * @returns SendOTPResult berisi success + config OTP untuk client
- */
 export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
 
-  // ── GRUP A: 5 call paralel — tidak saling bergantung ─────────────────────
   const FALLBACK =
     '*Kode OTP Anda: {otp_code}*\n\n' +
     'Untuk masuk sebagai *{role}* di {nama_platform}.\n\n' +
@@ -127,13 +114,11 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     getMessage('notif_wa_otp_login', FALLBACK),
   ])
 
-  // ── Fail fast: cek apiKey sebelum lanjut ──────────────────────────────────
   if (!apiKey) {
     console.error('[OTPService] Fonnte api_token tidak ditemukan')
     return { success: false, message: 'Konfigurasi WhatsApp belum siap' }
   }
 
-  // ── Parse config + generate OTP ───────────────────────────────────────────
   const otpDigits         = parseConfigNumber(cfg['otp_digits'], 6)
   const otpExpiryMenit    = parseConfigNumber(cfg['otp_expiry_minutes'], 5)
   const otpMaxAttempts    = parseConfigNumber(cfg['otp_max_attempts'], 3)
@@ -143,14 +128,11 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
   const expiredAt = new Date(Date.now() + otpExpiryMenit * 60 * 1000)
   const redisKey  = makeOTPRedisKey(params.uid, params.tenantId)
 
-  // ── GRUP B: simpan OTP — Redis primary, PostgreSQL async audit ────────────
-
   const redis   = await getRedisClient()
   let   redisOk = false
 
   if (redis) {
     try {
-      // Redis SET dengan TTL = durasi OTP dalam detik
       await redis.set(redisKey, kodeOTP, { ex: otpExpiryMenit * 60 })
       redisOk = true
     } catch (err) {
@@ -159,7 +141,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
   }
 
   if (redisOk) {
-    // Redis OK → PostgreSQL jadi async audit trail (fire-and-forget, non-critical)
     void otpUpsert({
       uid:       params.uid,
       tenantId:  params.tenantId,
@@ -167,7 +148,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
       expiredAt: expiredAt.toISOString(),
     }).catch(err => console.warn('[OTPService] PostgreSQL audit write gagal (non-critical):', err))
   } else {
-    // Redis down → PostgreSQL sync (satu-satunya penyimpanan — path lama)
     try {
       await otpUpsert({
         uid:       params.uid,
@@ -181,7 +161,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     }
   }
 
-  // ── Format waktu expired + bangun pesan ───────────────────────────────────
   const expiredJam = expiredAt.toLocaleTimeString('id-ID', {
     hour: '2-digit', minute: '2-digit', timeZone: timezone, hour12: false,
   })
@@ -198,7 +177,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     expired_tanggal: expiredTanggal,
   })
 
-  // ── Kirim via Fonnte API ───────────────────────────────────────────────────
   try {
     const response = await fetch('https://api.fonnte.com/send', {
       method:  'POST',
@@ -224,21 +202,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
 }
 
 // ─── FUNGSI: verifyAndConsume ─────────────────────────────────────────────────
-/**
- * Verifikasi kode OTP — Redis fast path, fallback ke SP PostgreSQL.
- *
- * PERUBAHAN Sesi #084 (E2 Redis OTP Phase 1):
- *   Redis hit + match   → DEL Redis + PostgreSQL consumed async → return 'OK'
- *   Redis hit + mismatch → return 'WRONG' langsung (tanpa DB call)
- *   Redis miss / Redis down → fallback SP PostgreSQL (path lama)
- *
- * FIX Sesi #085 (TC-E04):
- *   Upstash get<string>() auto-JSON.parse numeric string → number.
- *   Pakai String(storedCode) untuk normalisasi tipe sebelum comparison.
- *
- * @param params - uid, tenantId, inputCode
- * @returns OTPVerifyResult: 'OK' | 'EXPIRED' | 'WRONG' | 'NOT_FOUND' | 'ALREADY_USED'
- */
 export async function verifyAndConsume(
   params: VerifyOTPParams
 ): Promise<OTPVerifyResult> {
@@ -246,17 +209,12 @@ export async function verifyAndConsume(
   const redis    = await getRedisClient()
   const redisKey = makeOTPRedisKey(params.uid, params.tenantId)
 
-  // ── Fast path: cek Redis dulu ─────────────────────────────────────────────
   if (redis) {
     try {
       const storedCode = await redis.get<string>(redisKey)
 
       if (storedCode !== null) {
-        // Redis hit — kode masih dalam TTL (belum expired).
-        // Pakai String() untuk normalisasi tipe: Upstash bisa return number jika
-        // stored value adalah numeric string (auto-JSON.parse behavior).
-        if (String(storedCode) === params.inputCode) {
-          // Match → hapus dari Redis (consumed) + async mark consumed di PostgreSQL
+        if (storedCode === params.inputCode) {  // <-- BUG: type mismatch, storedCode bisa number
           await redis.del(redisKey)
           void spVerifyAndConsume({
             uid:       params.uid,
@@ -265,17 +223,13 @@ export async function verifyAndConsume(
           }).catch(err => console.warn('[OTPService] PostgreSQL consumed update gagal (non-critical):', err))
           return 'OK'
         }
-        // Mismatch → WRONG langsung, Redis key tetap ada untuk retry dalam TTL
         return 'WRONG'
       }
-      // Redis miss → TTL habis atau Redis restart → fallback ke PostgreSQL SP
     } catch (err) {
       console.warn('[OTPService] Redis GET gagal, fallback ke PostgreSQL SP:', err)
     }
   }
 
-  // ── Fallback: PostgreSQL SP (path lama — atomic, race-condition safe) ──────
-  // Menangani: EXPIRED, WRONG, NOT_FOUND, ALREADY_USED dengan SP.
   try {
     return await spVerifyAndConsume({
       uid:       params.uid,
@@ -288,5 +242,4 @@ export async function verifyAndConsume(
   }
 }
 
-// ─── Re-export tipe ───────────────────────────────────────────────────────────
 export type { OTPVerifyResult }
