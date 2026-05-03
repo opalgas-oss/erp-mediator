@@ -120,8 +120,6 @@ _arsip/
 
 ---
 
----
-
 ### sesi-064-fix-double-getuser (27 April 2026)
 
 **Konteks:** Fix performa — setiap request ke `/dashboard/*` memanggil `supabase.auth.getUser()` DUA KALI:
@@ -204,3 +202,4 @@ Kalau yakin mau rollback, copy file arsip ke lokasi aslinya, lalu `npm run build
 | **1 Mei 2026** | **#079** | **Snapshot `sesi-079-dry-fix` ditambahkan (7 file sebelum DRY refactor BLOK B: `DashboardShell.tsx` + `VendorDashboardShell.tsx` + `SidebarNav.tsx` + `VendorSidebarNav.tsx` + `DashboardHeader.tsx` + `superadmin/layout.tsx` + `vendor/layout.tsx` — sebelum: extract getCookie+interpolate ke lib/utils-client.ts, buat useGpsInfo hook, merge DashboardShell generic dengan Mobile Sidebar Context, fix hardcode VendorSidebarNav, tambah messages cache Vendor).** |
 | **2 Mei 2026** | **#084** | **Snapshot `sesi-084-redis-otp` ditambahkan (`lib/services/otp.service.ts` sebelum E2 Redis OTP Phase 1: Redis SET primary + PostgreSQL async audit di sendOTP(), Redis GET fast path + fallback PostgreSQL SP di verifyAndConsume()).** |
 | **2 Mei 2026** | **#085** | **Snapshot `sesi-085-redis-otp-fix` ditambahkan (`lib/services/otp.service.ts` sebelum fix TC-E04: type mismatch `storedCode === inputCode` — Upstash auto-JSON.parse numeric string menjadi number, strict equality selalu false → fix dengan `String(storedCode)`).** |
+| **2 Mei 2026** | **#085** | **Snapshot `sesi-085-keep-warm-login` ditambahkan (`app/api/keep-warm/route.ts` sebelum fix cold start login flow: tambah direct ping ke /login + /api/auth/send-otp + /api/auth/verify-otp + /api/auth/check-session — sebelumnya hanya ping /api/auth/warmup yang tidak menjamin bundle terpisah ikut warm).** |
