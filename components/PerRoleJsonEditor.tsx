@@ -110,7 +110,7 @@ export function PerRoleJsonEditor({
                   checked={Boolean(roleValue)}
                   onCheckedChange={(checked) => handleRoleChange(role, checked)}
                   disabled={disabled}
-                  className="h-4 w-8 data-[state=checked]:bg-blue-600"
+                  className="h-4 w-8 flex-shrink-0 data-[state=checked]:bg-blue-600"
                 />
               )}
 
