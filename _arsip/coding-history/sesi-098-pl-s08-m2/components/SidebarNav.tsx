@@ -149,28 +149,6 @@ export function SidebarNav({ brandName, messages, featureKeys }: SidebarNavProps
             ))}
           </div>
         )}
-
-        {/* ─── KONTEN — menu non-settings (Message Library, dll) ───────────── */}
-        <div className="mt-3">
-          <p className="px-3 py-1 text-xs font-semibold text-slate-400 uppercase tracking-wider md:hidden lg:block">
-            Konten
-          </p>
-          <Link
-            href="/dashboard/superadmin/messages"
-            prefetch={false}
-            title={m('nav_menu_messages')}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors
-              md:justify-center md:px-0 md:w-[36px] md:h-[36px] lg:justify-start lg:px-3 lg:w-full lg:h-auto
-              ${
-                pathname === '/dashboard/superadmin/messages'
-                  ? 'bg-blue-50 text-blue-700 font-semibold'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
-              }`}
-          >
-            <BookText size={15} className="shrink-0 opacity-70" />
-            <span className="md:hidden lg:inline">{m('nav_menu_messages')}</span>
-          </Link>
-        </div>
       </nav>
 
       {/* ─── Info GPS — tersembunyi di tablet ───────────────────────────────── */}
