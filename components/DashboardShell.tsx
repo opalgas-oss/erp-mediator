@@ -91,7 +91,7 @@ export function DashboardShell({
           {/* Banner sesi paralel — hanya muncul jika ada sesi lain yang aktif */}
           {sesiParalel && <ConcurrentSessionBanner sesiData={sesiParalel} />}
 
-          <main className="flex-1 overflow-hidden flex flex-col">
+          <main className="flex-1 overflow-y-auto flex flex-col">
             {children}
           </main>
         </div>

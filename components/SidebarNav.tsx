@@ -13,20 +13,27 @@
 //   - Hapus inline interpolate → import dari lib/utils-client
 //   - Hapus GPS useEffect → pakai useGpsInfo hook dari lib/hooks/useGpsInfo
 //   - Hapus prop mobileOpen + onMobileClose → pakai useMobileSidebar() context
+//
+// UPDATE Sesi #099 — PL-S08 M2 UI Fix (Opsi B):
+//   - Konfigurasi + Konten keduanya collapsible button (setara hierarki)
+//   - Icon: SlidersHorizontal (Konfigurasi) + Layers (Konten) — enterprise grade
+//   - Sub-menu tanpa icon, cukup indent — standar Vercel/Notion/Linear/Supabase
+//   - Font konsisten: parent font-medium slate-600 inactive → biru + bg active
+//   - ChevronDown menggantikan karakter ▼ — lebih clean dan skalabel
+//   - Hapus section label static "KONTEN" → diganti parent button
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { useState, useEffect }   from 'react'
-import { Settings, BookText, MapPin, X } from 'lucide-react'
-import { interpolate }           from '@/lib/utils-client'
-import { useGpsInfo }            from '@/lib/hooks/useGpsInfo'
-import { useMobileSidebar }      from '@/components/DashboardShell'
+import { usePathname, useRouter }    from 'next/navigation'
+import { useState, useEffect }       from 'react'
+import { SlidersHorizontal, Layers, MapPin, X, ChevronDown } from 'lucide-react'
+import { interpolate }               from '@/lib/utils-client'
+import { useGpsInfo }                from '@/lib/hooks/useGpsInfo'
+import { useMobileSidebar }          from '@/components/DashboardShell'
 
 // ─── Nav Position — urutan sidebar didefinisikan di KODE, bukan di DB ────────
-// Pola: WooCommerce-style numeric position (float-friendly untuk sisipan).
 const NAV_POSITION: Record<string, number> = {
   security_login:    10,
-  multi_role_policy: 15,  // PL-S08 M1 — ditambah S#098
+  multi_role_policy: 15,
   register_user:     20,
   register_vendor:   30,
   order_form:        40,
@@ -38,28 +45,40 @@ const NAV_POSITION: Record<string, number> = {
   pilihan_opsi:     100,
 }
 
-// ─── URL derivation dari feature_key ─────────────────────────────────────────
 function featureKeyToPath(key: string): string {
   return `/dashboard/superadmin/settings/${key.replace(/_/g, '-')}`
 }
 
+// ─── Shared class strings — satu definisi, dipakai konsisten ─────────────────
+const CLS_PARENT_BASE =
+  'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium ' +
+  'transition-colors md:justify-center md:px-0 md:w-[36px] md:h-[36px] ' +
+  'lg:justify-start lg:px-3 lg:w-full lg:h-auto'
+const CLS_PARENT_INACTIVE = 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+const CLS_PARENT_ACTIVE   = 'bg-blue-50 text-blue-700'
+
+const CLS_SUB_BASE     = 'block py-1.5 pl-9 pr-3 text-xs rounded-md my-px transition-colors whitespace-nowrap'
+const CLS_SUB_ACTIVE   = 'bg-blue-50 text-blue-700 font-medium'
+const CLS_SUB_INACTIVE = 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface SidebarNavProps {
-  brandName:   string                  // dari tenants.nama_brand
-  messages:    Record<string, string>  // dari message_library kategori sidebar_ui
-  featureKeys: string[]                // distinct feature_key dari config_registry
+  brandName:   string
+  messages:    Record<string, string>
+  featureKeys: string[]
 }
 
 export function SidebarNav({ brandName, messages, featureKeys }: SidebarNavProps) {
   const pathname = usePathname()
   const router   = useRouter()
-
-  // Mobile state dari DashboardShell context — tidak perlu prop drilling
   const { mobileOpen, onMobileClose } = useMobileSidebar()
 
-  const [open, setOpen] = useState(() => pathname.includes('/settings'))
+  const isActiveSettings = pathname.includes('/settings')
+  const isActiveMessages = pathname === '/dashboard/superadmin/messages'
 
-  // GPS info dari shared hook — menggantikan inline useEffect + getCookie
+  const [openConfig, setOpenConfig] = useState(() => isActiveSettings)
+  const [openKonten, setOpenKonten] = useState(() => isActiveMessages)
+
   const gpsInfo = useGpsInfo(m('sidebar_gps_kota_fallback'))
 
   function m(key: string, vars?: Record<string, string>): string {
@@ -68,20 +87,25 @@ export function SidebarNav({ brandName, messages, featureKeys }: SidebarNavProps
   }
 
   useEffect(() => {
-    if (pathname.includes('/settings')) setOpen(true)
+    if (pathname.includes('/settings'))                          setOpenConfig(true)
+    if (pathname === '/dashboard/superadmin/messages')           setOpenKonten(true)
   }, [pathname])
 
   const sortedNavItems = featureKeys
     .filter(k => k in NAV_POSITION)
     .sort((a, b) => (NAV_POSITION[a] ?? 999) - (NAV_POSITION[b] ?? 999))
 
-  function handleKonfigurasiClick() {
-    if (open && pathname.includes('/settings')) {
-      setOpen(false)
+  function handleConfigClick() {
+    if (openConfig && isActiveSettings) {
+      setOpenConfig(false)
       router.push('/dashboard/superadmin')
     } else {
-      setOpen(prev => !prev)
+      setOpenConfig(prev => !prev)
     }
+  }
+
+  function handleKontenClick() {
+    setOpenKonten(prev => !prev)
   }
 
   return (
@@ -96,14 +120,14 @@ export function SidebarNav({ brandName, messages, featureKeys }: SidebarNavProps
       ].join(' ')}
     >
 
-      {/* ─── Header Sidebar — h-14 sama tinggi dengan DashboardHeader ────────── */}
+      {/* ─── Header Sidebar ───────────────────────────────────────────────────── */}
       <div className="h-14 border-b border-slate-200 shrink-0 flex items-center px-6 md:justify-center md:px-0 lg:justify-start lg:px-6">
         <div className="flex-1 md:hidden lg:block">
           <p className="text-sm font-bold text-slate-900 leading-tight">{brandName}</p>
           <p className="text-xs text-slate-400 mt-0.5">{m('sidebar_brand_sublabel')}</p>
         </div>
         <div className="hidden md:flex lg:hidden items-center justify-center w-8 h-8">
-          <Settings size={18} className="text-slate-400" />
+          <SlidersHorizontal size={17} className="text-slate-400" />
         </div>
         <button
           onClick={onMobileClose}
@@ -114,35 +138,40 @@ export function SidebarNav({ brandName, messages, featureKeys }: SidebarNavProps
         </button>
       </div>
 
-      {/* ─── Navigasi ───────────────────────────────────────────────────────── */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 flex flex-col md:px-0 md:items-center lg:px-2 lg:items-stretch">
+      {/* ─── Navigasi ─────────────────────────────────────────────────────────── */}
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 flex flex-col gap-0.5 md:px-0 md:items-center lg:px-2 lg:items-stretch">
+
+        {/* ── KONFIGURASI — collapsible ── */}
         <button
-          onClick={handleKonfigurasiClick}
+          onClick={handleConfigClick}
           title={m('sidebar_menu_konfigurasi')}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-blue-700 hover:bg-slate-100 transition-colors md:justify-center md:px-0 md:w-[36px] md:h-[36px] lg:justify-start lg:px-3 lg:w-full lg:h-auto"
+          className={[
+            CLS_PARENT_BASE,
+            isActiveSettings ? CLS_PARENT_ACTIVE : CLS_PARENT_INACTIVE,
+          ].join(' ')}
         >
-          <Settings size={15} className="shrink-0 opacity-70" />
+          <SlidersHorizontal size={15} className="shrink-0" />
           <span className="md:hidden lg:inline">{m('sidebar_menu_konfigurasi')}</span>
-          <span
-            className="ml-auto text-xs text-slate-400 transition-transform duration-200 md:hidden lg:inline-block"
-            style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
-          >
-            ▼
-          </span>
+          <ChevronDown
+            size={13}
+            className={[
+              'ml-auto shrink-0 transition-transform duration-200 md:hidden lg:block',
+              openConfig ? 'rotate-180' : '',
+            ].join(' ')}
+          />
         </button>
 
-        {open && (
-          <div className="mt-0.5 md:hidden lg:block">
-            {sortedNavItems.map((key) => (
+        {openConfig && (
+          <div className="mt-0.5 mb-1 md:hidden lg:block">
+            {sortedNavItems.map(key => (
               <Link
                 key={key}
                 href={featureKeyToPath(key)}
                 prefetch={false}
-                className={`block py-1.5 pl-9 pr-3 text-xs rounded-md my-px transition-colors whitespace-nowrap ${
-                  pathname === featureKeyToPath(key)
-                    ? 'bg-blue-50 text-blue-700 font-semibold'
-                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
-                }`}
+                className={[
+                  CLS_SUB_BASE,
+                  pathname === featureKeyToPath(key) ? CLS_SUB_ACTIVE : CLS_SUB_INACTIVE,
+                ].join(' ')}
               >
                 {m(`nav_menu_${key}`)}
               </Link>
@@ -150,30 +179,44 @@ export function SidebarNav({ brandName, messages, featureKeys }: SidebarNavProps
           </div>
         )}
 
-        {/* ─── KONTEN — menu non-settings (Message Library, dll) ───────────── */}
-        <div className="mt-3">
-          <p className="px-3 py-1 text-xs font-semibold text-slate-400 uppercase tracking-wider md:hidden lg:block">
-            Konten
-          </p>
-          <Link
-            href="/dashboard/superadmin/messages"
-            prefetch={false}
-            title={m('nav_menu_messages')}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors
-              md:justify-center md:px-0 md:w-[36px] md:h-[36px] lg:justify-start lg:px-3 lg:w-full lg:h-auto
-              ${
-                pathname === '/dashboard/superadmin/messages'
-                  ? 'bg-blue-50 text-blue-700 font-semibold'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
-              }`}
-          >
-            <BookText size={15} className="shrink-0 opacity-70" />
-            <span className="md:hidden lg:inline">{m('nav_menu_messages')}</span>
-          </Link>
-        </div>
+        {/* ── KONTEN — collapsible, setara Konfigurasi ── */}
+        <button
+          onClick={handleKontenClick}
+          title={m('sidebar_menu_konten') || 'Konten'}
+          className={[
+            CLS_PARENT_BASE,
+            isActiveMessages ? CLS_PARENT_ACTIVE : CLS_PARENT_INACTIVE,
+          ].join(' ')}
+        >
+          <Layers size={15} className="shrink-0" />
+          <span className="md:hidden lg:inline">{m('sidebar_menu_konten') || 'Konten'}</span>
+          <ChevronDown
+            size={13}
+            className={[
+              'ml-auto shrink-0 transition-transform duration-200 md:hidden lg:block',
+              openKonten ? 'rotate-180' : '',
+            ].join(' ')}
+          />
+        </button>
+
+        {openKonten && (
+          <div className="mt-0.5 md:hidden lg:block">
+            <Link
+              href="/dashboard/superadmin/messages"
+              prefetch={false}
+              className={[
+                CLS_SUB_BASE,
+                isActiveMessages ? CLS_SUB_ACTIVE : CLS_SUB_INACTIVE,
+              ].join(' ')}
+            >
+              {m('nav_menu_messages')}
+            </Link>
+          </div>
+        )}
+
       </nav>
 
-      {/* ─── Info GPS — tersembunyi di tablet ───────────────────────────────── */}
+      {/* ─── Info GPS ─────────────────────────────────────────────────────────── */}
       <div className="px-4 py-3 border-t border-slate-100 shrink-0 md:hidden lg:flex">
         <div className="flex items-start gap-1.5 w-full">
           <MapPin size={12} className="text-slate-400 shrink-0 mt-0.5" />
