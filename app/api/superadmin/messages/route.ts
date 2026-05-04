@@ -135,8 +135,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Invalidasi cache messages
-    revalidateTag('messages', 'default')
-    revalidateTag(`messages:${body.kategori}`, 'default')
+    revalidateTag('messages', 'max')
+    revalidateTag(`messages:${body.kategori}`, 'max')
 
     return NextResponse.json({ success: true, data: inserted }, { status: 201 })
 

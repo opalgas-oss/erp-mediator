@@ -99,8 +99,8 @@ export async function PATCH(
     }
 
     // Invalidasi cache
-    revalidateTag('messages', 'default')
-    revalidateTag(`messages:${existing.kategori}`, 'default')
+    revalidateTag('messages', 'max')
+    revalidateTag(`messages:${existing.kategori}`, 'max')
 
     return NextResponse.json({ success: true, data: updated })
 
