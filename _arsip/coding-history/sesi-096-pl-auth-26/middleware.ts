@@ -1,3 +1,6 @@
+// middleware.ts — ARSIP SESI #096 (sebelum PL-AUTH-26)
+// Snapshot diambil: 4 Mei 2026 — sebelum tambah ekstrak memberships[] + is_super_admin
+// ─────────────────────────────────────────────────────────────────────────────
 // middleware.ts — letaknya di ROOT folder, sejajar dengan folder app/
 // Berjalan di Edge Runtime — tidak boleh import library Node.js
 //
@@ -52,38 +55,12 @@ const ROLE_REDIRECT: Record<string, string> = {
   [ROLES.SUPERADMIN]:   '/dashboard/superadmin',
 }
 
-// ─── Tipe membership dari JWT baru (Edge Function v7) ────────────────────────
-interface JwtMembership {
-  tenant_id: string | null
-  role:      string
-  status:    string
-}
-
 // ─── Helper: extract role + tenantId dari claims/user ────────────────────────
 function extractRoleFromAppMeta(appMeta: Record<string, unknown>): { role?: string; tenantId?: string } {
   return {
     role:     typeof appMeta['app_role']  === 'string' ? appMeta['app_role']  : undefined,
     tenantId: typeof appMeta['tenant_id'] === 'string' ? appMeta['tenant_id'] : undefined,
   }
-}
-
-// ─── Helper: extract memberships + is_super_admin dari JWT payload (S#096) ────────
-function extractMembershipsFromPayload(payload: Record<string, unknown>): {
-  memberships:  JwtMembership[]
-  isSuperAdmin: boolean
-} {
-  // memberships: array [{tenant_id, role, status}] — diinject Edge Function v7
-  const raw = payload['memberships']
-  // JUSTIFIKASI: Array.isArray(raw) sudah memverifikasi raw adalah array sebelum cast.
-  // Edge Function v7 selalu inject memberships sebagai array of JwtMembership — shape terjamin.
-  const memberships: JwtMembership[] = Array.isArray(raw)
-    ? (raw as JwtMembership[])
-    : []
-
-  // is_super_admin: boolean flag langsung dari JWT — diinject Edge Function v7
-  const isSuperAdmin = payload['is_super_admin'] === true
-
-  return { memberships, isSuperAdmin }
 }
 
 // ─── Middleware Utama ─────────────────────────────────────────────────────────
@@ -175,20 +152,12 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       // OPTIMASI #077 (Vendor RSC fix): tambah ekstrak vendor_status dari claims.
       // Edge Function v5 inject vendor_status sebagai top-level claim.
       // Vendor layout pakai value ini untuk skip query DB user_profiles.status.
-      //
-      // UPDATE S#096 (PL-AUTH-26): tambah ekstrak memberships[] + is_super_admin dari JWT baru.
-      // Edge Function v7 inject memberships array + is_super_admin flag.
-      // Flat claims (app_role, tenant_id) tetap dibaca sebagai backward compat fallback.
       let userRole: string | undefined
       let tenantId: string | undefined
       let userId:   string | undefined
       let displayName: string | undefined
       let vendorStatus: string | undefined
       let tokenRefreshNeeded = false
-
-      // Variabel baru S#096 — memberships array + SuperAdmin flag dari JWT v7
-      let memberships:  JwtMembership[] = []
-      let isSuperAdmin: boolean         = false
 
       // Coba getClaims() dulu — fast path jika JWT valid
       try {
@@ -210,27 +179,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
           displayName = typeof appMeta['nama']  === 'string' ? appMeta['nama']
                       : typeof umeta['nama']    === 'string' ? umeta['nama']
                       : typeof c['email']       === 'string' ? c['email'] : userId
-          // vendor_status: top-level claim dulu (Edge Function v5+), fallback ke app_metadata
+          // vendor_status: top-level claim dulu (Edge Function v5), fallback ke app_metadata
           vendorStatus = typeof c['vendor_status']      === 'string' ? c['vendor_status']
                        : typeof appMeta['vendor_status'] === 'string' ? appMeta['vendor_status'] : undefined
-
-          // ── JWT baru S#096: memberships array + is_super_admin ─────────────────────
-          const extracted2 = extractMembershipsFromPayload(c)
-          memberships  = extracted2.memberships
-          isSuperAdmin = extracted2.isSuperAdmin
-
-          // SuperAdmin override: is_super_admin=true → paksa role SUPERADMIN (backward compat routing)
-          if (isSuperAdmin) {
-            userRole = ROLES.SUPERADMIN
-          }
-          // Jika flat app_role kosong tapi memberships ada → pakai memberships[0] sebagai primary (sementara)
-          // Catatan: akan digantikan Redis Active Context di PL-AUTH-44
-          else if (!userRole && memberships.length > 0) {
-            userRole = memberships[0].role
-            if (!tenantId && memberships[0].tenant_id) {
-              tenantId = memberships[0].tenant_id
-            }
-          }
         }
       } catch { /* getClaims() belum tersedia atau RS256 belum aktif — lanjut ke fallback */ }
 
@@ -260,28 +211,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
               const parts = session.access_token.split('.')
               if (parts.length === 3) {
                 const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
-
-                // Flat claims lama
                 if (!userRole     && typeof payload['app_role']      === 'string') userRole     = payload['app_role']
                 if (!tenantId     && typeof payload['tenant_id']     === 'string') tenantId     = payload['tenant_id']
                 if (!vendorStatus && typeof payload['vendor_status'] === 'string') vendorStatus = payload['vendor_status']
-
-                // JWT baru S#096: memberships + is_super_admin dari decode fallback
-                const extracted2 = extractMembershipsFromPayload(payload)
-                memberships  = extracted2.memberships
-                isSuperAdmin = extracted2.isSuperAdmin
-
-                // SuperAdmin override dari fallback JWT decode
-                if (isSuperAdmin) {
-                  userRole = ROLES.SUPERADMIN
-                }
-                // Fallback role dari memberships[0] jika flat app_role masih kosong
-                else if (!userRole && memberships.length > 0) {
-                  userRole = memberships[0].role
-                  if (!tenantId && memberships[0].tenant_id) {
-                    tenantId = memberships[0].tenant_id
-                  }
-                }
               }
             } catch { /* abaikan */ }
           }
@@ -299,10 +231,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       requestHeaders.delete('x-tenant-id')
       requestHeaders.delete('x-user-display-name')
       requestHeaders.delete('x-vendor-status')
-      // Header baru S#096
-      requestHeaders.delete('x-user-memberships')
-      requestHeaders.delete('x-is-super-admin')
-
       requestHeaders.set('x-user-id',           userId)
       requestHeaders.set('x-user-role',          userRole)
       requestHeaders.set('x-tenant-id',          tenantId ?? '')
@@ -311,10 +239,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       if (vendorStatus) {
         requestHeaders.set('x-vendor-status', vendorStatus)
       }
-      // x-user-memberships: JSON string array memberships ('' jika tidak ada) — S#096
-      requestHeaders.set('x-user-memberships', memberships.length > 0 ? JSON.stringify(memberships) : '')
-      // x-is-super-admin: 'true' atau 'false' — S#096
-      requestHeaders.set('x-is-super-admin', String(isSuperAdmin))
 
       const enrichedResponse = NextResponse.next({ request: { headers: requestHeaders } })
       if (tokenRefreshNeeded) {
