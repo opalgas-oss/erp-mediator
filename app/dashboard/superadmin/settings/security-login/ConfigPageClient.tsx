@@ -53,35 +53,32 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
       setError(null)
 
       // Kumpulkan hanya item yang berubah
-      const changedItems: Array<{ feature_key: string; id: string; nilai: string }> = []
+      const updates: Array<{ id: string; feature_key: string; nilai: string }> = []
       config.forEach((group, gi) => {
         group.items.forEach((item, ii) => {
           const orig = originalConfig[gi]?.items[ii]
           if (!orig || String(item.value) !== String(orig.value)) {
-            changedItems.push({
-              feature_key: group.feature_key,
+            updates.push({
               id:          item.id,
+              feature_key: group.feature_key,
               nilai:       String(item.value),
             })
           }
         })
       })
 
-      if (changedItems.length === 0) { setHasChanges(false); return }
+      if (updates.length === 0) { setHasChanges(false); return }
 
-      // Kirim PATCH untuk setiap item yang berubah (paralel)
-      const results = await Promise.all(
-        changedItems.map(({ feature_key, id, nilai }) =>
-          fetch(`/api/config/${feature_key}`, {
-            method:  'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ id, nilai }),
-          }).then((res) => res.json() as Promise<{ success: boolean }>)
-        )
-      )
+      // Satu POST bulk — atomic via sp_bulk_update_config
+      const res  = await fetch('/api/config/bulk', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ updates }),
+      })
+      const json = await res.json() as { success: boolean; message?: string }
 
-      if (results.some((r) => !r.success)) {
-        throw new Error('Sebagian konfigurasi gagal disimpan')
+      if (!json.success) {
+        throw new Error(json.message ?? 'Gagal menyimpan konfigurasi')
       }
       setHasChanges(false)
 
