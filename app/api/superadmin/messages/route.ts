@@ -1,0 +1,147 @@
+// app/api/superadmin/messages/route.ts
+// GET  — Ambil semua pesan dari message_library (SuperAdmin only)
+// POST — Tambah pesan baru ke message_library (SuperAdmin only)
+//
+// Berbeda dari /api/message-library (publik per kategori),
+// endpoint ini khusus SuperAdmin — mengembalikan semua kolom untuk keperluan CRUD.
+//
+// Dibuat: Sesi #098 — PL-S08 M2 Message Library
+
+import { NextRequest, NextResponse }  from 'next/server'
+import { revalidateTag }              from 'next/cache'
+import { verifyJWT }                  from '@/lib/auth-server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
+import type { MessageItem }           from '@/lib/message-library'
+
+// ─── Helper: auth SUPERADMIN ─────────────────────────────────────────────────
+
+async function authSuperAdmin(): Promise<
+  | { ok: true;  uid: string }
+  | { ok: false; res: NextResponse }
+> {
+  const decoded = await verifyJWT()
+  if (!decoded) {
+    return { ok: false, res: NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 }) }
+  }
+  if (decoded.role !== 'SUPERADMIN') {
+    return { ok: false, res: NextResponse.json({ success: false, message: 'Akses ditolak' }, { status: 403 }) }
+  }
+  return { ok: true, uid: decoded.uid }
+}
+
+// ─── GET — Semua pesan (untuk halaman CRUD SuperAdmin) ───────────────────────
+
+export async function GET(): Promise<NextResponse> {
+  try {
+    const auth = await authSuperAdmin()
+    if (!auth.ok) return auth.res
+
+    const db = createServerSupabaseClient()
+
+    const { data, error } = await db
+      .from('message_library')
+      .select('id, key, kategori, channel, teks, variabel, keterangan, is_active, updated_at, updated_by')
+      .order('kategori', { ascending: true })
+      .order('key',      { ascending: true })
+
+    if (error) {
+      console.error('[GET /api/superadmin/messages] DB error:', error.message)
+      return NextResponse.json({ success: false, message: 'Gagal memuat pesan' }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, data: data as MessageItem[] })
+
+  } catch (error) {
+    console.error('[GET /api/superadmin/messages] Error:', error)
+    return NextResponse.json({ success: false, message: 'Server error' }, { status: 500 })
+  }
+}
+
+// ─── POST — Tambah pesan baru ─────────────────────────────────────────────────
+
+interface PostBody {
+  key:         string
+  kategori:    string
+  channel?:    string
+  teks:        string
+  variabel?:   string[]
+  keterangan?: string
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  try {
+    const auth = await authSuperAdmin()
+    if (!auth.ok) return auth.res
+
+    const body = await request.json() as PostBody
+
+    // Validasi wajib
+    if (!body.key?.trim() || !body.kategori?.trim() || !body.teks?.trim()) {
+      return NextResponse.json(
+        { success: false, message: 'Field key, kategori, dan teks wajib diisi' },
+        { status: 400 }
+      )
+    }
+
+    // Validasi format key: lowercase, underscore, tanpa spasi
+    if (!/^[a-z0-9_]+$/.test(body.key)) {
+      return NextResponse.json(
+        { success: false, message: 'Format key tidak valid. Gunakan huruf kecil, angka, dan underscore.' },
+        { status: 400 }
+      )
+    }
+
+    const db = createServerSupabaseClient()
+
+    // Cek duplikasi key
+    const { data: existing } = await db
+      .from('message_library')
+      .select('id')
+      .eq('key', body.key)
+      .single()
+
+    if (existing) {
+      return NextResponse.json(
+        { success: false, message: 'Key ini sudah dipakai. Gunakan key yang berbeda.' },
+        { status: 409 }
+      )
+    }
+
+    // Ekstrak variabel dari teks jika tidak disuplai: cari semua {nama_variabel}
+    const variabelFromTeks = body.teks.match(/\{(\w+)\}/g)?.map(v => v.slice(1, -1)) ?? []
+    const variabel = body.variabel ?? variabelFromTeks
+
+    // INSERT
+    const { data: inserted, error } = await db
+      .from('message_library')
+      .insert({
+        key:        body.key.trim(),
+        kategori:   body.kategori.trim(),
+        channel:    body.channel ?? 'ui',
+        teks:       body.teks.trim(),
+        variabel,
+        keterangan: body.keterangan?.trim() ?? null,
+        updated_by: auth.uid,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error('[POST /api/superadmin/messages] DB error:', error.message)
+      return NextResponse.json(
+        { success: false, message: 'Gagal menyimpan pesan: ' + error.message },
+        { status: 500 }
+      )
+    }
+
+    // Invalidasi cache messages
+    revalidateTag('messages', 'default')
+    revalidateTag(`messages:${body.kategori}`, 'default')
+
+    return NextResponse.json({ success: true, data: inserted }, { status: 201 })
+
+  } catch (error) {
+    console.error('[POST /api/superadmin/messages] Error:', error)
+    return NextResponse.json({ success: false, message: 'Server error' }, { status: 500 })
+  }
+}
