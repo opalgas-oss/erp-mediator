@@ -18,14 +18,19 @@
 //   - Ganti prop sidebar spesifik (brandName, featureKeys) → prop generic sidebar: ReactNode
 //   - Hapus import SidebarNav (tidak lagi dirender di sini — di-inject dari layout)
 //   - VendorDashboardShell dihapus — semua dashboard pakai komponen ini
+//
+// REFACTOR Sesi #100 — Sentralisasi Scroll:
+//   - <main> pakai SCROLL_CLS.main dari ui-tokens.constant
+//   - Satu titik kontrol scroll vertikal + horizontal untuk SELURUH content area
+//   - Semua halaman delegasi scroll ke sini — tidak boleh definisi overflow sendiri
 
 import { useState, createContext, useContext } from 'react'
 import { DashboardHeader }         from '@/components/DashboardHeader'
 import { ConcurrentSessionBanner } from '@/components/ConcurrentSessionBanner'
+import { SCROLL_CLS }              from '@/lib/constants/ui-tokens.constant'
 import type { SesiParalelData }    from '@/components/ConcurrentSessionBanner'
 
 // ─── Mobile Sidebar Context ───────────────────────────────────────────────────
-// Di-provide oleh DashboardShell, dikonsumsi oleh SidebarNav + VendorSidebarNav.
 
 interface MobileSidebarContextValue {
   mobileOpen:    boolean
@@ -48,11 +53,9 @@ export function useMobileSidebar(): MobileSidebarContextValue {
 // ─── DashboardShell ───────────────────────────────────────────────────────────
 
 interface DashboardShellProps {
-  /** Sidebar component — di-inject dari RSC layout (SidebarNav atau VendorSidebarNav) */
   sidebar:      React.ReactNode
   messages:     Record<string, string>
   children:     React.ReactNode
-  /** Opsional — diisi layout RSC jika ada sesi paralel terdeteksi */
   sesiParalel?: SesiParalelData
 }
 
@@ -70,7 +73,7 @@ export function DashboardShell({
     >
       <div className="flex h-screen overflow-hidden bg-slate-50">
 
-        {/* Overlay mobile — klik untuk tutup sidebar */}
+        {/* Overlay mobile */}
         {mobileOpen && (
           <div
             className="fixed inset-0 bg-black/40 z-40 lg:hidden"
@@ -79,7 +82,7 @@ export function DashboardShell({
           />
         )}
 
-        {/* Sidebar — di-inject dari layout (SidebarNav atau VendorSidebarNav) */}
+        {/* Sidebar kiri — di-inject dari layout */}
         {sidebar}
 
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
@@ -88,10 +91,16 @@ export function DashboardShell({
             onMenuClick={() => setMobileOpen(true)}
           />
 
-          {/* Banner sesi paralel — hanya muncul jika ada sesi lain yang aktif */}
           {sesiParalel && <ConcurrentSessionBanner sesiData={sesiParalel} />}
 
-          <main className="flex-1 overflow-y-auto flex flex-col">
+          {/*
+           * SCROLL TERPUSAT — satu-satunya titik definisi scroll untuk seluruh content area.
+           * overflow-y-auto : scroll vertikal otomatis jika konten > tinggi layar
+           * overflow-x-auto : scroll horizontal otomatis jika konten > lebar layar (tabel lebar)
+           * Semua halaman (ConfigPageClient, MessageLibraryClient, dst) TIDAK boleh
+           * mendefinisikan overflow sendiri — delegasi ke sini.
+           */}
+          <main className={SCROLL_CLS.main}>
             {children}
           </main>
         </div>

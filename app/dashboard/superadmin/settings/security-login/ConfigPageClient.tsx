@@ -7,16 +7,18 @@
 //
 // PERUBAHAN Sesi #097 — PL-S08 M1:
 //   - Ganti local interface ConfigItemData dengan import dari @/components/ConfigItem
-//     (DRY — satu definisi type, satu sumber kebenaran)
-//   - Tidak ada perubahan logika — hanya type alignment
+//
+// PERUBAHAN Sesi #100 — Sentralisasi UI:
+//   - Hapus overflow-y-auto overflow-x-auto dari wrapper grid dan CardContent
+//   - Scroll didelegasi ke DashboardShell (<main> dengan SCROLL_CLS.main)
+//   - Pakai TYPOGRAPHY.cardTitle dari ui-tokens.constant untuk CardTitle
 
 import { useState }   from 'react'
 import { Button }     from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge }      from '@/components/ui/badge'
 import { ConfigItem, type ConfigItemData } from '@/components/ConfigItem'
-
-// ConfigItemData diimport dari ConfigItem — tidak didefinisikan ulang di sini (DRY)
+import { TYPOGRAPHY } from '@/lib/constants/ui-tokens.constant'
 
 interface ConfigGroup {
   title:       string
@@ -52,7 +54,6 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
       setSaving(true)
       setError(null)
 
-      // Kumpulkan hanya item yang berubah
       const updates: Array<{ id: string; feature_key: string; nilai: string }> = []
       config.forEach((group, gi) => {
         group.items.forEach((item, ii) => {
@@ -69,7 +70,6 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
 
       if (updates.length === 0) { setHasChanges(false); return }
 
-      // Satu POST bulk — atomic via sp_bulk_update_config
       const res  = await fetch('/api/config/bulk', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -90,10 +90,10 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col min-h-full">
 
-      {/* Grid kartu per kategori */}
-      <div className="flex-1 overflow-y-auto overflow-x-auto px-8 pt-4 pb-4">
+      {/* Grid kartu — scroll dihandle DashboardShell, tidak perlu overflow di sini */}
+      <div className="flex-1 px-8 pt-4 pb-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {config.map((group, groupIndex) => (
             <Card
@@ -102,7 +102,7 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
             >
               <CardHeader className="pt-2 pb-1 px-4 border-b border-slate-100">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold text-slate-900">
+                  <CardTitle className={TYPOGRAPHY.cardTitle}>
                     {group.title}
                   </CardTitle>
                   <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 text-xs border-0">
@@ -110,7 +110,7 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent className="pt-1 pb-1 px-4 overflow-y-auto overflow-x-auto">
+              <CardContent className="pt-1 pb-1 px-4">
                 {group.items.map((item, itemIndex) => (
                   <div
                     key={item.id}
@@ -140,13 +140,13 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
 
         {error && (
           <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-red-700 text-xs">{error}</p>
+            <p className={TYPOGRAPHY.error}>{error}</p>
           </div>
         )}
       </div>
 
-      {/* Footer tombol aksi */}
-      <div className="flex-shrink-0 flex items-center justify-end gap-2 px-8 py-3 border-t border-slate-200 bg-slate-50/80">
+      {/* Footer tombol aksi — sticky di bawah */}
+      <div className="sticky bottom-0 flex items-center justify-end gap-2 px-8 py-3 border-t border-slate-200 bg-slate-50/80 backdrop-blur-sm">
         <Button
           variant="outline"
           onClick={handleReset}

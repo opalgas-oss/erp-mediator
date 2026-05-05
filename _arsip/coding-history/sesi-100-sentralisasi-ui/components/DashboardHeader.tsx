@@ -4,15 +4,9 @@
 // Header bar dashboard — h-14, sejajar dengan sidebar header.
 // Kiri  : hamburger mobile + judul halaman (besar) — deskripsi (kecil, inline kanan)
 // Kanan : avatar + dropdown logout
-//
+
 // REFACTOR Sesi #079 — DRY fix (BLOK B):
 //   Hapus inline getCookie → import dari lib/utils-client
-//
-// REFACTOR Sesi #100 — Sentralisasi UI:
-//   - Hapus regex /\/settings\/([^/]+)/ yang hanya bisa handle settings pages
-//   - Ganti dengan resolvePageMeta(pathname) dari page-meta.constant
-//   - Semua halaman (settings + non-settings) dapat title + desc otomatis
-//   - Tambah halaman baru → cukup edit page-meta.constant, tidak perlu ubah file ini
 
 import { useState, useEffect, useRef } from 'react'
 import { usePathname }                 from 'next/navigation'
@@ -20,8 +14,6 @@ import { LogOut, ChevronDown, Menu }   from 'lucide-react'
 import { createBrowserSupabaseClient } from '@/lib/supabase-client'
 import { logoutAction }                from '@/app/auth/logout-action'
 import { getCookie }                   from '@/lib/utils-client'
-import { resolvePageMeta }             from '@/lib/constants/page-meta.constant'
-import { TYPOGRAPHY }                  from '@/lib/constants/ui-tokens.constant'
 
 interface UserInfo { nama: string; email: string; role: string }
 
@@ -41,10 +33,14 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
   const [loading, setLoading] = useState(false)
   const dropdownRef           = useRef<HTMLDivElement>(null)
 
-  // ─── Resolve page title + desc dari konstanta terpusat ────────────────────
-  const { titleKey, descKey } = resolvePageMeta(pathname)
-  const pageTitle = messages[titleKey] ?? ''
-  const pageDesc  = descKey ? (messages[descKey] ?? '') : ''
+  const settingsSlug = pathname.match(/\/settings\/([^/]+)/)?.[1]
+  const featureKey   = settingsSlug?.replace(/-/g, '_')
+  const pageTitle    = featureKey
+    ? (messages[`page_title_${featureKey}`] ?? '')
+    : (messages['page_title_dashboard'] ?? '')
+  const pageDesc     = featureKey
+    ? (messages[`page_desc_${featureKey}`] ?? '')
+    : ''
 
   useEffect(() => {
     async function loadUser() {
@@ -86,8 +82,6 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
 
   return (
     <header className="h-14 shrink-0 bg-white border-b border-slate-200 flex items-center px-4 gap-3">
-
-      {/* Hamburger — mobile only */}
       {onMenuClick && (
         <button onClick={onMenuClick}
           className="md:hidden p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500 shrink-0"
@@ -95,23 +89,19 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
           <Menu size={20} />
         </button>
       )}
-
-      {/* Judul halaman — dari page-meta.constant, bukan regex */}
       {pageTitle ? (
         <div className="flex-1 min-w-0 flex items-baseline gap-2.5 overflow-hidden">
-          <span className={TYPOGRAPHY.pageTitle}>{pageTitle}</span>
+          <span className="text-base sm:text-xl font-bold text-slate-900 truncate">{pageTitle}</span>
           {pageDesc && (
             <>
-              <span className={TYPOGRAPHY.pageSep}>—</span>
-              <span className={TYPOGRAPHY.pageDesc}>{pageDesc}</span>
+              <span className="text-slate-300 shrink-0 select-none hidden sm:inline">—</span>
+              <span className="text-xs text-slate-400 truncate hidden sm:inline">{pageDesc}</span>
             </>
           )}
         </div>
       ) : (
         <div className="flex-1" />
       )}
-
-      {/* Avatar + dropdown */}
       <div className="relative shrink-0" ref={dropdownRef}>
         <button onClick={() => setOpen(prev => !prev)}
           className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
@@ -126,7 +116,6 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
             className="text-slate-400 transition-transform duration-200 shrink-0"
             style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
         </button>
-
         {open && (
           <div className="absolute right-0 top-full mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100">
@@ -149,9 +138,7 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
               <button onClick={handleLogout} disabled={loading}
                 className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50">
                 <LogOut size={15} className="shrink-0" />
-                <span>{loading
-                  ? (messages['header_logout_loading'] || 'Keluar...')
-                  : (messages['header_logout_label']   || 'Logout')}</span>
+                <span>{loading ? (messages['header_logout_loading'] || 'Keluar...') : (messages['header_logout_label'] || 'Logout')}</span>
               </button>
             </div>
           </div>
