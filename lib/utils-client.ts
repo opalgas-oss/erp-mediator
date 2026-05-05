@@ -36,3 +36,21 @@ export function getCookie(name: string): string {
 export function interpolate(teks: string, vars: Record<string, string>): string {
   return teks.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`)
 }
+
+/**
+ * Format ISO timestamp → tanggal singkat bahasa Indonesia.
+ * Contoh: '2026-05-04T16:36:54Z' → '04 Mei 2026'
+ *
+ * Dipakai oleh: MessageLibraryClient (kolom Diupdate), dan komponen lain yang
+ * butuh tampilan tanggal singkat id-ID.
+ *
+ * DIBUAT: Sesi #101 — DRY fix. Menggantikan fmtDate() lokal di MessageLibraryClient.
+ *
+ * @param iso - ISO timestamp string
+ * @returns Tanggal terformat: '04 Mei 2026'
+ */
+export function formatDateIdShort(iso: string): string {
+  return new Date(iso).toLocaleDateString('id-ID', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  })
+}

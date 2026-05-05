@@ -18,6 +18,7 @@ import { toast }       from 'sonner'
 import type { MessageItem } from '@/lib/message-library'
 import { resolveKategoriColor } from '@/lib/constants/ui-tokens.constant'
 import { TYPOGRAPHY }           from '@/lib/constants/ui-tokens.constant'
+import { formatDateIdShort }    from '@/lib/utils-client'
 
 import { Input }       from '@/components/ui/input'
 import { Button }      from '@/components/ui/button'
@@ -78,12 +79,6 @@ const EMPTY_EDIT: EditState = { open: false, item: null, teks: '', keterangan: '
 const EMPTY_ADD: AddState   = { open: false, key: '', kategori: '', channel: 'ui', teks: '', keterangan: '', saving: false, error: '' }
 
 const CHANNEL_OPTIONS = ['ui', 'wa', 'email', 'sms'] as const
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('id-ID', {
-    day: '2-digit', month: 'short', year: 'numeric',
-  })
-}
 
 // ─── Komponen utama ───────────────────────────────────────────────────────────
 
@@ -273,7 +268,7 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className={`py-2 ${TYPOGRAPHY.caption}`}>{fmtDate(msg.updated_at)}</TableCell>
+                  <TableCell className={`py-2 ${TYPOGRAPHY.caption}`}>{formatDateIdShort(msg.updated_at)}</TableCell>
                   <TableCell className="py-2 text-right">
                     <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => openEdit(msg)}>
                       Edit

@@ -16,6 +16,7 @@ import 'server-only'
 import { cache } from 'react'
 import { cookies, headers } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
+import { NextResponse } from 'next/server'
 
 // ─── Tipe Hasil verifyJWT ──────────────────────────────────────────────────────
 export interface JWTPayload {
@@ -103,3 +104,36 @@ export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
     return null
   }
 })
+
+// ─── requireSuperAdmin ────────────────────────────────────────────────────────
+// Shared auth guard untuk semua API route SuperAdmin.
+// Return { ok: true, uid } jika valid SUPERADMIN.
+// Return { ok: false, res } berisi NextResponse 401/403 siap dikembalikan route.
+//
+// CARA PAKAI di setiap API route SuperAdmin:
+//   const auth = await requireSuperAdmin()
+//   if (!auth.ok) return auth.res
+//   // gunakan auth.uid
+//
+// DIBUAT: Sesi #101 — DRY fix. Menggantikan authSuperAdmin() lokal di setiap route.
+
+export type RequireSuperAdminResult =
+  | { ok: true;  uid: string }
+  | { ok: false; res: NextResponse }
+
+export async function requireSuperAdmin(): Promise<RequireSuperAdminResult> {
+  const decoded = await verifyJWT()
+  if (!decoded) {
+    return {
+      ok:  false,
+      res: NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 }),
+    }
+  }
+  if (decoded.role !== 'SUPERADMIN') {
+    return {
+      ok:  false,
+      res: NextResponse.json({ success: false, message: 'Akses ditolak' }, { status: 403 }),
+    }
+  }
+  return { ok: true, uid: decoded.uid }
+}

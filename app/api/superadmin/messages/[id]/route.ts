@@ -6,10 +6,11 @@
 // Jika key harus berubah → harus via migrasi DB.
 //
 // Dibuat: Sesi #098 — PL-S08 M2 Message Library
+// Updated: Sesi #101 — DRY fix: ganti inline auth check → requireSuperAdmin() shared
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { revalidateTag }              from 'next/cache'
-import { verifyJWT }                  from '@/lib/auth-server'
+import { requireSuperAdmin }          from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 // ─── PATCH — Edit teks dan/atau keterangan pesan ─────────────────────────────
@@ -25,14 +26,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
-    // Autentikasi — hanya SUPERADMIN
-    const decoded = await verifyJWT()
-    if (!decoded) {
-      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
-    }
-    if (decoded.role !== 'SUPERADMIN') {
-      return NextResponse.json({ success: false, message: 'Akses ditolak' }, { status: 403 })
-    }
+    const auth = await requireSuperAdmin()
+    if (!auth.ok) return auth.res
 
     const { id } = await params
     if (!id) {
@@ -71,7 +66,7 @@ export async function PATCH(
     }
 
     // Bangun payload update — hanya field yang disuplai
-    const updatePayload: Record<string, unknown> = { updated_by: decoded.uid }
+    const updatePayload: Record<string, unknown> = { updated_by: auth.uid }
     if (body.teks       !== undefined) updatePayload.teks       = body.teks.trim()
     if (body.keterangan !== undefined) updatePayload.keterangan = body.keterangan?.trim() ?? null
     if (body.is_active  !== undefined) updatePayload.is_active  = body.is_active
