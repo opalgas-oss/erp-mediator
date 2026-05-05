@@ -16,8 +16,8 @@ import type { JSX }    from 'react'
 import { useState, useMemo, useTransition } from 'react'
 import { toast }       from 'sonner'
 import type { MessageItem } from '@/lib/message-library'
-import { resolveKategoriColor, resolveChannelColor } from '@/lib/constants/ui-tokens.constant'
-import { TYPOGRAPHY }                                 from '@/lib/constants/ui-tokens.constant'
+import { resolveKategoriColor } from '@/lib/constants/ui-tokens.constant'
+import { TYPOGRAPHY }           from '@/lib/constants/ui-tokens.constant'
 import { formatDateIdShort }    from '@/lib/utils-client'
 
 import { Input }       from '@/components/ui/input'
@@ -222,13 +222,12 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
       </div>
 
       {/* Tabel */}
-      <div className="rounded-md border border-slate-200 overflow-x-auto">
+      <div className="rounded-md border border-slate-200 overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="bg-slate-50">
               <TableHead className={`${TYPOGRAPHY.tableHead} w-56`}>Key</TableHead>
               <TableHead className={`${TYPOGRAPHY.tableHead} w-32`}>Kategori</TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-24`}>Channel</TableHead>
               <TableHead className={TYPOGRAPHY.tableHead}>Preview Teks</TableHead>
               <TableHead className={`${TYPOGRAPHY.tableHead} w-28`}>Diupdate</TableHead>
               <TableHead className={`${TYPOGRAPHY.tableHead} w-16 text-right`}>Aksi</TableHead>
@@ -237,7 +236,7 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-10 text-sm text-slate-400">
+                <TableCell colSpan={5} className="text-center py-10 text-sm text-slate-400">
                   {search || katFilter !== 'semua'
                     ? 'Tidak ada pesan yang cocok dengan filter ini.'
                     : 'Belum ada pesan.'}
@@ -253,12 +252,6 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
                     {/* Badge warna dari resolveKategoriColor — terpusat di ui-tokens.constant */}
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${resolveKategoriColor(msg.kategori)}`}>
                       {msg.kategori}
-                    </span>
-                  </TableCell>
-                  <TableCell className="py-2">
-                    {/* Badge channel dari resolveChannelColor — terpusat di ui-tokens.constant */}
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${resolveChannelColor(msg.channel)}`}>
-                      {msg.channel}
                     </span>
                   </TableCell>
                   <TableCell className="py-2">
