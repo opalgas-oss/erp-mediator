@@ -1,5 +1,10 @@
 'use client'
 
+// ARSIP — sesi-106-fix-bug-dialog-tambah
+// Original: app/dashboard/superadmin/messages/MessageLibraryClient.tsx
+// Bug: Input+datalist untuk field Kategori di Dialog Tambah tidak sync ke React state
+//      saat user memilih dari dropdown datalist (native browser behavior)
+
 // app/dashboard/superadmin/messages/MessageLibraryClient.tsx
 // Komponen client Message Library — tabel + search + filter + dialog edit/tambah.
 // Data di-load sekali dari server, semua filter dikerjakan client-side.
@@ -48,8 +53,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
-// ─── Tipe ────────────────────────────────────────────────────────────────────
-
 interface Props {
   initialData:  MessageItem[]
   kategoriList: string[]
@@ -79,8 +82,6 @@ const EMPTY_EDIT: EditState = { open: false, item: null, teks: '', keterangan: '
 const EMPTY_ADD: AddState   = { open: false, key: '', kategori: '', channel: 'ui', teks: '', keterangan: '', saving: false, error: '' }
 
 const CHANNEL_OPTIONS = ['ui', 'wa', 'email', 'sms'] as const
-
-// ─── Komponen utama ───────────────────────────────────────────────────────────
 
 export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.Element {
   const [messages, setMessages] = useState<MessageItem[]>(initialData)
@@ -176,20 +177,12 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
-
-      {/*
-       * Page header DIHAPUS dari sini.
-       * Judul "Message Library" + deskripsi sekarang tampil di DashboardHeader
-       * via page-meta.constant — konsisten dengan semua halaman lain.
-       * Tombol "+ Tambah Pesan" tetap di sini karena ini aksi spesifik halaman ini.
-       */}
       <div className="flex items-center justify-end">
         <Button size="sm" onClick={() => setAdd({ ...EMPTY_ADD, open: true })}>
           + Tambah Pesan
         </Button>
       </div>
 
-      {/* Toolbar — Search + Filter */}
       <div className="flex flex-wrap items-center gap-2">
         <Input
           placeholder="Cari key atau teks..."
@@ -221,7 +214,6 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
         )}
       </div>
 
-      {/* Tabel */}
       <div className="rounded-md border border-slate-200 overflow-x-auto">
         <Table>
           <TableHeader>
@@ -250,13 +242,11 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
                     <span className="font-mono text-xs text-slate-700 break-all">{msg.key}</span>
                   </TableCell>
                   <TableCell className="py-2">
-                    {/* Badge warna dari resolveKategoriColor — terpusat di ui-tokens.constant */}
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${resolveKategoriColor(msg.kategori)}`}>
                       {msg.kategori}
                     </span>
                   </TableCell>
                   <TableCell className="py-2">
-                    {/* Badge channel dari resolveChannelColor — terpusat di ui-tokens.constant */}
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${resolveChannelColor(msg.channel)}`}>
                       {msg.channel}
                     </span>
@@ -339,7 +329,7 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Tambah */}
+      {/* Dialog Tambah — SEBELUM FIX — Kategori pakai Input+datalist (BUG) */}
       <Dialog open={add.open} onOpenChange={open => !open && setAdd(EMPTY_ADD)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Tambah Pesan</DialogTitle></DialogHeader>
@@ -356,17 +346,17 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
             </div>
             <div className="space-y-1">
               <Label className="text-xs font-medium">Kategori <span className="text-red-500">*</span></Label>
-              {/* Pakai Select (bukan Input+datalist) agar React state selalu sync saat user pilih */}
-              <Select value={add.kategori} onValueChange={v => setAdd(a => ({ ...a, kategori: v, error: '' }))}>
-                <SelectTrigger className="text-sm h-9">
-                  <SelectValue placeholder="Pilih kategori..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {kategoriList.map(k => (
-                    <SelectItem key={k} value={k} className="text-sm">{k}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* BUG: Input+datalist — React state tidak update saat user pilih dari dropdown */}
+              <Input
+                value={add.kategori}
+                onChange={e => setAdd(a => ({ ...a, kategori: e.target.value, error: '' }))}
+                className="text-sm"
+                placeholder="login_ui"
+                list="kategori-list"
+              />
+              <datalist id="kategori-list">
+                {kategoriList.map(k => <option key={k} value={k} />)}
+              </datalist>
             </div>
             <div className="space-y-1">
               <Label className="text-xs font-medium">Channel</Label>
