@@ -53,7 +53,25 @@ export function ProvidersClient({ initialProviders }: Props) {
   const [formInstance, setFormInstance] = useState({ nama_server: '', deskripsi: '', is_default: false })
 
   // Form state: isi credential (map field_def_id → nilai)
-  const [formCred, setFormCred] = useState<Record<string, string>>({})
+  const [formCred,     setFormCred]     = useState<Record<string, string>>({})
+
+  // State show/hide per field credential (field_def_id → boolean)
+  const [showFields,   setShowFields]   = useState<Record<string, boolean>>({})
+
+  // Toggle show/hide satu field
+  const toggleShowField = useCallback((fieldId: string) => {
+    setShowFields(prev => ({ ...prev, [fieldId]: !prev[fieldId] }))
+  }, [])
+
+  // Copy nilai field ke clipboard
+  const handleCopyField = useCallback((value: string, label: string) => {
+    if (!value) return
+    navigator.clipboard.writeText(value).then(() => {
+      toast.success(`${label} disalin`)
+    }).catch(() => {
+      toast.error('Gagal menyalin — browser tidak mengizinkan')
+    })
+  }, [])
 
   // ─── Load instances saat provider dipilih ──────────────────────────────────
 
@@ -145,6 +163,7 @@ export function ProvidersClient({ initialProviders }: Props) {
     if (!selectedProvider) return
     setActiveInstanceId(instanceId)
     setFormCred({})
+    setShowFields({})   // reset visibility saat dialog dibuka ulang
     // Load field definitions untuk provider ini
     try {
       const res  = await fetch(`/api/superadmin/providers/${selectedProvider.id}/field-defs`)
@@ -293,6 +312,7 @@ export function ProvidersClient({ initialProviders }: Props) {
                               onClick={() => handleTestKoneksi(inst.id)}
                               disabled={testingId === inst.id}
                               className="text-xs h-7 px-2"
+                              title="Test koneksi — cek apakah endpoint provider bisa dijangkau"
                             >
                               {testingId === inst.id
                                 ? <ICON_STATUS.loading size={12} className="animate-spin" />
@@ -376,24 +396,59 @@ export function ProvidersClient({ initialProviders }: Props) {
             <p className="text-xs text-slate-500">
               Nilai credential tidak ditampilkan setelah disimpan. Hanya 4 karakter terakhir yang terlihat.
             </p>
-            {fieldDefs.map(f => (
-              <div key={f.id} className="space-y-1.5">
-                <Label htmlFor={f.id}>
-                  {f.label}{f.is_required && <span className="text-red-500 ml-0.5">*</span>}
-                </Label>
-                <Input
-                  id={f.id}
-                  type={f.is_secret ? 'password' : 'text'}
-                  placeholder={f.placeholder ?? ''}
-                  value={formCred[f.id] ?? ''}
-                  onChange={e => setFormCred(p => ({ ...p, [f.id]: e.target.value }))}
-                  autoComplete="off"
-                />
-                {f.deskripsi && (
-                  <p className={TYPOGRAPHY.caption}>{f.deskripsi}</p>
-                )}
-              </div>
-            ))}
+            {fieldDefs.map(f => {
+              const isSecret  = f.is_secret
+              const isVisible = showFields[f.id] ?? false
+              const inputType = isSecret && !isVisible ? 'password' : 'text'
+              const val       = formCred[f.id] ?? ''
+              return (
+                <div key={f.id} className="space-y-1.5">
+                  <Label htmlFor={f.id}>
+                    {f.label}{f.is_required && <span className="text-red-500 ml-0.5">*</span>}
+                  </Label>
+                  <div className="flex gap-1">
+                    <Input
+                      id={f.id}
+                      type={inputType}
+                      placeholder={f.placeholder ?? ''}
+                      value={val}
+                      onChange={e => setFormCred(p => ({ ...p, [f.id]: e.target.value }))}
+                      autoComplete="new-password"
+                      className="flex-1"
+                    />
+                    {isSecret && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-9 w-9 px-0 shrink-0"
+                        onClick={() => toggleShowField(f.id)}
+                        title={isVisible ? 'Sembunyikan' : 'Tampilkan'}
+                      >
+                        {isVisible
+                          ? <ICON_ACTION.hide  size={14} />
+                          : <ICON_ACTION.show  size={14} />
+                        }
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-9 w-9 px-0 shrink-0"
+                      onClick={() => handleCopyField(val, f.label)}
+                      disabled={!val}
+                      title="Salin"
+                    >
+                      <ICON_ACTION.copy size={14} />
+                    </Button>
+                  </div>
+                  {f.deskripsi && (
+                    <p className={TYPOGRAPHY.caption}>{f.deskripsi}</p>
+                  )}
+                </div>
+              )
+            })}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogMode(null)}>Batal</Button>
