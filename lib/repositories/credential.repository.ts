@@ -215,6 +215,29 @@ export async function getCredentialFingerprints(instanceId: string): Promise<Ins
 }
 
 /**
+ * Ambil provider_id + kode provider berdasarkan instance_id.
+ * Dipakai oleh testKoneksi() agar tidak perlu loop semua provider.
+ */
+export async function getProviderByInstanceId(
+  instanceId: string
+): Promise<{ provider_id: string; kode: string } | null> {
+  const db = createServerSupabaseClient()
+
+  const { data, error } = await db
+    .from('provider_instances')
+    .select('provider_id, service_providers!inner(kode)')
+    .eq('id', instanceId)
+    .single()
+
+  if (error || !data) return null
+
+  const kode = (data.service_providers as unknown as { kode: string })?.kode ?? null
+  if (!kode) return null
+
+  return { provider_id: data.provider_id, kode }
+}
+
+/**
  * Insert instance baru untuk satu provider.
  * Jika is_default = true, unset is_default semua instance lain provider tersebut dulu.
  */
@@ -283,19 +306,24 @@ export async function upsertCredential(params: {
 }
 
 /**
- * Panggil SP sp_test_provider_connection — simpan hasil test koneksi.
+ * Panggil SP sp_test_provider_connection — simpan hasil authenticated test.
+ * SP diupdate S#109: +p_is_authenticated + p_auth_error.
  */
 export async function spTestProviderConnection(params: {
-  instanceId:    string
-  healthStatus:  HealthStatus
-  errorMessage?: string
+  instanceId:       string
+  healthStatus:     HealthStatus
+  errorMessage?:    string
+  isAuthenticated?: boolean | null
+  authError?:       string
 }): Promise<void> {
   const db = createServerSupabaseClient()
 
   const { error } = await db.rpc('sp_test_provider_connection', {
-    p_instance_id:  params.instanceId,
-    p_health_status: params.healthStatus,
-    p_error_message: params.errorMessage ?? null,
+    p_instance_id:      params.instanceId,
+    p_health_status:    params.healthStatus,
+    p_error_message:    params.errorMessage    ?? null,
+    p_is_authenticated: params.isAuthenticated ?? null,
+    p_auth_error:       params.authError       ?? null,
   })
 
   if (error) throw new Error(`[credential.repository] spTestProviderConnection: ${error.message}`)

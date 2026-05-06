@@ -3,6 +3,7 @@
 // Enkripsi/dekripsi dilakukan di sini (bukan di repository atau route).
 // Dibuat: Sesi #052 — BLOK C-02 TODO_ARSITEKTUR_LAYER_v1
 // Update: Sesi #107 — M3 Credential Management (+5 fungsi UI dashboard)
+// Update: Sesi #109 — M3 Step 5.2b: testKoneksi() → authenticated test via provider-tester.ts
 
 import 'server-only'
 import { unstable_cache } from 'next/cache'
@@ -16,9 +17,11 @@ import {
   insertInstance,
   upsertCredential,
   spTestProviderConnection,
+  getProviderByInstanceId,
   type CredentialResult,
 } from '@/lib/repositories/credential.repository'
 import { enkripsiCredential, dekripsi, fingerprint } from '@/lib/credential-crypto'
+import { testProvider }                               from '@/lib/services/provider-tester'
 import type {
   ServiceProvider,
   ProviderInstance,
@@ -27,10 +30,11 @@ import type {
   TambahInstancePayload,
   SimpanCredentialPayload,
   TestKoneksiResult,
-  HealthStatus,
 } from '@/lib/types/provider.types'
 
-// ─── ENV_FALLBACK (existing) ─────────────────────────────────────────────────
+// ─── ENV_FALLBACK ─────────────────────────────────────────────────────────────
+// Fallback ke .env jika credential belum ada di DB.
+// Target jangka panjang: semua provider pindah ke DB (eliminasi .env provider keys).
 
 const ENV_FALLBACK: Record<string, Record<string, string>> = {
   supabase: {
@@ -73,7 +77,7 @@ const ENV_FALLBACK: Record<string, Record<string, string>> = {
  */
 export async function getCredential(
   providerKode: string,
-  fieldKey: string
+  fieldKey:     string
 ): Promise<string | null> {
   const fromDB = await getCredentialFromDB(providerKode, fieldKey)
   if (fromDB !== null) return fromDB
@@ -89,7 +93,7 @@ export async function getCredential(
 
 async function getCredentialFromDB(
   providerKode: string,
-  fieldKey: string
+  fieldKey:     string
 ): Promise<string | null> {
   try {
     const cached = unstable_cache(
@@ -110,18 +114,19 @@ async function getCredentialFromDB(
 
 /**
  * Ambil semua credential fields untuk satu provider — cache + env fallback.
+ * Mengembalikan map field_key → nilai plaintext (sudah didekripsi).
  */
 export async function getCredentialsByProvider(
   providerKode: string
 ): Promise<Record<string, string>> {
-  const result: Record<string, string> = {}
-  const envFields = ENV_FALLBACK[providerKode] ?? {}
+  const result:    Record<string, string> = {}
+  const envFields: Record<string, string> = ENV_FALLBACK[providerKode] ?? {}
 
   try {
     const cached = unstable_cache(
       async () => {
         const creds = await getAllByProvider(providerKode)
-        const map: Record<string, string> = {}
+        const map:  Record<string, string> = {}
         for (const c of creds) {
           try {
             map[c.field_key] = c.is_secret ? dekripsi(c.encrypted_value) : c.encrypted_value
@@ -166,7 +171,7 @@ export async function listInstances(providerId: string): Promise<ProviderInstanc
 
 /**
  * Ambil field definitions untuk satu provider.
- * Dipakai untuk render form dialog Isi Credential secara dinamis.
+ * Dipakai untuk render form dialog Konfigurasi Koneksi secara dinamis.
  */
 export async function listFieldDefs(providerId: string): Promise<ProviderFieldDef[]> {
   return getFieldDefinitions(providerId)
@@ -185,7 +190,7 @@ export async function listCredentialFingerprints(instanceId: string): Promise<In
  */
 export async function tambahInstance(
   payload: TambahInstancePayload,
-  userId: string
+  userId:  string
 ): Promise<ProviderInstance> {
   return insertInstance({
     provider_id: payload.provider_id,
@@ -203,7 +208,7 @@ export async function tambahInstance(
  */
 export async function simpanCredential(
   payload: SimpanCredentialPayload,
-  userId: string
+  userId:  string
 ): Promise<void> {
   for (const field of payload.fields) {
     if (!field.nilai || field.nilai.trim() === '') continue
@@ -223,64 +228,51 @@ export async function simpanCredential(
 }
 
 /**
- * Test koneksi ke provider eksternal.
- * HTTP ping dilakukan di sini (service layer).
- * Hasil disimpan ke DB via sp_test_provider_connection.
+ * Authenticated test koneksi ke provider eksternal.
+ * Alur: cari provider kode dari instanceId → ambil credentials → call provider-tester → simpan hasil.
+ * Signature baru S#109: tidak lagi butuh statusUrl — semua dilakukan internal.
  *
- * Saat ini: simulasi ping via fetch ke status_url provider.
- * Nanti: bisa diganti dengan ping spesifik per provider (Xendit, Fonnte, dll).
+ * Health status mapping:
+ *   sehat      = server reachable + terautentikasi
+ *   peringatan = server reachable + auth gagal
+ *   gagal      = server tidak bisa dijangkau
  */
-export async function testKoneksi(
-  instanceId: string,
-  statusUrl: string | null
-): Promise<TestKoneksiResult> {
-  const start = Date.now()
+export async function testKoneksi(instanceId: string): Promise<TestKoneksiResult> {
+  // 1. Cari provider kode dari instance ini
+  const providerInfo = await getProviderByInstanceId(instanceId)
 
-  try {
-    if (!statusUrl) {
-      // Tidak ada status URL — tandai belum dites, bukan gagal
-      await spTestProviderConnection({
-        instanceId,
-        healthStatus: 'belum_dites',
-      })
-      return { berhasil: false, health_status: 'belum_dites', pesan: 'URL status tidak tersedia', latency_ms: null }
-    }
-
-    const controller = new AbortController()
-    const timeout    = setTimeout(() => controller.abort(), 8000) // 8 detik timeout
-
-    const res = await fetch(statusUrl, {
-      method: 'GET',
-      signal: controller.signal,
-    }).finally(() => clearTimeout(timeout))
-
-    const latency_ms   = Date.now() - start
-    const healthStatus: HealthStatus = res.ok ? 'sehat' : 'peringatan'
-
+  if (!providerInfo) {
     await spTestProviderConnection({
       instanceId,
-      healthStatus,
-      errorMessage: res.ok ? undefined : `HTTP ${res.status}`,
+      healthStatus:    'gagal',
+      errorMessage:    'Instance atau provider tidak ditemukan di database',
+      isAuthenticated: null,
     })
-
     return {
-      berhasil:      res.ok,
-      health_status: healthStatus,
-      pesan:         res.ok ? null : `HTTP ${res.status} ${res.statusText}`,
-      latency_ms,
+      berhasil:         false,
+      is_authenticated: null,
+      health_status:    'gagal',
+      pesan:            'Instance atau provider tidak ditemukan',
+      latency_ms:       0,
     }
-  } catch (err) {
-    const latency_ms = Date.now() - start
-    const pesan      = err instanceof Error ? err.message : 'Koneksi gagal'
-
-    await spTestProviderConnection({
-      instanceId,
-      healthStatus: 'gagal',
-      errorMessage: pesan,
-    })
-
-    return { berhasil: false, health_status: 'gagal', pesan, latency_ms }
   }
+
+  // 2. Ambil credentials (dari DB atau env fallback)
+  const credentials = await getCredentialsByProvider(providerInfo.kode)
+
+  // 3. Jalankan authenticated test via provider-tester.ts
+  const result = await testProvider(providerInfo.kode, credentials)
+
+  // 4. Simpan hasil ke DB
+  await spTestProviderConnection({
+    instanceId,
+    healthStatus:    result.health_status,
+    errorMessage:    result.pesan ?? undefined,
+    isAuthenticated: result.is_authenticated,
+    authError:       result.is_authenticated === false ? (result.pesan ?? undefined) : undefined,
+  })
+
+  return result
 }
 
 // ─── Re-export untuk caller yang butuh fungsi crypto ─────────────────────────

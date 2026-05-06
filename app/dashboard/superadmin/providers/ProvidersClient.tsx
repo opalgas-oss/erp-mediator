@@ -1,8 +1,9 @@
 'use client'
 // app/dashboard/superadmin/providers/ProvidersClient.tsx
 // UI split view — panel kiri (daftar provider) + panel kanan (instances per provider).
-// Dialog: Tambah Instance, Isi Credential, Test Koneksi.
+// Dialog: Tambah Instance, Konfigurasi Koneksi (Simpan & Test).
 // Dibuat: Sesi #107 — M3 Credential Management
+// Update: Sesi #109 — M3 Step 5.2b: rename dialog + "Simpan & Test" + tampilkan hasil test
 
 import { useState, useCallback }                  from 'react'
 import { toast }                                   from 'sonner'
@@ -23,6 +24,7 @@ import type {
   ProviderInstance,
   ProviderFieldDef,
   InstanceCredential,
+  HealthStatus,
 } from '@/lib/types/provider.types'
 
 // ─── Props ───────────────────────────────────────────────────────────────────
@@ -31,9 +33,15 @@ interface Props {
   initialProviders: ServiceProvider[]
 }
 
-// ─── State dialog ─────────────────────────────────────────────────────────────
+// ─── Tipe internal ────────────────────────────────────────────────────────────
 
-type DialogMode = 'tambah-instance' | 'isi-credential' | null
+type DialogMode = 'tambah-instance' | 'konfigurasi-koneksi' | null
+
+interface TestResult {
+  berhasil:   boolean
+  pesan:      string | null
+  latency_ms: number | null
+}
 
 // ─── Komponen ─────────────────────────────────────────────────────────────────
 
@@ -48,15 +56,22 @@ export function ProvidersClient({ initialProviders }: Props) {
   const [dialogMode,       setDialogMode]       = useState<DialogMode>(null)
   const [activeInstanceId, setActiveInstanceId] = useState<string | null>(null)
   const [saving,           setSaving]           = useState(false)
+  const [testResult,       setTestResult]       = useState<TestResult | null>(null)
 
   // Form state: tambah instance
   const [formInstance, setFormInstance] = useState({ nama_server: '', deskripsi: '', is_default: false })
 
-  // Form state: isi credential (map field_def_id → nilai)
-  const [formCred,     setFormCred]     = useState<Record<string, string>>({})
+  // Form state: konfigurasi koneksi (map field_def_id → nilai)
+  const [formCred,   setFormCred]   = useState<Record<string, string>>({})
+  const [showFields, setShowFields] = useState<Record<string, boolean>>({})
 
-  // State show/hide per field credential (field_def_id → boolean)
-  const [showFields,   setShowFields]   = useState<Record<string, boolean>>({})
+  // Tutup dialog konfigurasi koneksi + reset semua state-nya
+  const closeKonfigDialog = useCallback(() => {
+    setDialogMode(null)
+    setTestResult(null)
+    setFormCred({})
+    setShowFields({})
+  }, [])
 
   // Toggle show/hide satu field
   const toggleShowField = useCallback((fieldId: string) => {
@@ -72,6 +87,10 @@ export function ProvidersClient({ initialProviders }: Props) {
       toast.error('Gagal menyalin — browser tidak mengizinkan')
     })
   }, [])
+
+  // Unused state suppressor — fingerprints dipakai di iterasi berikutnya
+  void fingerprints
+  void setProviders
 
   // ─── Load instances saat provider dipilih ──────────────────────────────────
 
@@ -90,7 +109,7 @@ export function ProvidersClient({ initialProviders }: Props) {
     }
   }, [])
 
-  // ─── Test koneksi per instance ─────────────────────────────────────────────
+  // ─── Test koneksi manual (tombol "Test" di tabel) ──────────────────────────
 
   const handleTestKoneksi = useCallback(async (instanceId: string) => {
     setTestingId(instanceId)
@@ -104,10 +123,9 @@ export function ProvidersClient({ initialProviders }: Props) {
             ? `Koneksi berhasil${result.latency_ms ? ` (${result.latency_ms}ms)` : ''}`
             : result.pesan ?? 'Koneksi gagal'
         )
-        // Update health_status di list lokal
         setInstances(prev =>
           prev.map(i => i.id === instanceId
-            ? { ...i, health_status: result.health_status, health_pesan: result.pesan }
+            ? { ...i, health_status: result.health_status as HealthStatus, health_pesan: result.pesan }
             : i
           )
         )
@@ -157,14 +175,14 @@ export function ProvidersClient({ initialProviders }: Props) {
     }
   }, [selectedProvider, formInstance])
 
-  // ─── Buka dialog Isi Credential ────────────────────────────────────────────
+  // ─── Buka dialog Konfigurasi Koneksi ───────────────────────────────────────
 
-  const handleOpenIsiCredential = useCallback(async (instanceId: string) => {
+  const handleOpenKonfigurasi = useCallback(async (instanceId: string) => {
     if (!selectedProvider) return
     setActiveInstanceId(instanceId)
     setFormCred({})
-    setShowFields({})   // reset visibility saat dialog dibuka ulang
-    // Load field definitions untuk provider ini
+    setShowFields({})
+    setTestResult(null)
     try {
       const res  = await fetch(`/api/superadmin/providers/${selectedProvider.id}/field-defs`)
       const json = await res.json()
@@ -172,13 +190,15 @@ export function ProvidersClient({ initialProviders }: Props) {
     } catch {
       toast.error('Gagal memuat field definitions')
     }
-    setDialogMode('isi-credential')
+    setDialogMode('konfigurasi-koneksi')
   }, [selectedProvider])
 
-  // ─── Submit Isi Credential ─────────────────────────────────────────────────
+  // ─── Submit Simpan & Test ──────────────────────────────────────────────────
+  // Alur: simpan credential → authenticated test → tampilkan hasil di dialog
 
-  const handleSimpanCredential = useCallback(async () => {
+  const handleSimpanDanTest = useCallback(async () => {
     if (!activeInstanceId) return
+
     const fields = Object.entries(formCred)
       .filter(([, v]) => v.trim())
       .map(([field_def_id, nilai]) => ({ field_def_id, field_key: '', nilai }))
@@ -187,22 +207,46 @@ export function ProvidersClient({ initialProviders }: Props) {
       toast.error('Minimal satu field harus diisi')
       return
     }
+
     setSaving(true)
+    setTestResult(null)
+
     try {
-      const res  = await fetch(`/api/superadmin/providers/instances/${activeInstanceId}/credentials`, {
+      // Step 1: Simpan credential
+      const saveRes  = await fetch(`/api/superadmin/providers/instances/${activeInstanceId}/credentials`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ fields }),
       })
-      const json = await res.json()
-      if (json.success) {
-        toast.success('Credential berhasil disimpan')
-        setDialogMode(null)
+      const saveJson = await saveRes.json()
+
+      if (!saveJson.success) {
+        toast.error(saveJson.message ?? 'Gagal menyimpan credential')
+        setSaving(false)
+        return
+      }
+
+      toast.success('Credential tersimpan — menjalankan test koneksi...')
+
+      // Step 2: Authenticated test
+      const testRes  = await fetch(`/api/superadmin/providers/instances/${activeInstanceId}/test`, { method: 'POST' })
+      const testJson = await testRes.json()
+
+      if (testJson.success) {
+        const r = testJson.data
+        setTestResult({ berhasil: r.berhasil, pesan: r.pesan, latency_ms: r.latency_ms })
+        // Update badge di tabel
+        setInstances(prev =>
+          prev.map(i => i.id === activeInstanceId
+            ? { ...i, health_status: r.health_status as HealthStatus, health_pesan: r.pesan }
+            : i
+          )
+        )
       } else {
-        toast.error(json.message ?? 'Gagal menyimpan credential')
+        setTestResult({ berhasil: false, pesan: 'Gagal menjalankan test koneksi', latency_ms: null })
       }
     } catch {
-      toast.error('Gagal menyimpan credential')
+      toast.error('Terjadi error jaringan')
     } finally {
       setSaving(false)
     }
@@ -312,7 +356,7 @@ export function ProvidersClient({ initialProviders }: Props) {
                               onClick={() => handleTestKoneksi(inst.id)}
                               disabled={testingId === inst.id}
                               className="text-xs h-7 px-2"
-                              title="Test koneksi — cek apakah endpoint provider bisa dijangkau"
+                              title="Test koneksi ulang — authenticated test ke provider"
                             >
                               {testingId === inst.id
                                 ? <ICON_STATUS.loading size={12} className="animate-spin" />
@@ -323,11 +367,11 @@ export function ProvidersClient({ initialProviders }: Props) {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleOpenIsiCredential(inst.id)}
+                              onClick={() => handleOpenKonfigurasi(inst.id)}
                               className="text-xs h-7 px-2"
                             >
                               <ICON_ACTION.edit size={12} />
-                              <span className="ml-1">Credential</span>
+                              <span className="ml-1">Konfigurasi</span>
                             </Button>
                           </div>
                         </td>
@@ -386,16 +430,18 @@ export function ProvidersClient({ initialProviders }: Props) {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog Isi Credential ── */}
-      <Dialog open={dialogMode === 'isi-credential'} onOpenChange={o => !o && setDialogMode(null)}>
+      {/* ── Dialog Konfigurasi Koneksi ── */}
+      <Dialog open={dialogMode === 'konfigurasi-koneksi'} onOpenChange={o => !o && closeKonfigDialog()}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Isi Credential</DialogTitle>
+            <DialogTitle>Konfigurasi Koneksi — {selectedProvider?.nama}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2 max-h-[60vh] overflow-y-auto">
+
+          <div className="space-y-3 py-2 max-h-[50vh] overflow-y-auto">
             <p className="text-xs text-slate-500">
               Nilai credential tidak ditampilkan setelah disimpan. Hanya 4 karakter terakhir yang terlihat.
             </p>
+
             {fieldDefs.map(f => {
               const isSecret  = f.is_secret
               const isVisible = showFields[f.id] ?? false
@@ -418,23 +464,16 @@ export function ProvidersClient({ initialProviders }: Props) {
                     />
                     {isSecret && (
                       <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
+                        type="button" size="sm" variant="ghost"
                         className="h-9 w-9 px-0 shrink-0"
                         onClick={() => toggleShowField(f.id)}
                         title={isVisible ? 'Sembunyikan' : 'Tampilkan'}
                       >
-                        {isVisible
-                          ? <ICON_ACTION.hide  size={14} />
-                          : <ICON_ACTION.show  size={14} />
-                        }
+                        {isVisible ? <ICON_ACTION.hide size={14} /> : <ICON_ACTION.show size={14} />}
                       </Button>
                     )}
                     <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
+                      type="button" size="sm" variant="ghost"
                       className="h-9 w-9 px-0 shrink-0"
                       onClick={() => handleCopyField(val, f.label)}
                       disabled={!val}
@@ -443,18 +482,42 @@ export function ProvidersClient({ initialProviders }: Props) {
                       <ICON_ACTION.copy size={14} />
                     </Button>
                   </div>
-                  {f.deskripsi && (
-                    <p className={TYPOGRAPHY.caption}>{f.deskripsi}</p>
-                  )}
+                  {f.deskripsi && <p className={TYPOGRAPHY.caption}>{f.deskripsi}</p>}
                 </div>
               )
             })}
           </div>
+
+          {/* Hasil test koneksi — tampil setelah Simpan & Test selesai */}
+          {testResult && (
+            <div className={`rounded-lg border px-3 py-2.5 text-xs ${
+              testResult.berhasil
+                ? 'bg-green-50 border-green-200 text-green-800'
+                : 'bg-red-50 border-red-200 text-red-700'
+            }`}>
+              <div className="flex items-center gap-1.5 font-medium">
+                {testResult.berhasil
+                  ? <ICON_STATUS.success size={13} />
+                  : <ICON_STATUS.failed  size={13} />
+                }
+                {testResult.berhasil ? 'Koneksi berhasil' : 'Koneksi gagal'}
+                {testResult.latency_ms != null && (
+                  <span className="ml-auto font-normal text-slate-500">{testResult.latency_ms}ms</span>
+                )}
+              </div>
+              {testResult.pesan && (
+                <p className="mt-1 text-slate-600">{testResult.pesan}</p>
+              )}
+            </div>
+          )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogMode(null)}>Batal</Button>
-            <Button onClick={handleSimpanCredential} disabled={saving}>
-              {saving ? <ICON_STATUS.loading size={14} className="animate-spin mr-1" /> : null}
-              Simpan Credential
+            <Button variant="outline" onClick={closeKonfigDialog}>Tutup</Button>
+            <Button onClick={handleSimpanDanTest} disabled={saving}>
+              {saving
+                ? <><ICON_STATUS.loading size={14} className="animate-spin mr-1.5" />Menyimpan &amp; Testing...</>
+                : 'Simpan & Test'
+              }
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -138,11 +138,11 @@ export const BADGE_HEALTH: Record<string, string> = {
   _default:    'bg-slate-100 text-slate-500 border-slate-200',
 }
 
-/** Label tampil untuk health_status */
+/** Label tampil untuk health_status — versi lengkap dengan keterangan */
 export const HEALTH_LABEL: Record<string, string> = {
-  sehat:       'Sehat',
-  peringatan:  'Peringatan',
-  gagal:       'Gagal',
+  sehat:       'Sehat (server & auth OK)',
+  peringatan:  'Peringatan (server OK, auth gagal)',
+  gagal:       'Gagal (server tidak bisa dijangkau)',
   belum_dites: 'Belum Dites',
 }
 

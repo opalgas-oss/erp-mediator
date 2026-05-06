@@ -1,14 +1,15 @@
 // app/api/superadmin/providers/instances/[instanceId]/test/route.ts
-// POST — Test koneksi ke provider eksternal + simpan hasil (SuperAdmin only)
-// HTTP ping dilakukan di CredentialService — route hanya trigger dan return hasil
+// POST — Authenticated test ke provider eksternal + simpan hasil (SuperAdmin only)
+// S#109: delegate sepenuhnya ke testKoneksi() — tidak lagi perlu statusUrl atau loop provider
 // Dibuat: Sesi #107 — M3 Credential Management
+// Update: Sesi #109 — M3 Step 5.2b Authenticated Test
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSuperAdmin }          from '@/lib/auth-server'
-import { testKoneksi, listProviders, listInstances } from '@/lib/services/credential.service'
+import { testKoneksi }                from '@/lib/services/credential.service'
 
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ instanceId: string }> }
 ): Promise<NextResponse> {
   try {
@@ -23,21 +24,7 @@ export async function POST(
       )
     }
 
-    // Ambil status_url provider dari instance ini untuk HTTP ping
-    // Cara: ambil semua provider → cari provider yang punya instance ini
-    const providers = await listProviders()
-    let statusUrl: string | null = null
-
-    for (const p of providers) {
-      const instances = await listInstances(p.id)
-      const found     = instances.find(i => i.id === instanceId)
-      if (found) {
-        statusUrl = p.status_url
-        break
-      }
-    }
-
-    const result = await testKoneksi(instanceId, statusUrl)
+    const result = await testKoneksi(instanceId)
 
     return NextResponse.json({ success: true, data: result })
 

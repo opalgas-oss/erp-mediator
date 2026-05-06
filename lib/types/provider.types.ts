@@ -89,10 +89,11 @@ export interface SimpanCredentialPayload {
 // ─── Test Koneksi ────────────────────────────────────────────────────────────
 
 export interface TestKoneksiResult {
-  berhasil:      boolean
-  health_status: HealthStatus
-  pesan:         string | null
-  latency_ms:    number | null
+  berhasil:         boolean
+  is_authenticated: boolean | null  // true = credential valid + bisa akses. null = gagal dijangkau
+  health_status:    HealthStatus
+  pesan:            string | null
+  latency_ms:       number | null
 }
 
 // ─── Literal Types ───────────────────────────────────────────────────────────
