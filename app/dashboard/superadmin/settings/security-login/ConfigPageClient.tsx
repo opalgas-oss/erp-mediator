@@ -14,6 +14,7 @@
 //   - Pakai TYPOGRAPHY.cardTitle dari ui-tokens.constant untuk CardTitle
 
 import { useState }   from 'react'
+import { toast }      from 'sonner'
 import { Button }     from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge }      from '@/components/ui/badge'
@@ -54,17 +55,43 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
       setSaving(true)
       setError(null)
 
-      const updates: Array<{ id: string; feature_key: string; nilai: string }> = []
+      const updates: Array<{
+        id:          string
+        feature_key: string
+        nilai?:      string
+        is_active?:  boolean
+        akses_ubah?: string[]
+      }> = []
+
       config.forEach((group, gi) => {
         group.items.forEach((item, ii) => {
           const orig = originalConfig[gi]?.items[ii]
-          if (!orig || String(item.value) !== String(orig.value)) {
-            updates.push({
-              id:          item.id,
-              feature_key: group.feature_key,
-              nilai:       String(item.value),
-            })
+          if (!orig) return
+
+          const valueChanged  = String(item.value)        !== String(orig.value)
+          const enabledChanged = item.enabled             !== orig.enabled
+          const adminChanged  = item.adminCanChange       !== orig.adminCanChange
+
+          if (!valueChanged && !enabledChanged && !adminChanged) return
+
+          const update: typeof updates[number] = {
+            id:          item.id,
+            feature_key: group.feature_key,
           }
+
+          if (valueChanged || enabledChanged) {
+            // nilai selalu dikirim jika value atau enabled berubah
+            update.nilai     = String(item.value)
+            update.is_active = item.enabled
+          }
+
+          if (adminChanged || enabledChanged) {
+            update.akses_ubah = item.adminCanChange
+              ? ['superadmin', 'admintenant']
+              : ['superadmin']
+          }
+
+          updates.push(update)
         })
       })
 
@@ -80,10 +107,14 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
       if (!json.success) {
         throw new Error(json.message ?? 'Gagal menyimpan konfigurasi')
       }
+
+      toast.success(`${updates.length} item konfigurasi berhasil disimpan`)
       setHasChanges(false)
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Terjadi kesalahan')
+      const msg = err instanceof Error ? err.message : 'Terjadi kesalahan'
+      setError(msg)
+      toast.error(msg)
     } finally {
       setSaving(false)
     }

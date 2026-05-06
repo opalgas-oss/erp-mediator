@@ -14,9 +14,11 @@ import { getRedisClient }             from '@/lib/redis'
 
 // Tipe satu item update
 interface UpdateItem {
-  id:          string  // uuid config_registry
-  feature_key: string  // fitur key grup, mis. 'security_login'
-  nilai:        string  // nilai baru (selalu string)
+  id:           string    // uuid config_registry
+  feature_key:  string    // fitur key grup, mis. 'security_login'
+  nilai?:       string    // nilai baru (string) — opsional jika hanya ubah is_active/akses_ubah
+  is_active?:   boolean   // aktif/nonaktif item
+  akses_ubah?:  string[]  // ['superadmin'] atau ['superadmin', 'admintenant']
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -41,11 +43,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const updates = payload.updates as UpdateItem[]
 
-    // Validasi setiap item
+    // Validasi setiap item — minimal harus punya id + feature_key
     for (const item of updates) {
-      if (!item.id || !item.feature_key || item.nilai === undefined) {
+      if (!item.id || !item.feature_key) {
         return NextResponse.json(
-          { success: false, message: 'Setiap item wajib punya id, feature_key, dan nilai' },
+          { success: false, message: 'Setiap item wajib punya id dan feature_key' },
+          { status: 400 }
+        )
+      }
+      if (item.nilai === undefined && item.is_active === undefined && item.akses_ubah === undefined) {
+        return NextResponse.json(
+          { success: false, message: 'Setiap item wajib mengubah minimal satu field (nilai / is_active / akses_ubah)' },
           { status: 400 }
         )
       }
