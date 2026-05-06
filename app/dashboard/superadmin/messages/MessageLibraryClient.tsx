@@ -14,6 +14,7 @@
 
 import type { JSX }    from 'react'
 import { useState, useMemo, useTransition } from 'react'
+import { useSortableTable } from '@/lib/hooks/useSortableTable'
 import { toast }       from 'sonner'
 import type { MessageItem } from '@/lib/message-library'
 import { resolveKategoriColor, resolveChannelColor } from '@/lib/constants/ui-tokens.constant'
@@ -98,6 +99,13 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
       return matchKat && matchSearch
     })
   }, [messages, search, katFilter])
+
+  // Sorting — pakai shared hook useSortableTable (reusable semua tabel)
+  const { sorted, handleSort, sortIcon, sortIconClass } = useSortableTable(
+    filtered,
+    'kategori',
+    'asc',
+  )
 
   function openEdit(item: MessageItem) {
     setEdit({ open: true, item, teks: item.teks, keterangan: item.keterangan ?? '', saving: false, error: '' })
@@ -226,11 +234,21 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
         <Table>
           <TableHeader>
             <TableRow className="bg-slate-50">
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-56`}>Key</TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-32`}>Kategori</TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-24`}>Channel</TableHead>
-              <TableHead className={TYPOGRAPHY.tableHead}>Preview Teks</TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-28`}>Diupdate</TableHead>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-56 cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('key')}>
+                Key <span className={sortIconClass('key')}>{sortIcon('key')}</span>
+              </TableHead>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-32 cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('kategori')}>
+                Kategori <span className={sortIconClass('kategori')}>{sortIcon('kategori')}</span>
+              </TableHead>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-24 cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('channel')}>
+                Channel <span className={sortIconClass('channel')}>{sortIcon('channel')}</span>
+              </TableHead>
+              <TableHead className={`${TYPOGRAPHY.tableHead} cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('teks')}>
+                Preview Teks <span className={sortIconClass('teks')}>{sortIcon('teks')}</span>
+              </TableHead>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-28 cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('updated_at')}>
+                Diupdate <span className={sortIconClass('updated_at')}>{sortIcon('updated_at')}</span>
+              </TableHead>
               <TableHead className={`${TYPOGRAPHY.tableHead} w-16 text-right`}>Aksi</TableHead>
             </TableRow>
           </TableHeader>
@@ -244,7 +262,7 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map(msg => (
+              sorted.map(msg => (
                 <TableRow key={msg.id} className="hover:bg-slate-50/50">
                   <TableCell className="py-2">
                     <span className="font-mono text-xs text-slate-700 break-all">{msg.key}</span>
