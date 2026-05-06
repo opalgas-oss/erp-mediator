@@ -59,7 +59,6 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
         id:          string
         feature_key: string
         nilai?:      string
-        is_active?:  boolean
         akses_ubah?: string[]
       }> = []
 
@@ -68,24 +67,24 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
           const orig = originalConfig[gi]?.items[ii]
           if (!orig) return
 
-          const valueChanged  = String(item.value)        !== String(orig.value)
-          const enabledChanged = item.enabled             !== orig.enabled
-          const adminChanged  = item.adminCanChange       !== orig.adminCanChange
+          const valueChanged = String(item.value) !== String(orig.value)
+          const adminChanged = item.adminCanChange !== orig.adminCanChange
 
-          if (!valueChanged && !enabledChanged && !adminChanged) return
+          // Catatan: item.enabled (toggle Aktif) TIDAK disimpan ke is_active DB.
+          // is_active di DB = apakah item TAMPIL di panel (jangan diubah via UI ini).
+          // Perubahan enabled hanya berlaku sebagai UX state (disable input fields).
+          if (!valueChanged && !adminChanged) return
 
           const update: typeof updates[number] = {
             id:          item.id,
             feature_key: group.feature_key,
           }
 
-          if (valueChanged || enabledChanged) {
-            // nilai selalu dikirim jika value atau enabled berubah
-            update.nilai     = String(item.value)
-            update.is_active = item.enabled
+          if (valueChanged) {
+            update.nilai = String(item.value)
           }
 
-          if (adminChanged || enabledChanged) {
+          if (adminChanged) {
             update.akses_ubah = item.adminCanChange
               ? ['superadmin', 'admintenant']
               : ['superadmin']
