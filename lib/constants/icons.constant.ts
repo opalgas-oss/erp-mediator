@@ -104,6 +104,8 @@ export const ICON_NAV = {
   konfigurasi:   SlidersHorizontal,
   /** Grup menu Konten */
   konten:        Layers,
+  /** Grup menu Integrasi (API Provider & Credential) */
+  integrasi:     Globe,
   /** Info GPS di footer sidebar */
   gps:           MapPin,
   /** Expand / collapse grup — panah bawah */

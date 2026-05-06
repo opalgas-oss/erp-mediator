@@ -87,6 +87,19 @@ export const SA_NAV_GROUPS: NavGroup[] = [
       },
     ],
   },
+  {
+    key:      'integrasi',
+    labelKey: 'sidebar_menu_integrasi',
+    icon:     ICON_NAV.integrasi,
+    iconSize: 15,
+    items: [
+      {
+        key:      'providers',
+        labelKey: 'nav_menu_providers',
+        path:     '/dashboard/superadmin/providers',
+      },
+    ],
+  },
 ]
 
 // ─── Set semua feature_key valid (untuk filter dari DB) ───────────────────────

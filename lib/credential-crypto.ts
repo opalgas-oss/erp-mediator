@@ -68,3 +68,69 @@ export function fingerprint(value: string): string {
   if (!value || value.length <= 4) return '****'
   return `...${value.slice(-4)}`
 }
+
+// ─── FUNGSI: enkripsiCredential ──────────────────────────────────────────────────
+// Envelope Encryption — setiap credential punya DEK unik.
+// DEK dienkripsi Master Key (KEK). Nilai dienkripsi DEK.
+// Sesuai CREDENTIAL_SYSTEM_SPEC BAB 3.2 — Sesi #107
+//
+// Return:
+//   encrypted_dek   — DEK terenkripsi Master Key (simpan di DB)
+//   encrypted_value — nilai terenkripsi DEK (simpan di DB)
+//   fingerprint     — 4 karakter terakhir nilai asli (tampil di UI)
+export function enkripsiCredential(nilai: string): {
+  encrypted_dek:   string
+  encrypted_value: string
+  fingerprint:     string
+} {
+  const masterKey = getMasterKey()
+
+  // 1. Generate DEK random (32 bytes) — unik per credential
+  const dek = randomBytes(32)
+
+  // 2. Enkripsi nilai dengan DEK
+  const ivVal     = randomBytes(IV_LENGTH)
+  const cipherVal = createCipheriv(ALGORITHM, dek, ivVal)
+  const encVal    = Buffer.concat([cipherVal.update(nilai, 'utf8'), cipherVal.final()])
+  const tagVal    = cipherVal.getAuthTag()
+  const encrypted_value = Buffer.concat([ivVal, tagVal, encVal]).toString('base64')
+
+  // 3. Enkripsi DEK dengan Master Key
+  const ivDek     = randomBytes(IV_LENGTH)
+  const cipherDek = createCipheriv(ALGORITHM, masterKey, ivDek)
+  const encDek    = Buffer.concat([cipherDek.update(dek), cipherDek.final()])
+  const tagDek    = cipherDek.getAuthTag()
+  const encrypted_dek = Buffer.concat([ivDek, tagDek, encDek]).toString('base64')
+
+  return {
+    encrypted_dek,
+    encrypted_value,
+    fingerprint: fingerprint(nilai),
+  }
+}
+
+// ─── FUNGSI: dekripsiCredential ──────────────────────────────────────────────────
+// Kebalikan enkripsiCredential — decrypt DEK dulu, lalu decrypt nilai.
+// Dipanggil dari CredentialService — TIDAK dari repository atau route.
+// Sesi #107
+export function dekripsiCredential(encrypted_dek: string, encrypted_value: string): string {
+  const masterKey = getMasterKey()
+
+  // 1. Decrypt DEK dengan Master Key
+  const bufDek    = Buffer.from(encrypted_dek, 'base64')
+  const ivDek     = bufDek.subarray(0, IV_LENGTH)
+  const tagDek    = bufDek.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH)
+  const encDek    = bufDek.subarray(IV_LENGTH + TAG_LENGTH)
+  const decDek    = createDecipheriv(ALGORITHM, masterKey, ivDek)
+  decDek.setAuthTag(tagDek)
+  const dek = Buffer.concat([decDek.update(encDek), decDek.final()])
+
+  // 2. Decrypt nilai dengan DEK
+  const bufVal    = Buffer.from(encrypted_value, 'base64')
+  const ivVal     = bufVal.subarray(0, IV_LENGTH)
+  const tagVal    = bufVal.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH)
+  const encVal    = bufVal.subarray(IV_LENGTH + TAG_LENGTH)
+  const decVal    = createDecipheriv(ALGORITHM, dek, ivVal)
+  decVal.setAuthTag(tagVal)
+  return Buffer.concat([decVal.update(encVal), decVal.final()]).toString('utf8')
+}

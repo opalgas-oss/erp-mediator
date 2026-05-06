@@ -1,24 +1,37 @@
 // lib/services/credential.service.ts
-// Service layer untuk credential management — gabung credential-reader + credential-crypto.
-// Panggil repository untuk DB, dekripsi di sini (app layer).
+// Service layer untuk credential management.
+// Enkripsi/dekripsi dilakukan di sini (bukan di repository atau route).
 // Dibuat: Sesi #052 — BLOK C-02 TODO_ARSITEKTUR_LAYER_v1
-//
-// ARSITEKTUR:
-//   Route Handler → CredentialService → CredentialRepository → SP/DB
-//   Enkripsi/dekripsi dilakukan di service (bukan repository) — security boundary.
-//   Cache via unstable_cache (15 menit) — sama seperti credential-reader.ts existing.
+// Update: Sesi #107 — M3 Credential Management (+5 fungsi UI dashboard)
 
 import 'server-only'
 import { unstable_cache } from 'next/cache'
 import {
   spGetCredential,
   getAllByProvider,
+  getProvidersWithStatus,
+  getInstancesByProvider,
+  getFieldDefinitions,
+  getCredentialFingerprints,
+  insertInstance,
+  upsertCredential,
+  spTestProviderConnection,
   type CredentialResult,
 } from '@/lib/repositories/credential.repository'
-import { enkripsi, dekripsi, fingerprint } from '@/lib/credential-crypto'
+import { enkripsiCredential, dekripsi, fingerprint } from '@/lib/credential-crypto'
+import type {
+  ServiceProvider,
+  ProviderInstance,
+  ProviderFieldDef,
+  InstanceCredential,
+  TambahInstancePayload,
+  SimpanCredentialPayload,
+  TestKoneksiResult,
+  HealthStatus,
+} from '@/lib/types/provider.types'
 
-// ─── ENV_FALLBACK — dipindahkan dari credential-reader.ts ────────────────────
-// Jika credential belum ada di DB, fallback ke env var
+// ─── ENV_FALLBACK (existing) ─────────────────────────────────────────────────
+
 const ENV_FALLBACK: Record<string, Record<string, string>> = {
   supabase: {
     project_url:      'NEXT_PUBLIC_SUPABASE_URL',
@@ -53,25 +66,18 @@ const ENV_FALLBACK: Record<string, Record<string, string>> = {
   },
 }
 
-// ─── FUNGSI: getCredential ───────────────────────────────────────────────────
-// Ambil satu credential field — dari DB (via SP + cache) atau env fallback.
-// Return plaintext (sudah didekripsi jika is_secret).
+// ─── Service (existing) ──────────────────────────────────────────────────────
+
 /**
  * Ambil satu credential field — dari DB via SP + cache 15 menit, atau env fallback.
- * Return plaintext (sudah didekripsi jika is_secret = true).
- * @param providerKode - Kode provider (misal: 'fonnte', 'xendit')
- * @param fieldKey - Nama field (misal: 'api_token', 'secret_key')
- * @returns Nilai credential sebagai string, null jika tidak ditemukan
  */
 export async function getCredential(
   providerKode: string,
   fieldKey: string
 ): Promise<string | null> {
-  // Coba dari DB dulu (dengan cache 15 menit)
   const fromDB = await getCredentialFromDB(providerKode, fieldKey)
   if (fromDB !== null) return fromDB
 
-  // Fallback ke env var
   const envKey = ENV_FALLBACK[providerKode]?.[fieldKey]
   if (envKey) {
     const envVal = process.env[envKey] ?? null
@@ -81,7 +87,6 @@ export async function getCredential(
   return null
 }
 
-// ─── PRIVATE: baca credential dari DB via SP dengan cache ────────────────────
 async function getCredentialFromDB(
   providerKode: string,
   fieldKey: string
@@ -89,35 +94,22 @@ async function getCredentialFromDB(
   try {
     const cached = unstable_cache(
       async () => {
-        const result: CredentialResult = await spGetCredential({
-          providerKode,
-          fieldKey,
-        })
+        const result: CredentialResult = await spGetCredential({ providerKode, fieldKey })
         if (result.status !== 'FOUND' || !result.encrypted_value) return null
-
-        // Dekripsi di app layer — bukan di DB
-        if (result.is_secret) {
-          return dekripsi(result.encrypted_value)
-        }
+        if (result.is_secret) return dekripsi(result.encrypted_value)
         return result.encrypted_value
       },
       [`credential:${providerKode}:${fieldKey}`],
       { revalidate: 15 * 60, tags: ['credentials', `credential:${providerKode}`] }
     )
-
     return await cached()
   } catch {
     return null
   }
 }
 
-// ─── FUNGSI: getCredentialsByProvider ─────────────────────────────────────────
-// Ambil semua credential fields untuk satu provider — dari DB + env fallback.
 /**
- * Ambil semua credential fields untuk satu provider — dari DB + env fallback.
- * Cache 15 menit per provider. Dekripsi dilakukan di service (bukan repository).
- * @param providerKode - Kode provider (misal: 'fonnte', 'supabase')
- * @returns Record field_key → nilai plaintext. Kosong jika tidak ada credential.
+ * Ambil semua credential fields untuk satu provider — cache + env fallback.
  */
 export async function getCredentialsByProvider(
   providerKode: string
@@ -125,7 +117,6 @@ export async function getCredentialsByProvider(
   const result: Record<string, string> = {}
   const envFields = ENV_FALLBACK[providerKode] ?? {}
 
-  // Coba dari DB (dengan cache)
   try {
     const cached = unstable_cache(
       async () => {
@@ -133,26 +124,18 @@ export async function getCredentialsByProvider(
         const map: Record<string, string> = {}
         for (const c of creds) {
           try {
-            map[c.field_key] = c.is_secret
-              ? dekripsi(c.encrypted_value)
-              : c.encrypted_value
-          } catch {
-            // Skip field yang gagal didekripsi
-          }
+            map[c.field_key] = c.is_secret ? dekripsi(c.encrypted_value) : c.encrypted_value
+          } catch { /* skip field gagal didekripsi */ }
         }
         return map
       },
       [`credentials:provider:${providerKode}`],
       { revalidate: 15 * 60, tags: ['credentials', `credential:${providerKode}`] }
     )
-
     const fromDB = await cached()
     Object.assign(result, fromDB)
-  } catch {
-    // DB error — fallback semua ke env
-  }
+  } catch { /* fallback ke env */ }
 
-  // Env fallback untuk field yang belum ada dari DB
   for (const [fieldKey, envKey] of Object.entries(envFields)) {
     if (!result[fieldKey]) {
       const val = process.env[envKey]
@@ -163,6 +146,142 @@ export async function getCredentialsByProvider(
   return result
 }
 
-// ─── Re-export enkripsi/dekripsi/fingerprint ─────────────────────────────────
-// Supaya caller cukup import dari CredentialService saja
-export { enkripsi, dekripsi, fingerprint }
+// ─── Service (M3 — UI Dashboard) — Sesi #107 ─────────────────────────────────
+
+/**
+ * List semua provider aktif beserta health_overall.
+ * Dipakai di panel kiri halaman /providers.
+ */
+export async function listProviders(): Promise<ServiceProvider[]> {
+  return getProvidersWithStatus()
+}
+
+/**
+ * List semua instance untuk satu provider.
+ * Dipakai di panel kanan halaman /providers saat provider dipilih.
+ */
+export async function listInstances(providerId: string): Promise<ProviderInstance[]> {
+  return getInstancesByProvider(providerId)
+}
+
+/**
+ * Ambil field definitions untuk satu provider.
+ * Dipakai untuk render form dialog Isi Credential secara dinamis.
+ */
+export async function listFieldDefs(providerId: string): Promise<ProviderFieldDef[]> {
+  return getFieldDefinitions(providerId)
+}
+
+/**
+ * Ambil fingerprint credential per instance — untuk tampil di UI.
+ * Nilai asli TIDAK di-expose — hanya 4 karakter terakhir.
+ */
+export async function listCredentialFingerprints(instanceId: string): Promise<InstanceCredential[]> {
+  return getCredentialFingerprints(instanceId)
+}
+
+/**
+ * Tambah instance baru untuk satu provider.
+ */
+export async function tambahInstance(
+  payload: TambahInstancePayload,
+  userId: string
+): Promise<ProviderInstance> {
+  return insertInstance({
+    provider_id: payload.provider_id,
+    nama_server: payload.nama_server,
+    deskripsi:   payload.deskripsi,
+    is_default:  payload.is_default,
+    created_by:  userId,
+  })
+}
+
+/**
+ * Enkripsi dan simpan credential fields untuk satu instance.
+ * Envelope encryption: setiap field punya DEK unik, DEK dienkripsi Master Key.
+ * Enkripsi dilakukan di sini (service layer) — TIDAK di repository atau route.
+ */
+export async function simpanCredential(
+  payload: SimpanCredentialPayload,
+  userId: string
+): Promise<void> {
+  for (const field of payload.fields) {
+    if (!field.nilai || field.nilai.trim() === '') continue
+
+    const { encrypted_dek, encrypted_value, fingerprint: fp } =
+      enkripsiCredential(field.nilai)
+
+    await upsertCredential({
+      instance_id:     payload.instance_id,
+      field_def_id:    field.field_def_id,
+      encrypted_dek,
+      encrypted_value,
+      fingerprint:     fp,
+      updated_by:      userId,
+    })
+  }
+}
+
+/**
+ * Test koneksi ke provider eksternal.
+ * HTTP ping dilakukan di sini (service layer).
+ * Hasil disimpan ke DB via sp_test_provider_connection.
+ *
+ * Saat ini: simulasi ping via fetch ke status_url provider.
+ * Nanti: bisa diganti dengan ping spesifik per provider (Xendit, Fonnte, dll).
+ */
+export async function testKoneksi(
+  instanceId: string,
+  statusUrl: string | null
+): Promise<TestKoneksiResult> {
+  const start = Date.now()
+
+  try {
+    if (!statusUrl) {
+      // Tidak ada status URL — tandai belum dites, bukan gagal
+      await spTestProviderConnection({
+        instanceId,
+        healthStatus: 'belum_dites',
+      })
+      return { berhasil: false, health_status: 'belum_dites', pesan: 'URL status tidak tersedia', latency_ms: null }
+    }
+
+    const controller = new AbortController()
+    const timeout    = setTimeout(() => controller.abort(), 8000) // 8 detik timeout
+
+    const res = await fetch(statusUrl, {
+      method: 'GET',
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout))
+
+    const latency_ms   = Date.now() - start
+    const healthStatus: HealthStatus = res.ok ? 'sehat' : 'peringatan'
+
+    await spTestProviderConnection({
+      instanceId,
+      healthStatus,
+      errorMessage: res.ok ? undefined : `HTTP ${res.status}`,
+    })
+
+    return {
+      berhasil:      res.ok,
+      health_status: healthStatus,
+      pesan:         res.ok ? null : `HTTP ${res.status} ${res.statusText}`,
+      latency_ms,
+    }
+  } catch (err) {
+    const latency_ms = Date.now() - start
+    const pesan      = err instanceof Error ? err.message : 'Koneksi gagal'
+
+    await spTestProviderConnection({
+      instanceId,
+      healthStatus: 'gagal',
+      errorMessage: pesan,
+    })
+
+    return { berhasil: false, health_status: 'gagal', pesan, latency_ms }
+  }
+}
+
+// ─── Re-export untuk caller yang butuh fungsi crypto ─────────────────────────
+export { enkripsiCredential, dekripsi, fingerprint }

@@ -32,6 +32,9 @@ const PAGE_META: Record<string, PageMeta> = {
   // ── Konten ──
   '/dashboard/superadmin/messages':                   { titleKey: 'page_title_messages',           descKey: 'page_desc_messages'          },
 
+  // ── Integrasi ──
+  '/dashboard/superadmin/providers':                  { titleKey: 'page_title_providers',          descKey: 'page_desc_providers'         },
+
   // ── Default ──
   '/dashboard/superadmin':                            { titleKey: 'page_title_dashboard',          descKey: ''                            },
 }

@@ -16,12 +16,12 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { usePathname }                 from 'next/navigation'
-import { LogOut, ChevronDown, Menu }   from 'lucide-react'
 import { createBrowserSupabaseClient } from '@/lib/supabase-client'
 import { logoutAction }                from '@/app/auth/logout-action'
 import { getCookie }                   from '@/lib/utils-client'
 import { resolvePageMeta }             from '@/lib/constants/page-meta.constant'
 import { TYPOGRAPHY }                  from '@/lib/constants/ui-tokens.constant'
+import { ICON_ACTION, ICON_NAV }       from '@/lib/constants/icons.constant'
 
 interface UserInfo { nama: string; email: string; role: string }
 
@@ -92,7 +92,7 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
         <button onClick={onMenuClick}
           className="md:hidden p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500 shrink-0"
           aria-label="Buka menu">
-          <Menu size={20} />
+          <ICON_NAV.hamburger size={20} />
         </button>
       )}
 
@@ -122,7 +122,7 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
             <p className="text-sm font-medium text-slate-800 leading-tight max-w-[140px] truncate">{namaDisplay}</p>
             {roleDisplay && <p className="text-xs text-slate-400 leading-tight">{roleDisplay}</p>}
           </div>
-          <ChevronDown size={14}
+          <ICON_NAV.chevronDown size={14}
             className="text-slate-400 transition-transform duration-200 shrink-0"
             style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
         </button>
@@ -148,7 +148,7 @@ export function DashboardHeader({ messages = {}, onMenuClick }: DashboardHeaderP
             <div className="p-1.5">
               <button onClick={handleLogout} disabled={loading}
                 className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50">
-                <LogOut size={15} className="shrink-0" />
+                <ICON_ACTION.logout size={15} className="shrink-0" />
                 <span>{loading
                   ? (messages['header_logout_loading'] || 'Keluar...')
                   : (messages['header_logout_label']   || 'Logout')}</span>

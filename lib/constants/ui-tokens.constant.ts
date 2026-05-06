@@ -125,3 +125,37 @@ export function resolveKategoriColor(kategori: string): string {
 export function resolveChannelColor(channel: string): string {
   return BADGE_CHANNEL[channel.toLowerCase()] ?? BADGE_CHANNEL._default
 }
+
+// ─── Badge Health Status Provider ──────────────────────────────────────────────────
+// Dibuat: Sesi #107 — M3 Credential Management
+
+/** Warna badge berdasarkan health_status provider_instances */
+export const BADGE_HEALTH: Record<string, string> = {
+  sehat:       'bg-green-100 text-green-700 border-green-200',
+  peringatan:  'bg-yellow-100 text-yellow-700 border-yellow-200',
+  gagal:       'bg-red-100 text-red-700 border-red-200',
+  belum_dites: 'bg-slate-100 text-slate-500 border-slate-200',
+  _default:    'bg-slate-100 text-slate-500 border-slate-200',
+}
+
+/** Label tampil untuk health_status */
+export const HEALTH_LABEL: Record<string, string> = {
+  sehat:       'Sehat',
+  peringatan:  'Peringatan',
+  gagal:       'Gagal',
+  belum_dites: 'Belum Dites',
+}
+
+/**
+ * Resolve warna badge health status.
+ */
+export function resolveHealthColor(status: string): string {
+  return BADGE_HEALTH[status] ?? BADGE_HEALTH._default
+}
+
+/**
+ * Resolve label health status.
+ */
+export function resolveHealthLabel(status: string): string {
+  return HEALTH_LABEL[status] ?? status
+}
