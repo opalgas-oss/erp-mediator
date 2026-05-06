@@ -57,6 +57,7 @@ export function SidebarNav({ brandName, messages, featureKeys }: SidebarNavProps
   function isGroupActive(groupKey: string, path: string): boolean {
     if (groupKey === 'konfigurasi') return path.includes('/settings')
     if (groupKey === 'konten')      return path.includes('/messages')
+    if (groupKey === 'integrasi')   return path.includes('/providers')
     return false
   }
 
