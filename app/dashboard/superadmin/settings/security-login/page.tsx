@@ -1,15 +1,13 @@
 // app/dashboard/superadmin/settings/security-login/page.tsx
 // Halaman konfigurasi Security Login — SuperAdmin Dashboard.
-// Membaca 24 config items dari config_registry (feature_key='security_login').
-// Mendukung tipe: toggle, timing, select-only, json-per-role.
 //
-// PERUBAHAN Sesi #097 — PL-S08 M1:
-//   - Update mapTipe(): tambah deteksi 'timing' (suffix _seconds/_minutes/_hours/_days)
-//     dan 'json-per-role' (tipe_data='json')
-//   - Tambah JSON_FIELD_CONFIG: mapping policy_key → valueType + options untuk json-per-role
-//   - Fix: feature_key di groupMap sekarang diisi dari item.feature_key ('security_login'),
-//     bukan dari kategori — agar PATCH request menuju /api/config/security_login
-//   - Tambah field fieldName, valueType, perRoleOptions ke setiap item
+// PERUBAHAN Sesi #097 — PL-S08 M1: mapTipe + JSON_FIELD_CONFIG + groupMap feature_key fix
+// PERUBAHAN Sesi #109 — Refactor tenant_can_override: adminCanChange map ke tenant_can_override
+// PERUBAHAN Sesi #110 — Fix is_active query:
+//   - HAPUS .eq('is_active', true) dari query SuperAdmin Dashboard
+//   - SuperAdmin WAJIB bisa lihat SEMUA item (aktif maupun tidak aktif)
+//   - Filter is_active hanya dipakai saat sistem MENGEKSEKUSI feature, BUKAN di UI management
+//   - Tanpa fix ini: SuperAdmin tidak bisa menyalakan kembali item yang is_active=false
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +16,6 @@ import { ConfigPageClient }           from './ConfigPageClient'
 import type { ConfigItemData }        from '@/components/ConfigItem'
 
 // ─── Konfigurasi tipe per field JSON per-role ─────────────────────────────────
-// Mapping policy_key → cara render setiap role di PerRoleJsonEditor
 
 type JsonFieldConfig = {
   valueType: 'boolean' | 'number' | 'select'
@@ -57,7 +54,6 @@ function mapTipe(tipeData: string, policyKey: string): ConfigItemType {
 function mapValue(nilai: string, tipeData: string): number | boolean | string {
   if (tipeData === 'boolean') return nilai === 'true'
   if (tipeData === 'number')  return Number(nilai)
-  // json dan string: kembalikan as-is (tetap string — PerRoleJsonEditor akan parse)
   return nilai
 }
 
@@ -66,16 +62,19 @@ function mapValue(nilai: string, tipeData: string): number | boolean | string {
 export default async function LoginSettingsPage() {
   const db = createServerSupabaseClient()
 
+  // S#110 FIX: Tidak ada filter is_active di sini.
+  // SuperAdmin harus lihat SEMUA item agar bisa ON/OFF feature dari dashboard.
+  // is_active dibaca dan diteruskan ke UI sebagai prop `enabled` di setiap ConfigItemData.
+  // Filter is_active hanya dipakai saat sistem mengeksekusi feature di runtime
+  // (bukan di halaman management ini).
   const { data } = await db
     .from('config_registry')
     .select('*')
     .eq('feature_key', 'security_login')
     .is('tenant_id', null)
-    .eq('is_active', true)
     .order('label', { ascending: true })
 
   // Kelompokkan per kategori → format ConfigGroup[]
-  // feature_key di group = 'security_login' (bukan nama kategori) agar PATCH benar
   const groupMap = new Map<string, {
     title:       string
     feature_key: string
@@ -83,13 +82,12 @@ export default async function LoginSettingsPage() {
   }>()
 
   for (const row of data ?? []) {
-    const kat       = row.kategori    as string
-    const policyKey = (row.policy_key as string | null) ?? (row.feature_key as string)
-    const tipeData  = row.tipe_data   as string
+    const kat        = row.kategori    as string
+    const policyKey  = (row.policy_key as string | null) ?? (row.feature_key as string)
+    const tipeData   = row.tipe_data   as string
     const featureKey = row.feature_key as string
 
     if (!groupMap.has(kat)) {
-      // PENTING: feature_key diisi 'security_login', bukan nama kategori
       groupMap.set(kat, { title: kat, feature_key: featureKey, items: [] })
     }
 
@@ -106,7 +104,9 @@ export default async function LoginSettingsPage() {
       perRoleOptions:  jsonCfg?.options,
       option_group_id: null,
       adminCanChange:  (row.tenant_can_override as boolean) ?? false,
-      enabled:         row.is_active as boolean,
+      enabled:         (row.is_active as boolean) ?? true,
+      // enabled = is_active DB: apakah feature ini ON/OFF.
+      // SuperAdmin bisa toggle ini dari UI, dan perubahan DISIMPAN ke DB.
     }
 
     groupMap.get(kat)!.items.push(item)

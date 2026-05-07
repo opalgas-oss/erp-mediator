@@ -2,24 +2,16 @@
 
 // app/dashboard/superadmin/settings/security-login/ConfigPageClient.tsx
 // Client component untuk halaman konfigurasi SuperAdmin.
-// Menampilkan daftar config items dalam kartu per kategori.
-// Mengelola state perubahan, save, dan reset.
 //
-// PERUBAHAN Sesi #097 — PL-S08 M1:
-//   - Ganti local interface ConfigItemData dengan import dari @/components/ConfigItem
-//
-// PERUBAHAN Sesi #100 — Sentralisasi UI:
-//   - Hapus overflow-y-auto overflow-x-auto dari wrapper grid dan CardContent
-//   - Scroll didelegasi ke DashboardShell (<main> dengan SCROLL_CLS.main)
-//   - Pakai TYPOGRAPHY.cardTitle dari ui-tokens.constant untuk CardTitle
-//
-// PERUBAHAN Sesi #109 — Refactor tenant_can_override:
-//   - adminCanChange di UI → map ke tenant_can_override (bukan akses_ubah)
-//   - Sinkron originalConfig setelah save sukses (fix button disabled bug)
-//
-// PERUBAHAN Sesi #110 — UX spinner + optimasi deteksi perubahan:
-//   - Tambah ICON_STATUS.loading (Loader2) berputar di button saat saving
-//   - Ganti JSON.stringify full-compare → field-level diff (lebih ringan, button aktif instan)
+// PERUBAHAN Sesi #097 — PL-S08 M1: import ConfigItemData dari @/components/ConfigItem
+// PERUBAHAN Sesi #100 — Sentralisasi UI: TYPOGRAPHY, scroll DashboardShell
+// PERUBAHAN Sesi #109 — Refactor tenant_can_override: adminCanChange → tenant_can_override
+// PERUBAHAN Sesi #110a — UX spinner + optimasi: Loader2 + field-level detectHasChanges
+// PERUBAHAN Sesi #110b — Fix is_active:
+//   - detectHasChanges: tambah cek item.enabled !== orig.enabled
+//   - handleSave: tambah is_active ke payload saat enabled berubah
+//   - Hapus komentar salah "TIDAK disimpan ke is_active DB" — itu definisi lama yang keliru
+//   - Konsisten dengan KONSEP_BISNIS_PLATFORM.md: is_active = feature ON/OFF, wajib disimpan
 
 import { useState }     from 'react'
 import { toast }        from 'sonner'
@@ -37,8 +29,11 @@ interface ConfigGroup {
 }
 
 // ─── Helper: deteksi apakah ada item yang berbeda dari originalConfig ──────────
-// Lebih ringan dari JSON.stringify full-compare — hanya cek field yang relevan.
-// Konsisten dengan logika handleSave agar tidak ada false-positive.
+// Cek tiga field yang bisa diubah SuperAdmin:
+//   1. value       — nilai config (timing, number, string, json, boolean)
+//   2. enabled     — is_active: feature ON/OFF
+//   3. adminCanChange — tenant_can_override: izin AdminTenant override
+// Konsisten dengan logika handleSave agar tidak ada false-positive / false-negative.
 
 function detectHasChanges(
   current:  ConfigGroup[],
@@ -49,21 +44,22 @@ function detectHasChanges(
       const orig = original[gi]?.items[ii]
       if (!orig) return false
       return (
-        String(item.value)       !== String(orig.value) ||
-        item.adminCanChange      !== orig.adminCanChange
+        String(item.value)  !== String(orig.value)  ||
+        item.enabled        !== orig.enabled         ||
+        item.adminCanChange !== orig.adminCanChange
       )
     })
   )
 }
 
 export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }) {
-  const [config, setConfig]             = useState<ConfigGroup[]>(initialData)
+  const [config, setConfig]                 = useState<ConfigGroup[]>(initialData)
   const [originalConfig, setOriginalConfig] = useState<ConfigGroup[]>(
     JSON.parse(JSON.stringify(initialData))
   )
-  const [saving, setSaving]             = useState(false)
-  const [error, setError]               = useState<string | null>(null)
-  const [hasChanges, setHasChanges]     = useState(false)
+  const [saving, setSaving]     = useState(false)
+  const [error, setError]       = useState<string | null>(null)
+  const [hasChanges, setHasChanges] = useState(false)
 
   const LoadingIcon = ICON_STATUS.loading
 
@@ -75,7 +71,6 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
     const next = JSON.parse(JSON.stringify(config)) as ConfigGroup[]
     next[groupIndex].items[itemIndex] = { ...next[groupIndex].items[itemIndex], ...updates }
     setConfig(next)
-    // Deteksi perubahan via field-level diff — lebih ringan, tidak perlu full JSON.stringify
     setHasChanges(detectHasChanges(next, originalConfig))
   }
 
@@ -93,6 +88,7 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
         id:                   string
         feature_key:          string
         nilai?:               string
+        is_active?:           boolean
         tenant_can_override?: boolean
       }> = []
 
@@ -101,12 +97,11 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
           const orig = originalConfig[gi]?.items[ii]
           if (!orig) return
 
-          const valueChanged = String(item.value) !== String(orig.value)
-          const adminChanged = item.adminCanChange !== orig.adminCanChange
+          const valueChanged   = String(item.value) !== String(orig.value)
+          const enabledChanged = item.enabled        !== orig.enabled
+          const adminChanged   = item.adminCanChange !== orig.adminCanChange
 
-          // Catatan: item.enabled (toggle Aktif) TIDAK disimpan ke is_active DB.
-          // is_active di DB = apakah item TAMPIL di panel (jangan diubah via UI ini).
-          if (!valueChanged && !adminChanged) return
+          if (!valueChanged && !enabledChanged && !adminChanged) return
 
           const update: typeof updates[number] = {
             id:          item.id,
@@ -117,9 +112,17 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
             update.nilai = String(item.value)
           }
 
+          if (enabledChanged) {
+            // enabled di UI = is_active di DB
+            // is_active = apakah feature ini ON/OFF di scope tenant ini
+            // TRUE  → feature aktif, sistem menggunakannya
+            // FALSE → feature non-aktif, sistem mengabaikannya
+            update.is_active = item.enabled
+          }
+
           if (adminChanged) {
-            // adminCanChange di UI → map ke kolom tenant_can_override (BUKAN akses_ubah).
-            // Lihat KONSEP_BISNIS_PLATFORM.md untuk penjelasan lengkap.
+            // adminCanChange di UI → tenant_can_override di DB (BUKAN akses_ubah)
+            // Lihat KONSEP_BISNIS_PLATFORM.md section "KONSEP CONFIG OVERRIDE"
             update.tenant_can_override = item.adminCanChange
           }
 
@@ -142,9 +145,7 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
 
       toast.success(`${updates.length} item konfigurasi berhasil disimpan`)
 
-      // Sinkron baseline ke state sekarang setelah save sukses.
-      // Tanpa ini, perubahan berikutnya tidak terdeteksi (button tetap disabled
-      // sampai user refresh halaman). Bug ditemukan & diperbaiki S#109.
+      // Sinkron baseline setelah save sukses — fix button disabled bug S#109
       setOriginalConfig(JSON.parse(JSON.stringify(config)))
       setHasChanges(false)
 
@@ -160,7 +161,6 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
   return (
     <div className="flex flex-col min-h-full">
 
-      {/* Grid kartu — scroll dihandle DashboardShell, tidak perlu overflow di sini */}
       <div className="flex-1 px-8 pt-4 pb-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {config.map((group, groupIndex) => (

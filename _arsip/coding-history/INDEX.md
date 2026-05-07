@@ -4,7 +4,7 @@
 
 **Tujuan:** Memungkinkan perbandingan "sebelum vs sesudah" refactor, dan rollback manual kalau ternyata refactor menyebabkan regresi.
 
-**Aturan yang melahirkan folder ini:** CODING_RULES_AI_v1.md — **ATURAN 12: Arsip Coding Sebelum Refactor**
+**Aturan yang melahirkan folder ini:** CODING_RULES_AI — **ATURAN 12: Arsip Coding Sebelum Refactor**
 
 ---
 
@@ -16,31 +16,15 @@ _arsip/
     ├── INDEX.md                     ← file ini
     └── sesi-NNN-<label>/             ← snapshot per sesi refactor
         └── <mirror dari struktur project>
-            └── path/ke/file.ts
 ```
-
-**Konvensi nama folder snapshot:**
-- `sesi-057-baseline` — snapshot awal sebelum refactor dimulai (untuk jadi referensi)
-- `sesi-058-langkah-1` — snapshot sebelum LANGKAH 1 refactor (Next.js after())
-- `sesi-NNN-<label-singkat>` — gunakan label deskriptif
 
 ---
 
 ## CARA PAKAI
 
-### Untuk Membandingkan Sebelum vs Sesudah Refactor
-
-1. Buka file lama di folder `_arsip/coding-history/sesi-NNN-.../path/ke/file.ts`
-2. Buka file sekarang di `path/ke/file.ts` (lokasi aslinya)
-3. Pakai diff tool (VS Code: right-click → Compare with Selected) untuk lihat perbedaan
-
-### Untuk Rollback Manual (Restore)
-
-⚠️ **Jangan asal overwrite.** Pertimbangkan dulu:
-- Apakah arsip masih kompatibel dengan state project sekarang (dependency, schema DB, dll)?
-- Apakah ada perubahan lain setelah arsip dibuat yang ikut kehilangan?
-
-Kalau yakin mau rollback, copy file arsip ke lokasi aslinya, lalu `npm run build` untuk verifikasi.
+- Buka file lama di `_arsip/coding-history/sesi-NNN-.../path/ke/file.ts`
+- Buka file sekarang di lokasi aslinya
+- Pakai VS Code diff (right-click → Compare with Selected)
 
 ---
 
@@ -48,7 +32,7 @@ Kalau yakin mau rollback, copy file arsip ke lokasi aslinya, lalu `npm run build
 
 | Tanggal | Sesi | Perubahan |
 |---|---|---|
-| 26 Apr 2026 | #057 | File dibuat. Snapshot `sesi-057-baseline` ditambahkan (4 file login flow). |
+| 26 Apr 2026 | #057 | Snapshot `sesi-057-baseline` ditambahkan (4 file login flow). |
 | 27 Apr 2026 | #058 | Snapshot `sesi-058-langkah-1` + `sesi-058-langkah-2` ditambahkan. |
 | 25 Apr 2026 | #062 | Snapshot `sesi-062-hapus-biometric-login` + `sesi-062-vendor-ui-layout` ditambahkan. |
 | 27 Apr 2026 | #064 | Snapshot `sesi-064-fix-double-getuser` + `sesi-064-layout-perf` ditambahkan. |
@@ -71,5 +55,6 @@ Kalau yakin mau rollback, copy file arsip ke lokasi aslinya, lalu `npm run build
 | 5 Mei 2026  | #101 | Snapshot `sesi-101-dry-fix` ditambahkan. |
 | 5 Mei 2026  | #105 | Snapshot `sesi-105-fix-bug-msg-channel` ditambahkan. |
 | 5 Mei 2026  | #106 | Snapshot `sesi-106-fix-bug-dialog-tambah` ditambahkan. |
-| **7 Mei 2026** | **#109** | **Snapshot `sesi-109-tenant-can-override` ditambahkan (3 file: `app/api/config/bulk/route.ts` + `security-login/page.tsx` + `ConfigPageClient.tsx` — sebelum refactor akses_ubah → tenant_can_override di UI flow SuperAdmin).** |
-| **7 Mei 2026** | **#110** | **Snapshot `sesi-110-spinner-optimasi-config` ditambahkan (`ConfigPageClient.tsx` sebelum: tambah spinner Loader2 di button Simpan saat saving + ganti JSON.stringify full-compare → field-level diff di detectHasChanges()).** |
+| **7 Mei 2026** | **#109** | **Snapshot `sesi-109-tenant-can-override` ditambahkan (3 file: `route.ts` + `page.tsx` + `ConfigPageClient.tsx` — sebelum refactor akses_ubah → tenant_can_override).** |
+| **7 Mei 2026** | **#110** | **Snapshot `sesi-110-spinner-optimasi-config` ditambahkan (`ConfigPageClient.tsx` sebelum: Loader2 spinner + field-level detectHasChanges).** |
+| **7 Mei 2026** | **#110** | **Snapshot `sesi-110-fix-isactive` ditambahkan (2 file: `page.tsx` + `ConfigPageClient.tsx` — sebelum: hapus `.eq('is_active', true)` dari query + tambah `enabled` ke detectHasChanges + `is_active` ke handleSave payload).** |
