@@ -28,11 +28,11 @@ interface ConfigGroup {
 }
 
 export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }) {
-  const [config, setConfig]         = useState<ConfigGroup[]>(initialData)
-  const [originalConfig]            = useState<ConfigGroup[]>(JSON.parse(JSON.stringify(initialData)))
-  const [saving, setSaving]         = useState(false)
-  const [error, setError]           = useState<string | null>(null)
-  const [hasChanges, setHasChanges] = useState(false)
+  const [config, setConfig]                       = useState<ConfigGroup[]>(initialData)
+  const [originalConfig, setOriginalConfig]       = useState<ConfigGroup[]>(JSON.parse(JSON.stringify(initialData)))
+  const [saving, setSaving]                       = useState(false)
+  const [error, setError]                         = useState<string | null>(null)
+  const [hasChanges, setHasChanges]               = useState(false)
 
   const handleItemChange = (
     groupIndex: number,
@@ -72,7 +72,6 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
 
           // Catatan: item.enabled (toggle Aktif) TIDAK disimpan ke is_active DB.
           // is_active di DB = apakah item TAMPIL di panel (jangan diubah via UI ini).
-          // Perubahan enabled hanya berlaku sebagai UX state (disable input fields).
           if (!valueChanged && !adminChanged) return
 
           const update: typeof updates[number] = {
@@ -94,6 +93,8 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
         })
       })
 
+      // DEBUG SEMENTARA dihapus — bug ditemukan: originalConfig stale setelah save
+
       if (updates.length === 0) { setHasChanges(false); return }
 
       const res  = await fetch('/api/config/bulk', {
@@ -108,6 +109,11 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
       }
 
       toast.success(`${updates.length} item konfigurasi berhasil disimpan`)
+
+      // Sinkron baseline ke state sekarang setelah save sukses.
+      // Tanpa ini, perubahan berikutnya tidak terdeteksi (button tetap disabled
+      // sampai user refresh halaman). Bug ditemukan & diperbaiki S#109.
+      setOriginalConfig(JSON.parse(JSON.stringify(config)))
       setHasChanges(false)
 
     } catch (err) {
