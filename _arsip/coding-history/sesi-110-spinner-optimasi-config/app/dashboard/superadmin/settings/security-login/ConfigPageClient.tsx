@@ -1,34 +1,16 @@
 'use client'
 
 // app/dashboard/superadmin/settings/security-login/ConfigPageClient.tsx
-// Client component untuk halaman konfigurasi SuperAdmin.
-// Menampilkan daftar config items dalam kartu per kategori.
-// Mengelola state perubahan, save, dan reset.
-//
-// PERUBAHAN Sesi #097 — PL-S08 M1:
-//   - Ganti local interface ConfigItemData dengan import dari @/components/ConfigItem
-//
-// PERUBAHAN Sesi #100 — Sentralisasi UI:
-//   - Hapus overflow-y-auto overflow-x-auto dari wrapper grid dan CardContent
-//   - Scroll didelegasi ke DashboardShell (<main> dengan SCROLL_CLS.main)
-//   - Pakai TYPOGRAPHY.cardTitle dari ui-tokens.constant untuk CardTitle
-//
-// PERUBAHAN Sesi #109 — Refactor tenant_can_override:
-//   - adminCanChange di UI → map ke tenant_can_override (bukan akses_ubah)
-//   - Sinkron originalConfig setelah save sukses (fix button disabled bug)
-//
-// PERUBAHAN Sesi #110 — UX spinner + optimasi deteksi perubahan:
-//   - Tambah ICON_STATUS.loading (Loader2) berputar di button saat saving
-//   - Ganti JSON.stringify full-compare → field-level diff (lebih ringan, button aktif instan)
+// ARSIP S#110 — sebelum: tambah spinner Loader2 di button + optimasi deteksi perubahan
+// (ganti JSON.stringify full-compare → field-level diff yang lebih ringan)
 
-import { useState }     from 'react'
-import { toast }        from 'sonner'
-import { Button }       from '@/components/ui/button'
+import { useState }   from 'react'
+import { toast }      from 'sonner'
+import { Button }     from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge }        from '@/components/ui/badge'
+import { Badge }      from '@/components/ui/badge'
 import { ConfigItem, type ConfigItemData } from '@/components/ConfigItem'
-import { TYPOGRAPHY }   from '@/lib/constants/ui-tokens.constant'
-import { ICON_STATUS }  from '@/lib/constants/icons.constant'
+import { TYPOGRAPHY } from '@/lib/constants/ui-tokens.constant'
 
 interface ConfigGroup {
   title:       string
@@ -36,36 +18,12 @@ interface ConfigGroup {
   items:       ConfigItemData[]
 }
 
-// ─── Helper: deteksi apakah ada item yang berbeda dari originalConfig ──────────
-// Lebih ringan dari JSON.stringify full-compare — hanya cek field yang relevan.
-// Konsisten dengan logika handleSave agar tidak ada false-positive.
-
-function detectHasChanges(
-  current:  ConfigGroup[],
-  original: ConfigGroup[],
-): boolean {
-  return current.some((group, gi) =>
-    group.items.some((item, ii) => {
-      const orig = original[gi]?.items[ii]
-      if (!orig) return false
-      return (
-        String(item.value)       !== String(orig.value) ||
-        item.adminCanChange      !== orig.adminCanChange
-      )
-    })
-  )
-}
-
 export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }) {
-  const [config, setConfig]             = useState<ConfigGroup[]>(initialData)
-  const [originalConfig, setOriginalConfig] = useState<ConfigGroup[]>(
-    JSON.parse(JSON.stringify(initialData))
-  )
-  const [saving, setSaving]             = useState(false)
-  const [error, setError]               = useState<string | null>(null)
-  const [hasChanges, setHasChanges]     = useState(false)
-
-  const LoadingIcon = ICON_STATUS.loading
+  const [config, setConfig]                       = useState<ConfigGroup[]>(initialData)
+  const [originalConfig, setOriginalConfig]       = useState<ConfigGroup[]>(JSON.parse(JSON.stringify(initialData)))
+  const [saving, setSaving]                       = useState(false)
+  const [error, setError]                         = useState<string | null>(null)
+  const [hasChanges, setHasChanges]               = useState(false)
 
   const handleItemChange = (
     groupIndex: number,
@@ -75,8 +33,7 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
     const next = JSON.parse(JSON.stringify(config)) as ConfigGroup[]
     next[groupIndex].items[itemIndex] = { ...next[groupIndex].items[itemIndex], ...updates }
     setConfig(next)
-    // Deteksi perubahan via field-level diff — lebih ringan, tidak perlu full JSON.stringify
-    setHasChanges(detectHasChanges(next, originalConfig))
+    setHasChanges(JSON.stringify(next) !== JSON.stringify(originalConfig))
   }
 
   const handleReset = (): void => {
@@ -104,8 +61,6 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
           const valueChanged = String(item.value) !== String(orig.value)
           const adminChanged = item.adminCanChange !== orig.adminCanChange
 
-          // Catatan: item.enabled (toggle Aktif) TIDAK disimpan ke is_active DB.
-          // is_active di DB = apakah item TAMPIL di panel (jangan diubah via UI ini).
           if (!valueChanged && !adminChanged) return
 
           const update: typeof updates[number] = {
@@ -118,8 +73,6 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
           }
 
           if (adminChanged) {
-            // adminCanChange di UI → map ke kolom tenant_can_override (BUKAN akses_ubah).
-            // Lihat KONSEP_BISNIS_PLATFORM.md untuk penjelasan lengkap.
             update.tenant_can_override = item.adminCanChange
           }
 
@@ -141,10 +94,6 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
       }
 
       toast.success(`${updates.length} item konfigurasi berhasil disimpan`)
-
-      // Sinkron baseline ke state sekarang setelah save sukses.
-      // Tanpa ini, perubahan berikutnya tidak terdeteksi (button tetap disabled
-      // sampai user refresh halaman). Bug ditemukan & diperbaiki S#109.
       setOriginalConfig(JSON.parse(JSON.stringify(config)))
       setHasChanges(false)
 
@@ -159,8 +108,6 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
 
   return (
     <div className="flex flex-col min-h-full">
-
-      {/* Grid kartu — scroll dihandle DashboardShell, tidak perlu overflow di sini */}
       <div className="flex-1 px-8 pt-4 pb-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {config.map((group, groupIndex) => (
@@ -213,7 +160,6 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
         )}
       </div>
 
-      {/* Footer tombol aksi — sticky di bawah */}
       <div className="sticky bottom-0 flex items-center justify-end gap-2 px-8 py-3 border-t border-slate-200 bg-slate-50/80 backdrop-blur-sm">
         <Button
           variant="outline"
@@ -226,16 +172,9 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
         <Button
           onClick={handleSave}
           disabled={!hasChanges || saving}
-          className="text-xs bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 flex items-center gap-1.5"
+          className="text-xs bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
         >
-          {saving ? (
-            <>
-              <LoadingIcon size={13} className="animate-spin" />
-              Menyimpan...
-            </>
-          ) : (
-            'Simpan Perubahan'
-          )}
+          {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
         </Button>
       </div>
     </div>
