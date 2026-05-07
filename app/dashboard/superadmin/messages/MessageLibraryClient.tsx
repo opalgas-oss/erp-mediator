@@ -1,16 +1,11 @@
 'use client'
 
 // app/dashboard/superadmin/messages/MessageLibraryClient.tsx
-// Komponen client Message Library — tabel + search + filter + dialog edit/tambah.
-// Data di-load sekali dari server, semua filter dikerjakan client-side.
+// Komponen client Message Library — tabel + search + filter + dialog edit/tambah/hapus.
 //
 // Dibuat: Sesi #098 — PL-S08 M2 Message Library
-//
-// PERUBAHAN Sesi #100 — Sentralisasi UI:
-//   - Hapus Page Header inline (<h1>Message Library</h1>) — judul tampil di DashboardHeader
-//   - Hapus fungsi kategoriColor() inline → pakai resolveKategoriColor dari ui-tokens.constant
-//   - Pakai TYPOGRAPHY.tableHead + TYPOGRAPHY.tableCell dari ui-tokens.constant
-//   - Scroll dihandle DashboardShell — tidak ada overflow di sini
+// Sesi #100 — Sentralisasi UI: TYPOGRAPHY, resolveKategoriColor, resolveChannelColor
+// Sesi #110 — Tambah fitur Delete: tombol Hapus + dialog konfirmasi + handleDelete
 
 import type { JSX }    from 'react'
 import { useState, useMemo, useTransition } from 'react'
@@ -19,7 +14,8 @@ import { toast }       from 'sonner'
 import type { MessageItem } from '@/lib/message-library'
 import { resolveKategoriColor, resolveChannelColor } from '@/lib/constants/ui-tokens.constant'
 import { TYPOGRAPHY }                                 from '@/lib/constants/ui-tokens.constant'
-import { formatDateIdShort }    from '@/lib/utils-client'
+import { ICON_STATUS }      from '@/lib/constants/icons.constant'
+import { formatDateIdShort } from '@/lib/utils-client'
 
 import { Input }       from '@/components/ui/input'
 import { Button }      from '@/components/ui/button'
@@ -76,20 +72,30 @@ interface AddState {
   error:      string
 }
 
-const EMPTY_EDIT: EditState = { open: false, item: null, teks: '', keterangan: '', saving: false, error: '' }
-const EMPTY_ADD: AddState   = { open: false, key: '', kategori: '', channel: 'ui', teks: '', keterangan: '', saving: false, error: '' }
+interface DeleteState {
+  open:    boolean
+  item:    MessageItem | null
+  deleting: boolean
+}
+
+const EMPTY_EDIT:   EditState   = { open: false, item: null, teks: '', keterangan: '', saving: false, error: '' }
+const EMPTY_ADD:    AddState    = { open: false, key: '', kategori: '', channel: 'ui', teks: '', keterangan: '', saving: false, error: '' }
+const EMPTY_DELETE: DeleteState = { open: false, item: null, deleting: false }
 
 const CHANNEL_OPTIONS = ['ui', 'wa', 'email', 'sms'] as const
 
 // ─── Komponen utama ───────────────────────────────────────────────────────────
 
 export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.Element {
-  const [messages, setMessages] = useState<MessageItem[]>(initialData)
-  const [search,   setSearch]   = useState('')
-  const [katFilter, setKatFilter] = useState('semua')
-  const [edit, setEdit] = useState<EditState>(EMPTY_EDIT)
-  const [add,  setAdd]  = useState<AddState>(EMPTY_ADD)
+  const [messages,   setMessages]   = useState<MessageItem[]>(initialData)
+  const [search,     setSearch]     = useState('')
+  const [katFilter,  setKatFilter]  = useState('semua')
+  const [edit,       setEdit]       = useState<EditState>(EMPTY_EDIT)
+  const [add,        setAdd]        = useState<AddState>(EMPTY_ADD)
+  const [deleteConf, setDeleteConf] = useState<DeleteState>(EMPTY_DELETE)
   const [, startTransition] = useTransition()
+
+  const LoadingIcon = ICON_STATUS.loading
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
@@ -100,12 +106,13 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
     })
   }, [messages, search, katFilter])
 
-  // Sorting — pakai shared hook useSortableTable (reusable semua tabel)
   const { sorted, handleSort, sortIcon, sortIconClass } = useSortableTable(
     filtered,
     'kategori',
     'asc',
   )
+
+  // ─── Edit ───────────────────────────────────────────────────────────────────
 
   function openEdit(item: MessageItem) {
     setEdit({ open: true, item, teks: item.teks, keterangan: item.keterangan ?? '', saving: false, error: '' })
@@ -140,6 +147,8 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
       setEdit(e => ({ ...e, saving: false, error: 'Koneksi bermasalah. Coba lagi.' }))
     }
   }
+
+  // ─── Tambah ─────────────────────────────────────────────────────────────────
 
   async function handleSaveAdd() {
     if (!add.key.trim() || !add.kategori.trim() || !add.teks.trim()) {
@@ -182,15 +191,42 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
     }
   }
 
+  // ─── Hapus ──────────────────────────────────────────────────────────────────
+
+  function openDelete(item: MessageItem) {
+    setDeleteConf({ open: true, item, deleting: false })
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteConf.item) return
+    setDeleteConf(d => ({ ...d, deleting: true }))
+    try {
+      const res  = await fetch(`/api/superadmin/messages/${deleteConf.item.id}`, {
+        method: 'DELETE',
+      })
+      const json = await res.json() as { success: boolean; message?: string }
+      if (!json.success) {
+        toast.error(json.message ?? 'Gagal menghapus pesan')
+        setDeleteConf(d => ({ ...d, deleting: false }))
+        return
+      }
+      const deletedId = deleteConf.item.id
+      startTransition(() => {
+        setMessages(prev => prev.filter(m => m.id !== deletedId))
+      })
+      setDeleteConf(EMPTY_DELETE)
+      toast.success(json.message ?? 'Pesan berhasil dihapus')
+    } catch {
+      toast.error('Koneksi bermasalah. Coba lagi.')
+      setDeleteConf(d => ({ ...d, deleting: false }))
+    }
+  }
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
+
   return (
     <div className="p-4 sm:p-6 space-y-4">
 
-      {/*
-       * Page header DIHAPUS dari sini.
-       * Judul "Message Library" + deskripsi sekarang tampil di DashboardHeader
-       * via page-meta.constant — konsisten dengan semua halaman lain.
-       * Tombol "+ Tambah Pesan" tetap di sini karena ini aksi spesifik halaman ini.
-       */}
       <div className="flex items-center justify-end">
         <Button size="sm" onClick={() => setAdd({ ...EMPTY_ADD, open: true })}>
           + Tambah Pesan
@@ -249,7 +285,7 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
               <TableHead className={`${TYPOGRAPHY.tableHead} w-28 cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('updated_at')}>
                 Diupdate <span className={sortIconClass('updated_at')}>{sortIcon('updated_at')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-16 text-right`}>Aksi</TableHead>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-24 text-right`}>Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -268,13 +304,11 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
                     <span className="font-mono text-xs text-slate-700 break-all">{msg.key}</span>
                   </TableCell>
                   <TableCell className="py-2">
-                    {/* Badge warna dari resolveKategoriColor — terpusat di ui-tokens.constant */}
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${resolveKategoriColor(msg.kategori)}`}>
                       {msg.kategori}
                     </span>
                   </TableCell>
                   <TableCell className="py-2">
-                    {/* Badge channel dari resolveChannelColor — terpusat di ui-tokens.constant */}
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${resolveChannelColor(msg.channel)}`}>
                       {msg.channel}
                     </span>
@@ -295,9 +329,24 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
                   </TableCell>
                   <TableCell className={`py-2 ${TYPOGRAPHY.caption}`}>{formatDateIdShort(msg.updated_at)}</TableCell>
                   <TableCell className="py-2 text-right">
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => openEdit(msg)}>
-                      Edit
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => openEdit(msg)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => openDelete(msg)}
+                      >
+                        Hapus
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -374,7 +423,6 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
             </div>
             <div className="space-y-1">
               <Label className="text-xs font-medium">Kategori <span className="text-red-500">*</span></Label>
-              {/* Pakai Select (bukan Input+datalist) agar React state selalu sync saat user pilih */}
               <Select value={add.kategori} onValueChange={v => setAdd(a => ({ ...a, kategori: v, error: '' }))}>
                 <SelectTrigger className="text-sm h-9">
                   <SelectValue placeholder="Pilih kategori..." />
@@ -422,6 +470,55 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
             <Button variant="outline" size="sm" onClick={() => setAdd(EMPTY_ADD)} disabled={add.saving}>Batal</Button>
             <Button size="sm" onClick={handleSaveAdd} disabled={add.saving}>
               {add.saving ? 'Menyimpan...' : 'Simpan'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Konfirmasi Hapus */}
+      <Dialog open={deleteConf.open} onOpenChange={open => !open && !deleteConf.deleting && setDeleteConf(EMPTY_DELETE)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Hapus Pesan</DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-2">
+            <p className="text-sm text-slate-700">
+              Yakin ingin menghapus pesan ini?
+            </p>
+            {deleteConf.item && (
+              <div className="rounded-md bg-slate-50 border border-slate-200 px-3 py-2">
+                <p className="font-mono text-xs text-slate-600 break-all">{deleteConf.item.key}</p>
+                <p className="text-xs text-slate-400 mt-1 line-clamp-2">{deleteConf.item.teks}</p>
+              </div>
+            )}
+            <p className="text-xs text-red-500">
+              ⚠️ Tindakan ini tidak bisa dibatalkan. Pastikan key ini tidak lagi dipakai di kode aplikasi.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteConf(EMPTY_DELETE)}
+              disabled={deleteConf.deleting}
+            >
+              Batal
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={deleteConf.deleting}
+              className="flex items-center gap-1.5"
+            >
+              {deleteConf.deleting ? (
+                <>
+                  <LoadingIcon size={13} className="animate-spin" />
+                  Menghapus...
+                </>
+              ) : (
+                'Ya, Hapus'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

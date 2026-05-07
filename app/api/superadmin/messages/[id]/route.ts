@@ -1,12 +1,14 @@
 // app/api/superadmin/messages/[id]/route.ts
 // PATCH — Edit teks/keterangan pesan di message_library (SuperAdmin only)
+// DELETE — Hapus pesan dari message_library (SuperAdmin only)
 //
-// Catatan: key dan kategori TIDAK bisa diubah via API ini —
+// Catatan: key dan kategori TIDAK bisa diubah via PATCH —
 // key adalah identifier yang dipakai di kode.
 // Jika key harus berubah → harus via migrasi DB.
 //
 // Dibuat: Sesi #098 — PL-S08 M2 Message Library
 // Updated: Sesi #101 — DRY fix: ganti inline auth check → requireSuperAdmin() shared
+// Updated: Sesi #110 — Tambah DELETE handler
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { revalidateTag }              from 'next/cache'
@@ -101,6 +103,66 @@ export async function PATCH(
 
   } catch (error) {
     console.error('[PATCH /api/superadmin/messages/[id]] Error:', error)
+    return NextResponse.json({ success: false, message: 'Server error' }, { status: 500 })
+  }
+}
+
+// ─── DELETE — Hapus pesan dari message_library ────────────────────────────────
+// Hanya SuperAdmin yang bisa menghapus.
+// Pesan yang sudah dipakai di kode sebaiknya tidak dihapus — tapi SuperAdmin
+// bertanggung jawab untuk memastikan key tidak dipakai sebelum menghapus.
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<NextResponse> {
+  try {
+    const auth = await requireSuperAdmin()
+    if (!auth.ok) return auth.res
+
+    const { id } = await params
+    if (!id) {
+      return NextResponse.json({ success: false, message: 'ID pesan wajib diisi' }, { status: 400 })
+    }
+
+    const db = createServerSupabaseClient()
+
+    // Ambil data dulu — untuk cache invalidation + konfirmasi ada
+    const { data: existing, error: fetchError } = await db
+      .from('message_library')
+      .select('id, key, kategori')
+      .eq('id', id)
+      .single()
+
+    if (fetchError || !existing) {
+      return NextResponse.json({ success: false, message: 'Pesan tidak ditemukan' }, { status: 404 })
+    }
+
+    // DELETE
+    const { error: deleteError } = await db
+      .from('message_library')
+      .delete()
+      .eq('id', id)
+
+    if (deleteError) {
+      console.error('[DELETE /api/superadmin/messages/[id]] DB error:', deleteError.message)
+      return NextResponse.json(
+        { success: false, message: 'Gagal menghapus pesan: ' + deleteError.message },
+        { status: 500 }
+      )
+    }
+
+    // Invalidasi cache
+    revalidateTag('messages', 'max')
+    revalidateTag(`messages:${existing.kategori}`, 'max')
+
+    return NextResponse.json({
+      success: true,
+      message: `Pesan '${existing.key}' berhasil dihapus`,
+    })
+
+  } catch (error) {
+    console.error('[DELETE /api/superadmin/messages/[id]] Error:', error)
     return NextResponse.json({ success: false, message: 'Server error' }, { status: 500 })
   }
 }
