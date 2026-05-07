@@ -93,8 +93,6 @@ export function ConfigPageClient({ initialData }: { initialData: ConfigGroup[] }
         })
       })
 
-      // DEBUG SEMENTARA dihapus — bug ditemukan: originalConfig stale setelah save
-
       if (updates.length === 0) { setHasChanges(false); return }
 
       const res  = await fetch('/api/config/bulk', {
