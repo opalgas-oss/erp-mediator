@@ -45,6 +45,7 @@ import {
   Check,
   Save,
   RotateCcw,
+  MoreVertical,
 
   // ── Status / Feedback ──
   AlertCircle,
@@ -155,6 +156,8 @@ export const ICON_ACTION = {
   reset:         RotateCcw,
   /** Kirim */
   send:          Send,
+  /** Kebab menu / more options (⋮) */
+  more:          MoreVertical,
 } as const
 
 // ─── Status / Feedback ────────────────────────────────────────────────────────
