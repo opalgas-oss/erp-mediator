@@ -71,7 +71,8 @@ export const SA_NAV_GROUPS: NavGroup[] = [
       { key: 'branding',          labelKey: 'nav_menu_branding'          },
       { key: 'pesan',             labelKey: 'nav_menu_pesan'             },
       { key: 'sistem',            labelKey: 'nav_menu_sistem'            },
-      { key: 'pilihan_opsi',      labelKey: 'nav_menu_pilihan_opsi'      },
+      { key: 'pilihan_opsi',      labelKey: 'nav_menu_pilihan_opsi',
+        path:     '/dashboard/superadmin/dropdowns' },
     ],
   },
   {

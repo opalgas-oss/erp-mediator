@@ -55,7 +55,7 @@ export function SidebarNav({ brandName, messages, featureKeys }: SidebarNavProps
   }
 
   function isGroupActive(groupKey: string, path: string): boolean {
-    if (groupKey === 'konfigurasi') return path.includes('/settings')
+    if (groupKey === 'konfigurasi') return path.includes('/settings') || path.includes('/dropdowns')
     if (groupKey === 'konten')      return path.includes('/messages')
     if (groupKey === 'integrasi')   return path.includes('/providers')
     return false
@@ -129,7 +129,9 @@ export function SidebarNav({ brandName, messages, featureKeys }: SidebarNavProps
 
           const subItems = group.key === 'konfigurasi'
             ? group.items
-                .filter(item => validFeatureKeys.has(item.key))
+                // Item dengan path override (M2/M3/M4 — punya halaman sendiri) bypass filter feature_key.
+                // Item tanpa path (resolve default ke /settings/[key]) di-filter pakai config_registry.
+                .filter(item => item.path !== undefined || validFeatureKeys.has(item.key))
                 .sort((a, b) =>
                   group.items.findIndex(x => x.key === a.key) -
                   group.items.findIndex(x => x.key === b.key)
