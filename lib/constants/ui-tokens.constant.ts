@@ -56,6 +56,15 @@ export const TYPOGRAPHY = {
   /** Separator antara judul dan deskripsi */
   pageSep:     'text-slate-300 shrink-0 select-none hidden sm:inline',
 
+  /** Heading level 2 — judul section dalam halaman */
+  h2:          'text-lg font-bold text-slate-900',
+
+  /** Teks muted / sekunder — keterangan pendukung, kosong state */
+  muted:       'text-sm text-slate-400',
+
+  /** Label kecil berbobot — label form, header panel */
+  label:       'text-xs font-medium text-slate-600',
+
   /** Judul kartu konfigurasi */
   cardTitle:   'text-sm font-semibold text-slate-900',
 
@@ -126,7 +135,74 @@ export function resolveChannelColor(channel: string): string {
   return BADGE_CHANNEL[channel.toLowerCase()] ?? BADGE_CHANNEL._default
 }
 
-// ─── Badge Health Status Provider ──────────────────────────────────────────────────
+// ─── Badge Lifecycle Status (USAGE_TRACKING) ──────────────────────────────────
+// Dibuat: Sesi #121 — PL-S12 UsageTrackingPanel
+
+/** Warna badge berdasarkan lifecycle_status registry_dependencies */
+export const BADGE_LIFECYCLE: Record<string, string> = {
+  RENCANA:       'bg-blue-100 text-blue-700 border-blue-200',
+  DIBANGUN:      'bg-amber-100 text-amber-700 border-amber-200',
+  AKTIF:         'bg-green-100 text-green-700 border-green-200',
+  TIDAK_DIPAKAI: 'bg-slate-100 text-slate-500 border-slate-200',
+  _default:      'bg-slate-100 text-slate-500 border-slate-200',
+}
+
+/** Label tampil untuk lifecycle_status — bahasa Indonesia untuk Philips */
+export const LIFECYCLE_LABEL: Record<string, string> = {
+  RENCANA:       'Rencana',
+  DIBANGUN:      'Dibangun',
+  AKTIF:         'Aktif',
+  TIDAK_DIPAKAI: 'Tidak Dipakai',
+}
+
+/**
+ * Resolve warna badge lifecycle_status.
+ */
+export function resolveLifecycleColor(status: string): string {
+  return BADGE_LIFECYCLE[status] ?? BADGE_LIFECYCLE._default
+}
+
+/**
+ * Resolve label lifecycle_status dalam bahasa Indonesia.
+ */
+export function resolveLifecycleLabel(status: string): string {
+  return LIFECYCLE_LABEL[status] ?? status
+}
+
+/** Style panel safety_verdict untuk komponen UsageTrackingPanel */
+export const VERDICT_STYLE: Record<string, {
+  container: string
+  icon:      string
+  title:     string
+  label:     string
+}> = {
+  AMAN: {
+    container: 'bg-green-50 border-green-200',
+    icon:      'text-green-600',
+    title:     'text-green-800',
+    label:     'Aman dihapus',
+  },
+  TIDAK_BISA: {
+    container: 'bg-amber-50 border-amber-200',
+    icon:      'text-amber-600',
+    title:     'text-amber-800',
+    label:     'Tidak aman dihapus saat ini',
+  },
+  TIDAK_AMAN: {
+    container: 'bg-red-50 border-red-200',
+    icon:      'text-red-600',
+    title:     'text-red-800',
+    label:     'Tidak bisa dihapus',
+  },
+  _default: {
+    container: 'bg-slate-50 border-slate-200',
+    icon:      'text-slate-400',
+    title:     'text-slate-600',
+    label:     'Memuat...',
+  },
+}
+
+// ─── Badge Health Status Provider ─────────────────────────────────────────────
 // Dibuat: Sesi #107 — M3 Credential Management
 
 /** Warna badge berdasarkan health_status provider_instances */
