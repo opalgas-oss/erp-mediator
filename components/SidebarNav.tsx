@@ -8,6 +8,7 @@
 //   - Icon diambil dari ICON_NAV (icons.constant) — tidak ada import lucide langsung
 //   - Struktur menu dari SA_NAV_GROUPS (nav.constant)
 //   - CSS class dari NAV_CLS (ui-tokens.constant)
+// Updated Sesi #135: tambah isGroupActive case 'pengguna' (M7 Roles & Permissions)
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -59,6 +60,7 @@ export function SidebarNav({ brandName, messages, featureKeys }: SidebarNavProps
     if (groupKey === 'konten')      return path.includes('/messages')
     if (groupKey === 'integrasi')   return path.includes('/providers')
     if (groupKey === 'manajemen')   return path.includes('/tenants') || path.includes('/categories')
+    if (groupKey === 'pengguna')    return path.includes('/roles') || path.includes('/permissions')
     return false
   }
 

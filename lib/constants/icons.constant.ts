@@ -109,6 +109,8 @@ export const ICON_NAV = {
   integrasi:     Globe,
   /** Grup menu Manajemen (Tenant + Kategori) — ditambah S#133 */
   manajemen:     Building2,
+  /** Grup menu Pengguna (Roles, Permissions, Memberships) — ditambah S#134 */
+  pengguna:      Shield,
   /** Info GPS di footer sidebar */
   gps:           MapPin,
   /** Expand / collapse grup — panah bawah */
