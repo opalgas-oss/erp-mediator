@@ -5,6 +5,7 @@
 // Dibuat: Sesi #100 — Sentralisasi UI
 // Updated: Sesi #133 — tambah grup manajemen (M6 Tenant Management + Master Kategori)
 // Updated: Sesi #135 — tambah grup pengguna (M7 Roles & Permissions)
+// Updated: Sesi #136 — tambah memberships ke grup pengguna (M8 User Membership)
 //
 // CARA PAKAI:
 //   import { SA_NAV_GROUPS, navItemToPath } from '@/lib/constants/nav.constant'
@@ -135,6 +136,11 @@ export const SA_NAV_GROUPS: NavGroup[] = [
         key:      'permissions',
         labelKey: 'nav_menu_permissions',
         path:     '/dashboard/superadmin/permissions',
+      },
+      {
+        key:      'memberships',
+        labelKey: 'nav_menu_memberships',
+        path:     '/dashboard/superadmin/memberships',
       },
     ],
   },
