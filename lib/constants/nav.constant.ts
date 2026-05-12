@@ -3,7 +3,7 @@
 // SATU sumber kebenaran untuk: grup menu, sub-menu, path, urutan, icon.
 //
 // Dibuat: Sesi #100 — Sentralisasi UI
-// Updated: Sesi #100 — icon pakai ICON_NAV dari icons.constant (tidak import lucide langsung)
+// Updated: Sesi #133 — tambah grup manajemen (M6 Tenant Management + Master Kategori)
 //
 // CARA PAKAI:
 //   import { SA_NAV_GROUPS, navItemToPath } from '@/lib/constants/nav.constant'
@@ -98,6 +98,24 @@ export const SA_NAV_GROUPS: NavGroup[] = [
         key:      'providers',
         labelKey: 'nav_menu_providers',
         path:     '/dashboard/superadmin/providers',
+      },
+    ],
+  },
+  {
+    key:      'manajemen',
+    labelKey: 'sidebar_menu_manajemen',
+    icon:     ICON_NAV.manajemen,
+    iconSize: 15,
+    items: [
+      {
+        key:      'tenants',
+        labelKey: 'nav_menu_manajemen_tenant',
+        path:     '/dashboard/superadmin/tenants',
+      },
+      {
+        key:      'categories',
+        labelKey: 'nav_menu_master_kategori',
+        path:     '/dashboard/superadmin/categories',
       },
     ],
   },

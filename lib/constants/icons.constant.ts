@@ -107,6 +107,8 @@ export const ICON_NAV = {
   konten:        Layers,
   /** Grup menu Integrasi (API Provider & Credential) */
   integrasi:     Globe,
+  /** Grup menu Manajemen (Tenant + Kategori) — ditambah S#133 */
+  manajemen:     Building2,
   /** Info GPS di footer sidebar */
   gps:           MapPin,
   /** Expand / collapse grup — panah bawah */
