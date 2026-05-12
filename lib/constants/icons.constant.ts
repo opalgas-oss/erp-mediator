@@ -91,6 +91,9 @@ import {
   // ── Lokasi ──
   Globe,
   Navigation,
+
+  // ── Keuangan / Approval ──
+  ReceiptText,
 } from 'lucide-react'
 
 import type { LucideIcon } from 'lucide-react'
@@ -260,4 +263,11 @@ export const ICON_LOCATION = {
   navigation:    Navigation,
   /** GPS / pin lokasi */
   pin:           MapPin,
+} as const
+
+// ─── Keuangan / Approval ──────────────────────────────────────────────────────────────────
+
+export const ICON_FINANCE = {
+  /** Refund / approval nota keuangan (M9 Approval Refund SA) — ditambah S#137 */
+  refund:        ReceiptText,
 } as const

@@ -10,6 +10,7 @@
 //   - CSS class dari NAV_CLS (ui-tokens.constant)
 // Updated Sesi #135: tambah isGroupActive case 'pengguna' (M7 Roles & Permissions)
 // Updated Sesi #136: tambah /memberships ke isGroupActive case 'pengguna' (M8)
+// Updated Sesi #137: tambah /refunds ke isGroupActive case 'pengguna' (M9)
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -61,7 +62,7 @@ export function SidebarNav({ brandName, messages, featureKeys }: SidebarNavProps
     if (groupKey === 'konten')      return path.includes('/messages')
     if (groupKey === 'integrasi')   return path.includes('/providers')
     if (groupKey === 'manajemen')   return path.includes('/tenants') || path.includes('/categories')
-    if (groupKey === 'pengguna')    return path.includes('/roles') || path.includes('/permissions') || path.includes('/memberships')
+    if (groupKey === 'pengguna')    return path.includes('/roles') || path.includes('/permissions') || path.includes('/memberships') || path.includes('/refunds')
     return false
   }
 

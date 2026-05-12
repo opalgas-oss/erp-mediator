@@ -6,6 +6,7 @@
 // Updated: Sesi #133 — tambah grup manajemen (M6 Tenant Management + Master Kategori)
 // Updated: Sesi #135 — tambah grup pengguna (M7 Roles & Permissions)
 // Updated: Sesi #136 — tambah memberships ke grup pengguna (M8 User Membership)
+// Updated: Sesi #137 — tambah refunds ke grup pengguna (M9 Approval Refund SA)
 //
 // CARA PAKAI:
 //   import { SA_NAV_GROUPS, navItemToPath } from '@/lib/constants/nav.constant'
@@ -141,6 +142,11 @@ export const SA_NAV_GROUPS: NavGroup[] = [
         key:      'memberships',
         labelKey: 'nav_menu_memberships',
         path:     '/dashboard/superadmin/memberships',
+      },
+      {
+        key:      'refunds',
+        labelKey: 'nav_menu_refunds',
+        path:     '/dashboard/superadmin/refunds',
       },
     ],
   },
