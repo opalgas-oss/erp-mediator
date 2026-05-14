@@ -9,12 +9,10 @@
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
 // Diupdate: Sesi #141 — M6 Fix Fase F (rebuild dari 2-step ke single form)
-// Diupdate: Sesi #149 — DRY fix: hapus autoCorrectWA lokal, pakai shared lib/utils-client
 
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import type { BuatTenantPayload, TenantTipe } from '@/lib/types/tenant.types'
-import { autoCorrectWA } from '@/lib/utils-client'
 
 interface Props {
   open:      boolean
@@ -36,6 +34,16 @@ function toSlug(s: string): string {
     .replace(/[^a-z0-9\s-]/g, '')
     .trim().replace(/\s+/g, '-').replace(/-+/g, '-')
     .slice(0, 50)
+}
+
+function autoCorrectWA(s: string): string {
+  // Strip non-digit
+  const digits = s.replace(/\D/g, '')
+  // 08xx → 628xx
+  if (digits.startsWith('08')) return '62' + digits.slice(1)
+  // 8xx → 628xx
+  if (digits.startsWith('8') && !digits.startsWith('62')) return '62' + digits
+  return digits
 }
 
 function validateNPWP(s: string): { ok: boolean; msg?: string } {
