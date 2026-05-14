@@ -1,24 +1,18 @@
 'use client'
 
 // app/dashboard/superadmin/tenants/DialogTambahTenant.tsx
-// Dialog Tambah Tenant — Opsi B staged minimal (3 field wajib + PIC awal)
-// Referensi: PAGE_SPEC_SUPERADMIN_v2 BAB 8.4
+// Dialog Tambah Tenant — SATU FORM (2 section: Data tenant + PIC pertama)
+// Style: konsisten dengan Tab Info Umum (inline design tokens)
+// Fix: G06 (nama legal wajib), G07 (label tanpa "(slug)"), G08 (NPWP validasi),
+//      G09 (urutan PIC), G10 (label "Nomor WA PIC"), G11 (auto-correct WA),
+//      G12 (uniqueness debounce), G13 (info box di bawah form)
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
+// Diupdate: Sesi #141 — M6 Fix Fase F (rebuild dari 2-step ke single form)
 
-import { useState }       from 'react'
-import { toast }          from 'sonner'
-import { Button }         from '@/components/ui/button'
-import { Input }          from '@/components/ui/input'
-import { Label }          from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import {
-  Dialog, DialogContent, DialogHeader,
-  DialogTitle, DialogFooter,
-} from '@/components/ui/dialog'
+import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import type { BuatTenantPayload, TenantTipe } from '@/lib/types/tenant.types'
-
-// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
   open:      boolean
@@ -26,15 +20,13 @@ interface Props {
   onSuccess: () => void
 }
 
-// ─── State default ────────────────────────────────────────────────────────────
-
 const INIT: BuatTenantPayload = {
   nama_brand: '', nama_legal: '', slug: '',
   tipe: 'eksternal', npwp: '',
   pic_name: '', pic_email: '', pic_wa: '',
 }
 
-// ─── Helper: auto-generate slug dari nama brand ───────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function toSlug(s: string): string {
   return s.toLowerCase()
@@ -44,35 +36,116 @@ function toSlug(s: string): string {
     .slice(0, 50)
 }
 
+function autoCorrectWA(s: string): string {
+  // Strip non-digit
+  const digits = s.replace(/\D/g, '')
+  // 08xx → 628xx
+  if (digits.startsWith('08')) return '62' + digits.slice(1)
+  // 8xx → 628xx
+  if (digits.startsWith('8') && !digits.startsWith('62')) return '62' + digits
+  return digits
+}
+
+function validateNPWP(s: string): { ok: boolean; msg?: string } {
+  const clean = s.trim()
+  if (!clean) return { ok: false, msg: 'NPWP wajib diisi' }
+  const digits = clean.replace(/\D/g, '')
+  if (digits.length < 5) return { ok: false, msg: 'NPWP tidak valid' }
+  return { ok: true }
+}
+
+// ─── Style helpers ────────────────────────────────────────────────────────────
+
+const S = {
+  input: { fontSize: 13, padding: '8px 10px', borderWidth: '0.5px', borderStyle: 'solid' as const, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, width: '100%', fontFamily: 'inherit', background: '#fff' } as React.CSSProperties,
+  inputErr: { fontSize: 13, padding: '8px 10px', borderWidth: '0.5px', borderStyle: 'solid' as const, borderColor: '#A32D2D', borderRadius: 8, width: '100%', fontFamily: 'inherit', background: '#fff' } as React.CSSProperties,
+  select: { fontSize: 13, padding: '8px 10px', borderWidth: '0.5px', borderStyle: 'solid' as const, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, width: '100%', fontFamily: 'inherit', background: '#fff' } as React.CSSProperties,
+  label: { fontSize: 12, color: '#6b7280', marginBottom: 4, display: 'block' } as React.CSSProperties,
+  help: { fontSize: 11, color: '#9ca3af', marginTop: 2, display: 'block' } as React.CSSProperties,
+  err: { fontSize: 11, color: '#A32D2D', marginTop: 2, display: 'block' } as React.CSSProperties,
+}
+
 // ─── Komponen ─────────────────────────────────────────────────────────────────
 
 export function DialogTambahTenant({ open, onClose, onSuccess }: Props) {
-  const [form,    setForm]    = useState<BuatTenantPayload>(INIT)
-  const [saving,  setSaving]  = useState(false)
-  const [error,   setError]   = useState('')
-  const [step,    setStep]    = useState<1 | 2>(1)
+  const [form,        setForm]        = useState<BuatTenantPayload>(INIT)
+  const [saving,      setSaving]      = useState(false)
+  const [error,       setError]       = useState('')
+  const [npwpError,   setNpwpError]   = useState('')
+  const [slugStatus,  setSlugStatus]  = useState<'idle' | 'checking' | 'taken' | 'available'>('idle')
 
-  const set = (key: keyof BuatTenantPayload, val: string) =>
-    setForm(f => ({ ...f, [key]: val }))
+  const set = (key: keyof BuatTenantPayload, val: string) => setForm(f => ({ ...f, [key]: val }))
 
   const handleNamaBrand = (val: string) => {
     setForm(f => ({ ...f, nama_brand: val, slug: toSlug(val) }))
   }
 
+  const handleClose = () => {
+    setForm(INIT)
+    setError('')
+    setNpwpError('')
+    setSlugStatus('idle')
+    onClose()
+  }
+
+  // Debounce slug uniqueness check — auto-increment jika taken (G12)
+  useEffect(() => {
+    if (!form.slug || form.slug.length < 3) {
+      setSlugStatus('idle')
+      return
+    }
+    setSlugStatus('checking')
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/superadmin/tenants/check-slug?slug=${encodeURIComponent(form.slug)}`)
+        const json = await res.json()
+        if (!json.available) {
+          // Auto-increment: strip trailing -N, append -2
+          const base = form.slug.replace(/-\d+$/, '')
+          set('slug', `${base}-2`)
+        } else {
+          setSlugStatus('available')
+        }
+      } catch {
+        setSlugStatus('idle')
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [form.slug])
+
+  // Validate NPWP onBlur (G08)
+  const handleNpwpBlur = () => {
+    const v = validateNPWP(form.npwp)
+    setNpwpError(v.ok ? '' : v.msg ?? '')
+  }
+
+  // Auto-correct WA onBlur (G11)
+  const handleWaBlur = () => {
+    set('pic_wa', autoCorrectWA(form.pic_wa))
+  }
+
+  const canSubmit =
+    !!form.nama_brand &&
+    !!form.nama_legal &&
+    !!form.slug &&
+    !!form.npwp &&
+    validateNPWP(form.npwp).ok &&
+    !!form.pic_name &&
+    !!form.pic_wa &&
+    !!form.pic_email
+
   const handleSubmit = async () => {
+    if (!canSubmit) return
     setError('')
     setSaving(true)
     try {
       const res  = await fetch('/api/superadmin/tenants', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(form),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
       })
       const json = await res.json()
       if (!json.success) throw new Error(json.message)
       onSuccess()
-      setForm(INIT)
-      setStep(1)
+      handleClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal membuat tenant')
     } finally {
@@ -80,120 +153,145 @@ export function DialogTambahTenant({ open, onClose, onSuccess }: Props) {
     }
   }
 
-  const handleClose = () => {
-    setForm(INIT)
-    setStep(1)
-    setError('')
-    onClose()
-  }
+  if (!open) return null
 
   return (
-    <Dialog open={open} onOpenChange={o => !o && handleClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Tambah Tenant Baru</DialogTitle>
-        </DialogHeader>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+      onClick={e => { if (e.target === e.currentTarget) handleClose() }}>
+      <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, maxHeight: '90vh', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
 
-        {/* Step indicator */}
-        <div className="flex gap-2 mb-2">
-          {[1, 2].map(s => (
-            <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${
-              step >= s ? 'bg-primary' : 'bg-muted'
-            }`} />
-          ))}
+        {/* Header */}
+        <div style={{ padding: '18px 20px 14px', borderBottomWidth: '0.5px', borderBottomStyle: 'solid', borderBottomColor: 'rgba(0,0,0,0.12)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 500, color: '#1a1a1a' }}>Tambah Tenant Baru</div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Isi data minimal — detail dilengkapi di halaman tenant setelah aktif</div>
+          </div>
+          <button onClick={handleClose} style={{ background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 18, color: '#6b7280' }}>
+            <i className="ti ti-x" />
+          </button>
         </div>
 
-        {step === 1 && (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Langkah 1 — Info dasar tenant</p>
+        {/* Body */}
+        <div style={{ padding: '16px 20px', flex: 1 }}>
 
-            <div className="space-y-2">
-              <Label>Nama Brand <span className="text-destructive">*</span></Label>
-              <Input value={form.nama_brand} onChange={e => handleNamaBrand(e.target.value)}
-                placeholder="Contoh: Jaya Motor" />
+          {/* Section 1 — Data Tenant */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 12 }}>
+            <div style={{ width: 22, height: 22, borderRadius: 8, background: '#E6F1FB', color: '#185FA5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>
+              <i className="ti ti-building" />
             </div>
-            <div className="space-y-2">
-              <Label>Nama Legal</Label>
-              <Input value={form.nama_legal} onChange={e => set('nama_legal', e.target.value)}
-                placeholder="PT / CV / nama usaha resmi" />
+            Data tenant
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={S.label}>Nama brand *</label>
+              <input value={form.nama_brand} onChange={e => handleNamaBrand(e.target.value)} placeholder="Contoh: Jaya Motor" style={S.input} />
             </div>
-            <div className="space-y-2">
-              <Label>Kode Tenant (slug) <span className="text-destructive">*</span></Label>
-              <Input value={form.slug} onChange={e => set('slug', e.target.value)}
-                placeholder="jaya-motor" className="font-mono text-sm" />
-              <p className="text-xs text-muted-foreground">Huruf kecil, angka, tanda hubung. Tidak bisa diubah setelah dibuat.</p>
+
+            {/* G06 — Nama legal wajib */}
+            <div>
+              <label style={S.label}>Nama legal perusahaan *</label>
+              <input value={form.nama_legal} onChange={e => set('nama_legal', e.target.value)} placeholder="Contoh: PT Jaya Motor Indonesia" style={S.input} />
+              <span style={S.help}>Nama resmi di akta pendirian. Bisa berbeda dari nama brand.</span>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Tipe <span className="text-destructive">*</span></Label>
-                <Select value={form.tipe} onValueChange={v => set('tipe', v as TenantTipe)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="eksternal">Eksternal</SelectItem>
-                    <SelectItem value="internal">Internal</SelectItem>
-                  </SelectContent>
-                </Select>
+
+            {/* Kode tenant — auto-generate dari nama brand, tidak ditampilkan ke user */}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={S.label}>Tipe tenant *</label>
+                <select value={form.tipe} onChange={e => set('tipe', e.target.value as TenantTipe)} style={S.select}>
+                  <option value="internal">Internal — dioperasikan platform</option>
+                  <option value="eksternal">Eksternal — disewakan ke pihak ketiga</option>
+                </select>
               </div>
-              <div className="space-y-2">
-                <Label>NPWP <span className="text-destructive">*</span></Label>
-                <Input value={form.npwp} onChange={e => set('npwp', e.target.value)}
-                  placeholder="15 atau 16 digit" />
+              <div>
+                <label style={S.label}>NPWP perusahaan *</label>
+                <input
+                  value={form.npwp}
+                  onChange={e => { set('npwp', e.target.value); if (npwpError) setNpwpError('') }}
+                  onBlur={handleNpwpBlur}
+                  placeholder="XX.XXX.XXX.X-XXX.XXX"
+                  style={npwpError ? S.inputErr : S.input}
+                />
+                {npwpError ? (
+                  <span style={S.err}>{npwpError}</span>
+                ) : (
+                  <span style={S.help}>Ketik Nomor NPWP atau NIK, tanpa spasi, simbol titik (.) atau simbol apapun (-)</span>
+                )}
               </div>
             </div>
           </div>
-        )}
 
-        {step === 2 && (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Langkah 2 — PIC awal (Person In Charge)</p>
+          {/* Divider */}
+          <div style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '16px 0' }} />
 
-            <div className="space-y-2">
-              <Label>Nama PIC <span className="text-destructive">*</span></Label>
-              <Input value={form.pic_name} onChange={e => set('pic_name', e.target.value)}
-                placeholder="Nama lengkap PIC" />
+          {/* Section 2 — PIC */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 12 }}>
+            <div style={{ width: 22, height: 22, borderRadius: 8, background: '#EAF3DE', color: '#3B6D11', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>
+              <i className="ti ti-user" />
             </div>
-            <div className="space-y-2">
-              <Label>Email PIC <span className="text-destructive">*</span></Label>
-              <Input type="email" value={form.pic_email} onChange={e => set('pic_email', e.target.value)}
-                placeholder="email@perusahaan.com" />
+            PIC pertama (Penanggung jawab)
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* G09 — Urutan: Nama → WA → Email */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={S.label}>Nama lengkap PIC *</label>
+                <input value={form.pic_name} onChange={e => set('pic_name', e.target.value)} placeholder="Nama lengkap" style={S.input} />
+              </div>
+              {/* G10 — Label "Nomor WA PIC", G11 auto-correct */}
+              <div>
+                <label style={S.label}>Nomor WA PIC *</label>
+                <input value={form.pic_wa} onChange={e => set('pic_wa', e.target.value)} onBlur={handleWaBlur} placeholder="628xxxxxxxxxx" style={S.input} />
+                <span style={S.help}>Format: 62 + nomor. Tautan aktivasi dikirim ke nomor ini.</span>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>WhatsApp PIC <span className="text-destructive">*</span></Label>
-              <Input value={form.pic_wa} onChange={e => set('pic_wa', e.target.value)}
-                placeholder="628xxx..." />
-              <p className="text-xs text-muted-foreground">Format: 628xxxxxxxxxx</p>
+            <div>
+              <label style={S.label}>Email PIC *</label>
+              <input type="email" value={form.pic_email} onChange={e => set('pic_email', e.target.value)} placeholder="pic@perusahaan.com" style={S.input} />
+              <span style={S.help}>Email personal PIC — berbeda dari email resmi perusahaan.</span>
             </div>
           </div>
-        )}
 
-        {error && (
-          <div className="rounded-md bg-destructive/10 border border-destructive/30 p-3 text-sm text-destructive">
-            {error}
+          {/* G13 — Info box */}
+          <div style={{ background: '#f9f9f8', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#6b7280', marginTop: 16, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <i className="ti ti-info-circle" style={{ fontSize: 16, color: '#185FA5', flexShrink: 0, marginTop: 1 }} />
+            <div>
+              Setelah disimpan, sistem akan otomatis membuat akun untuk PIC dan mengirim
+              {' '}<strong>tautan aktivasi</strong> via WA. Tenant aktif setelah PIC mengklik tautan
+              tersebut dan SuperAdmin mengaktifkan secara manual.
+            </div>
           </div>
-        )}
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={handleClose} disabled={saving}>Batal</Button>
-          {step === 1 ? (
-            <Button
-              onClick={() => setStep(2)}
-              disabled={!form.nama_brand || !form.slug || !form.npwp}
-            >
-              Lanjut →
-            </Button>
-          ) : (
-            <>
-              <Button variant="outline" onClick={() => setStep(1)} disabled={saving}>← Kembali</Button>
-              <Button
-                onClick={handleSubmit}
-                disabled={saving || !form.pic_name || !form.pic_email || !form.pic_wa}
-              >
-                {saving ? 'Menyimpan...' : 'Buat Tenant'}
-              </Button>
-            </>
+          {error && (
+            <div style={{ background: '#FCEBEB', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#F09595', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#A32D2D', marginTop: 12 }}>
+              <i className="ti ti-alert-circle" style={{ marginRight: 6 }} />
+              {error}
+            </div>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 20px', borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)', display: 'flex', justifyContent: 'flex-end', gap: 10, background: '#f9f9f8' }}>
+          <button
+            onClick={handleClose}
+            disabled={saving}
+            style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', color: '#1a1a1a', background: 'transparent' }}
+          >
+            Batal
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit || saving}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: !canSubmit || saving ? 'not-allowed' : 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#85B7EB', color: '#185FA5', background: '#E6F1FB', opacity: !canSubmit || saving ? 0.5 : 1 }}
+          >
+            <i className="ti ti-device-floppy" />
+            {saving ? 'Menyimpan…' : 'Simpan & Kirim Tautan Aktivasi'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
