@@ -130,3 +130,68 @@ export async function jalankanGantiPICViaSP(
   if (error) return { ok: false, error: error.message }
   return { ok: true }
 }
+
+// --- FUNGSI: hapusCadanganByTenantId ----------------------------------------
+/**
+ * Tutup riwayat PIC cadangan aktif (set ended_at = now).
+ * Hanya mengubah baris yang ended_at IS NULL dan tipe_pic = 'cadangan'.
+ * Dipanggil dari TenantPICService_hapusCadangan.
+ * @param tenantId - UUID tenant
+ * @returns ok + jumlah baris yang diupdate (0 = tidak ada cadangan aktif)
+ */
+export async function hapusCadanganByTenantId(
+  tenantId: string
+): Promise<{ ok: boolean; rowsAffected: number; error?: string }> {
+  const db = createServerSupabaseClient()
+  const { data, error } = await db
+    .from('tenant_pic_history')
+    .update({
+      ended_at:          new Date().toISOString(),
+      alasan_pergantian: 'dihapus',   // penanda: dihapus manual, bukan pergantian
+    })
+    .eq('tenant_id', tenantId)
+    .eq('tipe_pic', 'cadangan')
+    .is('ended_at', null)
+    .select('id')
+
+  if (error) return { ok: false, rowsAffected: 0, error: error.message }
+  return { ok: true, rowsAffected: data?.length ?? 0 }
+}
+
+// --- FUNGSI: updateCadanganByTenantId ---------------------------------------
+/**
+ * UPDATE in-place data PIC cadangan aktif (baris ended_at IS NULL).
+ * Tidak menutup baris lama / tidak membuat baris baru — ini EDIT, bukan pergantian.
+ * Dipanggil dari TenantPICService_updateCadangan.
+ * @param tenantId - UUID tenant
+ * @param fields   - field PIC cadangan yang diubah
+ * @returns ok + jumlah baris yang diupdate (0 = tidak ada cadangan aktif)
+ */
+export async function updateCadanganByTenantId(
+  tenantId: string,
+  fields: {
+    user_name:            string
+    user_email:           string
+    user_wa:              string
+    jabatan:              string | null
+    relasi_ke_perusahaan: string
+  }
+): Promise<{ ok: boolean; rowsAffected: number; error?: string }> {
+  const db = createServerSupabaseClient()
+  const { data, error } = await db
+    .from('tenant_pic_history')
+    .update({
+      user_name:            fields.user_name,
+      user_email:           fields.user_email,
+      user_wa:              fields.user_wa,
+      jabatan:              fields.jabatan,
+      relasi_ke_perusahaan: fields.relasi_ke_perusahaan,
+    })
+    .eq('tenant_id', tenantId)
+    .eq('tipe_pic', 'cadangan')
+    .is('ended_at', null)
+    .select('id')
+
+  if (error) return { ok: false, rowsAffected: 0, error: error.message }
+  return { ok: true, rowsAffected: data?.length ?? 0 }
+}

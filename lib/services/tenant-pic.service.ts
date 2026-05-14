@@ -14,6 +14,8 @@ import {
   findAktifByTenantId,
   findAllByTenantId,
   buildKartuFromHistory,
+  hapusCadanganByTenantId,
+  updateCadanganByTenantId,
 } from '@/lib/repositories/tenant-pic.repository'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getCredential } from '@/lib/services/credential.service'
@@ -48,7 +50,13 @@ function validateTanggalEfektif(tanggal: string): void {
 function mapToTimelineEntry(row: TenantPICHistory): PICTimelineEntry {
   let tipe_event: PICTimelineEntry['tipe_event'] = 'awal'
   if (row.ended_at) {
-    tipe_event = row.alasan_pergantian === 'resign' ? 'resign' : 'pergantian'
+    if (row.alasan_pergantian === 'resign') {
+      tipe_event = 'resign'
+    } else if (row.alasan_pergantian === 'dihapus') {
+      tipe_event = 'cadangan_dihapus'
+    } else {
+      tipe_event = 'pergantian'
+    }
   }
 
   return {
@@ -58,7 +66,8 @@ function mapToTimelineEntry(row: TenantPICHistory): PICTimelineEntry {
     tipe_pic:      row.tipe_pic,
     started_at:    row.started_at,
     ended_at:      row.ended_at,
-    alasan:        row.alasan_pergantian,
+    // 'dihapus' tidak ditampilkan sebagai alasan — sudah tercermin di label tipe_event
+    alasan:        row.alasan_pergantian === 'dihapus' ? null : row.alasan_pergantian,
     dicatat_oleh:  row.assigned_by,
     dokumen_url:   row.dokumen_serah_terima,
   }
@@ -166,6 +175,63 @@ export async function TenantPICService_tambahCadangan(
   })
 
   if (error) throw new Error(`Gagal menambah PIC cadangan: ${error.message}`)
+}
+
+// --- TenantPICService_hapusCadangan -----------------------------------------
+/**
+ * Hapus PIC cadangan aktif (set ended_at = now via repository).
+ * Throw error jika tenant tidak punya PIC cadangan aktif.
+ * @param tenantId - UUID tenant
+ */
+export async function TenantPICService_hapusCadangan(
+  tenantId: string
+): Promise<void> {
+  const result = await hapusCadanganByTenantId(tenantId)
+
+  if (!result.ok) {
+    throw new Error(`Gagal menghapus PIC cadangan: ${result.error}`)
+  }
+  if (result.rowsAffected === 0) {
+    throw new Error('Tenant ini tidak memiliki PIC cadangan aktif')
+  }
+}
+
+// --- TenantPICService_updateCadangan ----------------------------------------
+/**
+ * Update in-place data PIC cadangan aktif (EDIT, bukan pergantian).
+ * Tidak menyentuh riwayat — baris cadangan aktif diubah di tempat.
+ * Throw error jika tenant tidak punya PIC cadangan aktif.
+ * @param tenantId - UUID tenant
+ * @param input    - field PIC cadangan yang diubah
+ */
+export async function TenantPICService_updateCadangan(
+  tenantId: string,
+  input: {
+    user_name:            string
+    user_email:           string
+    user_wa:              string
+    jabatan:              string | null
+    relasi_ke_perusahaan: string
+  }
+): Promise<void> {
+  validateNomorWa(input.user_wa)
+  if (!input.user_name.trim())  throw new Error('Nama PIC cadangan wajib diisi')
+  if (!input.user_email.trim()) throw new Error('Email PIC cadangan wajib diisi')
+
+  const result = await updateCadanganByTenantId(tenantId, {
+    user_name:            input.user_name.trim(),
+    user_email:           input.user_email.trim().toLowerCase(),
+    user_wa:              input.user_wa.replace(/\D/g, ''),
+    jabatan:              input.jabatan,
+    relasi_ke_perusahaan: input.relasi_ke_perusahaan,
+  })
+
+  if (!result.ok) {
+    throw new Error(`Gagal memperbarui PIC cadangan: ${result.error}`)
+  }
+  if (result.rowsAffected === 0) {
+    throw new Error('Tenant ini tidak memiliki PIC cadangan aktif')
+  }
 }
 
 // ─── Private: kirimNotifikasiGantiPIC ─────────────────────────────────────────

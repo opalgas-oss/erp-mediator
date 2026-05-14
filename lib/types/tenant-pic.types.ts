@@ -21,6 +21,7 @@ export type PICAlasanPergantian =
   | 'restrukturisasi'
   | 'kontrak_berakhir'
   | 'lainnya'
+  | 'dihapus'          // dipakai saat PIC cadangan dihapus manual (bukan pergantian)
 
 // ─── Entitas: Riwayat PIC (full row DB) ──────────────────────────────────────
 

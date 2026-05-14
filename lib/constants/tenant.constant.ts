@@ -153,3 +153,24 @@ export const TENANT_CONTRACT_STATUS_LABEL = CONTRACT_STATUS_LABELS
 
 /** Alias: TENANT_TIER_LABELS — dipakai di komponen UI */
 export const TENANT_TIER_LABEL = TENANT_TIER_LABELS
+
+// ─── Konstanta PIC (Person In Charge) ──────────────────────────────────────────────────
+
+/** Opsi relasi PIC ke perusahaan — untuk dropdown form tambah/ganti PIC */
+export const PIC_RELASI_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'owner',            label: 'Owner / Pemilik' },
+  { value: 'direktur',         label: 'Direktur' },
+  { value: 'karyawan',         label: 'Karyawan' },
+  { value: 'konsultan',        label: 'Konsultan' },
+  { value: 'keluarga_pemilik', label: 'Keluarga Pemilik' },
+]
+
+/** Opsi alasan pergantian PIC — untuk dropdown Step 2 wizard ganti PIC utama */
+export const PIC_ALASAN_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'resign',            label: 'Resign' },
+  { value: 'mutasi',            label: 'Mutasi' },
+  { value: 'promosi',           label: 'Promosi' },
+  { value: 'restrukturisasi',   label: 'Restrukturisasi' },
+  { value: 'kontrak_berakhir',  label: 'Kontrak berakhir' },
+  { value: 'lainnya',           label: 'Lainnya' },
+]

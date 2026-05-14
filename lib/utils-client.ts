@@ -54,3 +54,22 @@ export function formatDateIdShort(iso: string): string {
     day: '2-digit', month: 'short', year: 'numeric',
   })
 }
+
+/**
+ * Normalisasi nomor WhatsApp Indonesia ke format 62xxx.
+ * - '08xxxxxxxxx'  → '628xxxxxxxxx'
+ * - '8xxxxxxxxx'   → '628xxxxxxxxx'
+ * - selain itu     → hanya digit yang dipertahankan
+ *
+ * Dipakai oleh: DialogTambahPICCadangan (S#147). Catatan: DialogTambahTenant
+ * masih punya salinan lokal — perlu dikonsolidasikan ke fungsi ini (hutang teknis).
+ *
+ * @param s - Input nomor WA mentah (boleh mengandung spasi/tanda)
+ * @returns Nomor WA ter-normalisasi (hanya digit, prefix 62)
+ */
+export function autoCorrectWA(s: string): string {
+  const digits = s.replace(/\D/g, '')
+  if (digits.startsWith('08')) return '62' + digits.slice(1)
+  if (digits.startsWith('8') && !digits.startsWith('62')) return '62' + digits
+  return digits
+}
