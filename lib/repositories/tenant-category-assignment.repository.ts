@@ -114,15 +114,21 @@ export async function getSummaryByTenantId(
     .eq('status', 'active')
     .is('deleted_at', null)
 
-  if (!data) return { total_aktif: 0, total_override_komisi: 0, coverage_summary: 'Seluruh Indonesia' }
+  if (!data) return { total_aktif: 0, total_override_komisi: 0, coverage_summary: 'BELUM_SETTING' }
 
   const totalAktif        = data.length
   const totalOverride     = data.filter(a => a.commission_override !== null).length
   const allAreas          = data.flatMap(a => a.coverage_areas ?? [])
   const uniqueAreas       = [...new Set(allAreas)]
-  const coverageSummary   = uniqueAreas.length === 0
-    ? 'Seluruh Indonesia'
-    : uniqueAreas.slice(0, 3).join(', ') + (uniqueAreas.length > 3 ? ', ...' : '')
+
+  // Bedakan 2 kondisi:
+  // - Belum ada assignment sama sekali (totalAktif===0) → 'BELUM_SETTING' → UI tampil "Belum disetting"
+  // - Ada assignment tapi tidak ada coverage spesifik → 'Seluruh Indonesia' (memang by design)
+  const coverageSummary   = totalAktif === 0
+    ? 'BELUM_SETTING'
+    : uniqueAreas.length === 0
+      ? 'Seluruh Indonesia'
+      : uniqueAreas.slice(0, 3).join(', ') + (uniqueAreas.length > 3 ? ', ...' : '')
 
   return {
     total_aktif:           totalAktif,
