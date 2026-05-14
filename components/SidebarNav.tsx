@@ -11,6 +11,7 @@
 // Updated Sesi #135: tambah isGroupActive case 'pengguna' (M7 Roles & Permissions)
 // Updated Sesi #136: tambah /memberships ke isGroupActive case 'pengguna' (M8)
 // Updated Sesi #137: tambah /refunds ke isGroupActive case 'pengguna' (M9)
+// Updated Sesi #144: tambah /wilayah ke isGroupActive case 'manajemen' (Master Wilayah)
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -61,7 +62,7 @@ export function SidebarNav({ brandName, messages, featureKeys }: SidebarNavProps
     if (groupKey === 'konfigurasi') return path.includes('/settings') || path.includes('/dropdowns')
     if (groupKey === 'konten')      return path.includes('/messages')
     if (groupKey === 'integrasi')   return path.includes('/providers')
-    if (groupKey === 'manajemen')   return path.includes('/tenants') || path.includes('/categories')
+    if (groupKey === 'manajemen')   return path.includes('/tenants') || path.includes('/categories') || path.includes('/wilayah')
     if (groupKey === 'pengguna')    return path.includes('/roles') || path.includes('/permissions') || path.includes('/memberships') || path.includes('/refunds')
     return false
   }

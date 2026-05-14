@@ -120,6 +120,11 @@ export const SA_NAV_GROUPS: NavGroup[] = [
         labelKey: 'nav_menu_master_kategori',
         path:     '/dashboard/superadmin/categories',
       },
+      {
+        key:      'wilayah',
+        labelKey: 'nav_menu_master_wilayah',
+        path:     '/dashboard/superadmin/wilayah',
+      },
     ],
   },
   {
