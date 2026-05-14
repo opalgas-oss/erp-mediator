@@ -29,6 +29,16 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        {/* Tabler Icons webfont — React 19 native <link> dengan precedence prop
+            membuat React mempertahankan sebagai stylesheet aktif (bukan preload-only).
+            CSS untuk class .ti dan .ti-X akan diterapkan ke element <i> di seluruh app. */}
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.24.0/dist/tabler-icons.min.css"
+          precedence="default"
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         <TooltipProvider>
           {children}
