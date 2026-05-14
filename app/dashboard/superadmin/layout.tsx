@@ -16,24 +16,33 @@
 //   cekSesiParalel() ditambahkan ke Promise.all yang sudah ada → 0 tambahan latency.
 //   Hasilnya diteruskan ke DashboardShell sebagai prop sesiParalel.
 //   Jika tidak ada sesi paralel (adaSesi=false): tidak ada perubahan visual.
-
+//
 // UPDATE Sesi #079 — DRY fix (BLOK B):
 //   DashboardShell sekarang generic — sidebar di-inject sebagai ReactNode.
 //   SidebarNav menerima brandName + messages + featureKeys langsung dari layout.
 //   mobileOpen/onMobileClose tidak lagi di-pass — dibaca via useMobileSidebar() context.
+//
+// FIX Sesi #145 — BUG-015 Tahap 2 (RSC Cold Start):
+//   HAPUS: export const dynamic = 'force-dynamic'
+//     → Redundant karena cookies() di verifyJWT() sudah trigger dynamic otomatis
+//     → force-dynamic mencegah streaming: server tunggu SEMUA fetch selesai
+//       sebelum kirim byte pertama (553ms TTFB cold start)
+//   TAMBAH: Suspense boundary untuk SidebarDataLoader
+//     → getBrandName() + getConfigValue() dipindah ke SidebarDataLoader
+//     → Tidak blocking initial HTML shell
+//   Layout body sekarang await 2 item paralel (bukan 4):
+//     fetchSidebarData + cekSesiParalel
+//     → messages tetap di body karena DashboardHeader juga butuh
 
-export const dynamic = 'force-dynamic'
-
+import { Suspense }                   from 'react'
 import { redirect }                   from 'next/navigation'
 import { verifyJWT }                  from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getMessagesByKategori }      from '@/lib/message-library'
-import { getConfigValue }             from '@/lib/config-registry'
-import { getBrandName }               from '@/lib/dashboard-data'
 import { cekSesiParalel }             from '@/app/login/login-session-check'
 import { ROLES }                      from '@/lib/constants'
 import { DashboardShell }             from '@/components/DashboardShell'
-import { SidebarNav }                 from '@/components/SidebarNav'
+import SidebarDataLoader, { SidebarSkeleton } from '@/components/superadmin/SidebarDataLoader'
 
 async function fetchSidebarData(): Promise<{
   messages:    Record<string, string>
@@ -69,33 +78,30 @@ async function fetchSidebarData(): Promise<{
 }
 
 export default async function SuperAdminLayout({ children }: { children: React.ReactNode }) {
+  // Auth gate — wajib di layout body, JANGAN dipindah ke Suspense
   const payload = await verifyJWT()
   if (!payload || payload.role !== 'SUPERADMIN') redirect('/login')
 
-  // FIX Sesi #081 — getConfigValue dipindah ke dalam Promise.all (hilangkan waterfall sequential)
-  // Catatan: unstable_cache tidak efektif saat force-dynamic aktif (BUG-015)
-  // TTL tetap diambil untuk dipakai saat force-dynamic dihapus (Tahap 2)
-  const [ttlStr, { messages, featureKeys }, brandName, hasilCekSesi] = await Promise.all([
-    getConfigValue('platform_general', 'sidebar_cache_ttl_seconds', '1800'),
+  // Fetch HANYA yang dibutuhkan layout body secara langsung:
+  //   fetchSidebarData → messages (DashboardHeader + SidebarNav) + featureKeys
+  //   cekSesiParalel   → ConcurrentSessionBanner
+  // getBrandName + getConfigValue dipindah ke SidebarDataLoader (Suspense)
+  const [{ messages, featureKeys }, hasilCekSesi] = await Promise.all([
     fetchSidebarData(),
-    getBrandName(),
     cekSesiParalel(payload.uid, '', ROLES.SUPERADMIN),
   ])
 
-  // TTL disimpan — akan dipakai unstable_cache setelah force-dynamic dihapus (Tahap 2)
-  const _revalidate = Number(ttlStr) || 1800
-
-  // Teruskan data sesi ke DashboardShell hanya jika ada sesi paralel aktif
   const sesiParalel = hasilCekSesi.adaSesi ? hasilCekSesi.sesiData : undefined
 
   return (
     <DashboardShell
       sidebar={
-        <SidebarNav
-          brandName={brandName}
-          messages={messages}
-          featureKeys={featureKeys}
-        />
+        <Suspense fallback={<SidebarSkeleton />}>
+          <SidebarDataLoader
+            messages={messages}
+            featureKeys={featureKeys}
+          />
+        </Suspense>
       }
       messages={messages}
       sesiParalel={sesiParalel}
