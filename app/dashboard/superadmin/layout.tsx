@@ -33,12 +33,18 @@
 //   Layout body sekarang await 2 item paralel (bukan 4):
 //     fetchSidebarData + cekSesiParalel
 //     → messages tetap di body karena DashboardHeader juga butuh
+//
+// FIX Sesi #146 — BUG-015 Tahap 2 Iterasi 2 (Fix A):
+//   HAPUS: raw Supabase query featureKeys dari fetchSidebarData()
+//     → query ini hit DB setiap request (warm + cold) tanpa cache
+//   GANTI: getActiveSidebarFeatureKeys() dari lib/config-registry
+//     → unstable_cache TTL 1800s, tag 'sidebar-data', survive cold restart
 
 import { Suspense }                   from 'react'
 import { redirect }                   from 'next/navigation'
 import { verifyJWT }                  from '@/lib/auth-server'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getMessagesByKategori }      from '@/lib/message-library'
+import { getActiveSidebarFeatureKeys } from '@/lib/config-registry'
 import { cekSesiParalel }             from '@/app/login/login-session-check'
 import { ROLES }                      from '@/lib/constants'
 import { DashboardShell }             from '@/components/DashboardShell'
@@ -49,25 +55,14 @@ async function fetchSidebarData(): Promise<{
   featureKeys: string[]
 }> {
   try {
-    const db = createServerSupabaseClient()
-
-    const [messages, configResult] = await Promise.all([
+    const [messages, featureKeys] = await Promise.all([
       getMessagesByKategori(['sidebar_ui', 'page_ui', 'header_ui']),
-      db.from('config_registry')
-        .select('feature_key')
-        .is('tenant_id', null)
-        .eq('is_active', true),
+      getActiveSidebarFeatureKeys(),
     ])
-
-    const featureKeys = [
-      ...new Set(
-        (configResult.data ?? []).map((r: { feature_key: string }) => r.feature_key)
-      ),
-    ]
 
     return {
       messages:    messages ?? {},
-      featureKeys: featureKeys.length > 0 ? featureKeys : ['security_login'],
+      featureKeys: featureKeys,
     }
   } catch {
     return {

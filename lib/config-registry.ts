@@ -7,16 +7,22 @@
 //   2. Modul Pesan       → tabel message_library    ← lib/message-library.ts
 //   3. Modul API         → tabel instance_credentials ← lib/credential-reader.ts
 //
-// CACHING STRATEGY (Update Sesi #060):
-//   unstable_cache tidak efektif di Vercel serverless — tiap invocation bisa fresh process.
-//   Solusi: module-level Map dengan TTL 5 menit.
-//   - Warm instance: baca dari Map → 0ms (tidak query DB)
-//   - Cold start / TTL expired: query DB → simpan ke Map
-//   - SuperAdmin update config → panggil invalidateConfigCache() → Map di-clear untuk key itu
-//   Ini pattern umum di aplikasi produksi (Google, Tokopedia, dll).
+// CACHING STRATEGY (Update Sesi #060, Revisi Sesi #146):
+//   SEBELUMNYA (S#060): module-level Map dengan TTL 5 menit untuk getConfigValues.
+//   Komentar S#060 menyebut unstable_cache tidak efektif — ini TIDAK BERLAKU lagi
+//   sejak Next.js 14.2 + Vercel Fluid Compute (Vercel Data Cache survive cold restart).
+//
+//   STATUS SAAT INI (S#146 — Fix A + Fix B SELESAI):
+//   - getActiveSidebarFeatureKeys: unstable_cache TTL 1800s, tag 'sidebar-data' [Fix A]
+//     → survive cold restart via Vercel Data Cache
+//   - getConfigValues: unstable_cache TTL 300s, tag 'config' [Fix B]
+//     → survive cold restart via Vercel Data Cache
+//   - invalidateConfigCache(): thin wrapper revalidateTag (backward compat) [Fix B]
+//   - SuperAdmin update config → revalidateTag di PATCH /api/config → invalidasi benar
 
 import 'server-only'
 import { cache } from 'react'
+import { unstable_cache, revalidateTag } from 'next/cache'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 // ─── Tipe Data ────────────────────────────────────────────────────────────────
@@ -31,86 +37,104 @@ export interface ConfigRegistryItem {
   is_active:  boolean
 }
 
-// ─── Module-level Cache ───────────────────────────────────────────────────────
-// Hidup selama serverless instance masih warm.
-// Key: featureKey (misal 'security_login')
-// Value: { data: map hasil query, expiredAt: timestamp }
-
-const CONFIG_CACHE_TTL_MS = 5 * 60 * 1000 // 5 menit
-
-interface CacheEntry {
-  data:      Record<string, string>
-  expiredAt: number
-}
-
-const configCache = new Map<string, CacheEntry>()
-
 // ─── FUNGSI: invalidateConfigCache ───────────────────────────────────────────
 /**
  * Hapus cache untuk featureKey tertentu.
  * Wajib dipanggil dari API route saat SuperAdmin update config di dashboard.
  * Contoh: setelah PATCH /api/config/security_login → invalidateConfigCache('security_login')
+ *
+ * FIX Sesi #146 — BUG-015 Tahap 2 Iterasi 2 (Fix B):
+ *   Sebelumnya: Map.delete(featureKey) atau Map.clear()
+ *   Sekarang: revalidateTag — invalidasi Vercel Data Cache (out-of-process, persist)
+ *   Route handlers di /api/config sudah memanggil revalidateTag secara langsung juga.
+ *   invalidateConfigCache() dipertahankan untuk backward compat sebagai thin wrapper.
+ *
  * @param featureKey - key modul config yang diupdate (misal 'security_login')
  */
 export function invalidateConfigCache(featureKey?: string): void {
   if (featureKey) {
-    configCache.delete(featureKey)
-  } else {
-    // Tanpa parameter → invalidate semua
-    configCache.clear()
+    revalidateTag(`config:${featureKey}`, 'default')
   }
+  // revalidateTag('config') sudah dipanggil di route handler — tidak duplikasi
 }
+
+// ─── FUNGSI: getActiveSidebarFeatureKeys ──────────────────────────────────────
+/**
+ * Ambil daftar feature_key aktif dari config_registry untuk sidebar SA.
+ * Di-cache via Vercel Data Cache (unstable_cache) TTL 1800 detik, tag 'sidebar-data'.
+ * Cache ini survive cold restart lambda — tidak hit DB setiap cold start.
+ * Invalidasi otomatis saat revalidateTag('sidebar-data') dipanggil di PATCH /api/config.
+ *
+ * FIX Sesi #146 — BUG-015 Tahap 2 Iterasi 2 (Fix A):
+ *   Menggantikan raw Supabase query di fetchSidebarData() di layout SA.
+ *   Raw query sebelumnya hit DB setiap request (warm maupun cold) tanpa cache.
+ */
+export const getActiveSidebarFeatureKeys = unstable_cache(
+  async (): Promise<string[]> => {
+    try {
+      const db = createServerSupabaseClient()
+      const { data } = await db
+        .from('config_registry')
+        .select('feature_key')
+        .is('tenant_id', null)
+        .eq('is_active', true)
+      const keys = [...new Set((data ?? []).map((r: { feature_key: string }) => r.feature_key))]
+      return keys.length > 0 ? keys : ['security_login']
+    } catch {
+      return ['security_login']
+    }
+  },
+  ['sidebar-feature-keys'],
+  { tags: ['sidebar-data'], revalidate: 1800 }
+)
 
 // ─── FUNGSI 1: getConfigValues ────────────────────────────────────────────────
 /**
  * Baca semua nilai untuk satu feature_key sekaligus.
  * Return map { policy_key: nilai }
- * Di-cache di module-level Map selama 5 menit — tidak query DB setiap request.
+ *
+ * FIX Sesi #146 — BUG-015 Tahap 2 Iterasi 2 (Fix B):
+ *   Sebelumnya: module-level Map TTL 5 menit (hilang tiap cold restart lambda).
+ *   Sekarang: unstable_cache TTL 300s, tag 'config' — survive cold restart via Vercel Data Cache.
+ *   React cache() tetap dipertahankan untuk deduplikasi per-request render (in-request).
+ *
  * Contoh: getConfigValues('security_login') → { max_login_attempts: '5', ... }
  */
-// FIX Sesi #081 — dibungkus React cache() untuk deduplikasi per-request render.
-// Jika featureKey sama dipanggil >1x dalam 1 render → hanya 1 eksekusi.
-// Complementary dengan module-level Map cache (cross-request, TTL 5 menit).
-export const getConfigValues = cache(_getConfigValuesImpl)
+// Lapisan 1: React cache() — deduplikasi dalam 1 render tree (per-request, in-memory)
+// Lapisan 2: unstable_cache — Vercel Data Cache, TTL 300s, survive cold restart (cross-request)
+export const getConfigValues = cache(
+  unstable_cache(
+    async (featureKey: string): Promise<Record<string, string>> => {
+      try {
+        const db = createServerSupabaseClient()
+        const { data, error } = await db
+          .from('config_registry')
+          .select('policy_key, nilai')
+          .eq('feature_key', featureKey)
+          .is('tenant_id', null)
+          .eq('is_active', true)
+          .not('policy_key', 'is', null)
 
-async function _getConfigValuesImpl(featureKey: string): Promise<Record<string, string>> {
-  const now    = Date.now()
-  const cached = configCache.get(featureKey)
+        if (error) {
+          console.error(`[config-registry] getConfigValues(${featureKey}):`, error.message)
+          return {}
+        }
 
-  // Cache hit — return langsung tanpa query DB
-  if (cached && now < cached.expiredAt) return cached.data
+        const map: Record<string, string> = {}
+        for (const row of data ?? []) {
+          if (row.policy_key) map[row.policy_key] = row.nilai
+        }
+        return map
 
-  // Cache miss / expired — query DB
-  try {
-    const db = createServerSupabaseClient()
-    const { data, error } = await db
-      .from('config_registry')
-      .select('policy_key, nilai')
-      .eq('feature_key', featureKey)
-      .is('tenant_id', null)
-      .eq('is_active', true)
-      .not('policy_key', 'is', null)
-
-    if (error) {
-      console.error(`[config-registry] getConfigValues(${featureKey}):`, error.message)
-      // Kalau error, return cache lama kalau ada (stale-while-error)
-      return cached?.data ?? {}
-    }
-
-    const map: Record<string, string> = {}
-    for (const row of data ?? []) {
-      if (row.policy_key) map[row.policy_key] = row.nilai
-    }
-
-    // Simpan ke cache
-    configCache.set(featureKey, { data: map, expiredAt: now + CONFIG_CACHE_TTL_MS })
-    return map
-
-  } catch (err) {
-    console.error(`[config-registry] getConfigValues error:`, err)
-    return cached?.data ?? {}
-  }
-}
+      } catch (err) {
+        console.error(`[config-registry] getConfigValues error:`, err)
+        return {}
+      }
+    },
+    ['config-values'],
+    { tags: ['config'], revalidate: 300 }
+  )
+)
 
 // ─── FUNGSI 2: getConfigValue ─────────────────────────────────────────────────
 /**
