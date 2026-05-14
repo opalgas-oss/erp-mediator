@@ -70,7 +70,23 @@ export async function TCAService_assign(
     throw new Error(result.error ?? 'Gagal assign kategori')
   }
 
-  return { assignment_id: result.assignmentId }
+  // Insert ke junction table assignment_coverage_areas (S#143)
+  if (payload.coverage_area_entries && payload.coverage_area_entries.length > 0) {
+    const supabase = await createServerSupabaseClient()
+    const rows = payload.coverage_area_entries.map(entry => ({
+      assignment_id: result.assignmentId!,
+      province_id:   entry.province_id,
+      city_id:       entry.city_id ?? null,
+    }))
+    const { error: eCov } = await supabase
+      .from('assignment_coverage_areas')
+      .insert(rows)
+    if (eCov) {
+      console.error('[TCAService_assign] coverage insert error:', eCov.message)
+    }
+  }
+
+  return { assignment_id: result.assignmentId! }
 }
 
 // ─── TCAService_batchAssign ───────────────────────────────────────────────────

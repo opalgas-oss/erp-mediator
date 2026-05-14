@@ -2,8 +2,10 @@
 // Tipe data untuk M6 — entitas Assignment Kategori ke Tenant
 // Dipakai oleh: tenant-category-assignment.repository.ts, .service.ts, Tab Kategori UI
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.2
+// Update: Sesi #143 — tambah coverage_area_entries ke AssignKategoriPayload
 
 import type { CategoryBreadcrumb } from './category.types'
+import type { CoverageAreaPayload } from './province.types'
 
 // ─── Literal Types ────────────────────────────────────────────────────────────
 
@@ -62,8 +64,10 @@ export interface AssignKategoriPayload {
   tenant_id:             string
   category_id:           string
   commission_override:   number | null  // NULL = ikut kontrak
-  coverage_areas:        string[] | null
+  coverage_areas:        string[] | null  // Legacy: backward compat, akan diisi dari entries
   sla_minutes:           number | null
+  // Baru S#143: junction table coverage areas (Provinsi + Kota)
+  coverage_area_entries?: CoverageAreaPayload[]
 }
 
 // ─── Payload: Batch Assign (kirim beberapa sekaligus) ────────────────────────
