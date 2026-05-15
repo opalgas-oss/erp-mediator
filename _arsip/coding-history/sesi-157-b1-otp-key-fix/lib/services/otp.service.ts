@@ -10,7 +10,7 @@
 //   otpUpsert tetap sequential setelah Promise.all (butuh hasil cfg untuk expiredAt).
 //
 // PERUBAHAN Sesi #084 — E2 Redis OTP Phase 1:
-//   sendOTP()          — Redis SET sebagai primary storage (TTL = otp_expiry_seconds).
+//   sendOTP()          — Redis SET sebagai primary storage (TTL = otp_expiry_minutes × 60s).
 //                        PostgreSQL upsert jadi async fire-and-forget (audit trail).
 //                        Fallback: jika Redis down → PostgreSQL sync (path lama).
 //   verifyAndConsume() — cek Redis GET dulu (fast path <1ms).
@@ -18,12 +18,6 @@
 //                        Redis hit + mismatch → 'WRONG' langsung (tanpa DB call).
 //                        Redis miss → fallback PostgreSQL SP (path lama).
 //   Estimasi dampak: verify-otp warm 580ms → ~130ms.
-//
-// FIX Sesi #157 — B1-01 + B1-02: key config salah → nilai selalu fallback, SA tidak bisa ubah:
-//   B1-01: cfg['otp_expiry_minutes'] → cfg['otp_expiry_seconds'] (key DB = otp_expiry_seconds, nilai 300 detik).
-//          Rename var otpExpiryMenit → otpExpiryDetik. Hapus ×60 di kalkulasi expiredAt + Redis TTL.
-//          Return otp_expiry_minutes: Math.round(otpExpiryDetik / 60) agar client tetap terima menit.
-//   B1-02: cfg['otp_max_attempts'] → cfg['max_otp_attempts'] (key DB = max_otp_attempts).
 //
 // PERUBAHAN Sesi #085 — Fix TC-E04 type mismatch Redis:
 //   verifyAndConsume() — Upstash get<string>() auto-JSON.parse numeric string menjadi number.
@@ -141,12 +135,12 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
 
   // ── Parse config + generate OTP ───────────────────────────────────────────
   const otpDigits         = parseConfigNumber(cfg['otp_digits'], 6)
-  const otpExpiryDetik    = parseConfigNumber(cfg['otp_expiry_seconds'], 300)
-  const otpMaxAttempts    = parseConfigNumber(cfg['max_otp_attempts'], 3)
+  const otpExpiryMenit    = parseConfigNumber(cfg['otp_expiry_minutes'], 5)
+  const otpMaxAttempts    = parseConfigNumber(cfg['otp_max_attempts'], 3)
   const otpResendCooldown = parseConfigNumber(cfg['otp_resend_cooldown_seconds'], 60)
 
   const kodeOTP   = generateOTPCode(otpDigits)
-  const expiredAt = new Date(Date.now() + otpExpiryDetik * 1000)
+  const expiredAt = new Date(Date.now() + otpExpiryMenit * 60 * 1000)
   const redisKey  = makeOTPRedisKey(params.uid, params.tenantId)
 
   // ── GRUP B: simpan OTP — Redis primary, PostgreSQL async audit ────────────
@@ -156,8 +150,8 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
 
   if (redis) {
     try {
-      // Redis SET dengan TTL = durasi OTP dalam detik (baca langsung dari otp_expiry_seconds)
-      await redis.set(redisKey, kodeOTP, { ex: otpExpiryDetik })
+      // Redis SET dengan TTL = durasi OTP dalam detik
+      await redis.set(redisKey, kodeOTP, { ex: otpExpiryMenit * 60 })
       redisOk = true
     } catch (err) {
       console.warn('[OTPService] Redis SET gagal, fallback ke PostgreSQL sync:', err)
@@ -223,7 +217,7 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
 
   return {
     success:                  true,
-    otp_expiry_minutes:       Math.round(otpExpiryDetik / 60),
+    otp_expiry_minutes:       otpExpiryMenit,
     otp_max_attempts:         otpMaxAttempts,
     resend_cooldown_seconds:  otpResendCooldown,
   }

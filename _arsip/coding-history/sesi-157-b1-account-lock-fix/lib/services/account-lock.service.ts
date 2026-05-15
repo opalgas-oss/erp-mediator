@@ -76,10 +76,6 @@ export async function getAccountLock(email: string): Promise<AccountLockDoc | nu
 // ─── FUNGSI: incrementLockCount ──────────────────────────────────────────────
 // Orchestrator: baca config → panggil SP via repository → return hasil.
 // Semua logika atomik (cek expired, increment, lock) sudah di SP.
-// FIX Sesi #157 — B1-03: key config salah → nilai selalu fallback 15 menit, SA tidak bisa ubah durasi lockout.
-//   cfg['lock_duration_minutes'] → cfg['lockout_duration_minutes'] (key DB = lockout_duration_minutes, nilai 30 menit).
-//   Fallback juga disamakan dari 15 → 30 (konsisten dengan default DB).
-// Semua logika atomik (cek expired, increment, lock) sudah di SP — tidak ada perubahan caller/signature.
 /**
  * Baca config → panggil SP via repository — atomic increment + lock.
  * @param data - IncrementLockParams berisi uid, email, nama, nomor_wa, tenantId
@@ -94,7 +90,7 @@ export async function incrementLockCount(data: IncrementLockParams): Promise<{
   // Baca konfigurasi dari config_registry (dengan cache)
   const cfg          = await getConfigValues('security_login')
   const maxPercobaan = parseConfigNumber(cfg['max_login_attempts'], 5)
-  const durasiMenit  = parseConfigNumber(cfg['lockout_duration_minutes'], 30)
+  const durasiMenit  = parseConfigNumber(cfg['lock_duration_minutes'], 15)
 
   // Panggil SP via repository — atomic, race-condition safe
   const result: IncrementLockResult = await spIncrementLockCount({

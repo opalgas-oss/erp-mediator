@@ -1,0 +1,9 @@
+// middleware.ts — SNAPSHOT PRE-FIX B1-04 — Sesi #157
+// Kondisi sebelum tambah vendor blocked status guard (T-038)
+// Arsip: _arsip/coding-history/sesi-157-b1-vendor-middleware-guard/
+//
+// Bug: vendorStatus diekstrak dari JWT tapi TIDAK pernah dicek terhadap VENDOR_LOGIN_ALLOWED.
+// Vendor dengan status PENDING/REVIEW tetap bisa akses /dashboard/vendor jika JWT masih valid.
+//
+// Fix: tambah guard setelah userRole+userId ditetapkan, sebelum header propagation.
+// Gunakan konstanta VENDOR_LOGIN_ALLOWED dari lib/constants — konsisten dengan login action.
