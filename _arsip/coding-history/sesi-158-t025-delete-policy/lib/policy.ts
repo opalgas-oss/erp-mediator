@@ -69,13 +69,10 @@ export async function getEffectivePolicy<K extends keyof PolicyMap>(
   tenantId: string,
   featureKey: K
 ): Promise<PolicyMap[K]> {
-  // unstable_cache: cache berlaku lintas request di Vercel serverless
-  // TTL 15 menit — revalidate saat admin update config via revalidateTag()
   const cached = unstable_cache(
     async () => {
       const db = createServerSupabaseClient()
 
-      // Baca platform policy dari tabel platform_policies
       const { data, error } = await db
         .from('platform_policies')
         .select('nilai')
@@ -91,9 +88,6 @@ export async function getEffectivePolicy<K extends keyof PolicyMap>(
 
       const platformData = data.nilai as Record<string, unknown>
 
-      // Merge logika: platform policy adalah sumber utama
-      // Tenant override akan diimplementasikan di Sprint berikutnya
-      // saat tabel tenant_policies dibuat
       const merged: Record<string, unknown> = {}
 
       for (const fieldName of Object.keys(platformData)) {
