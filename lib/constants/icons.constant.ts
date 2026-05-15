@@ -3,6 +3,7 @@
 // Semua komponen WAJIB import icon dari sini, TIDAK BOLEH import langsung dari lucide-react.
 //
 // Dibuat: Sesi #100 — Sentralisasi UI
+// Updated: Sesi #153 — tambah Activity icon untuk grup Monitoring (PL-S09)
 //
 // CARA PAKAI:
 //   import { ICON_NAV, ICON_ACTION, ICON_STATUS } from '@/lib/constants/icons.constant'
@@ -94,6 +95,9 @@ import {
 
   // ── Keuangan / Approval ──
   ReceiptText,
+
+  // ── Monitoring — ditambah S#153 ──
+  Activity,
 } from 'lucide-react'
 
 import type { LucideIcon } from 'lucide-react'
@@ -114,6 +118,8 @@ export const ICON_NAV = {
   manajemen:     Building2,
   /** Grup menu Pengguna (Roles, Permissions, Memberships) — ditambah S#134 */
   pengguna:      Shield,
+  /** Grup menu Monitoring (Platform Health) — ditambah S#153 */
+  monitoring:    Activity,
   /** Info GPS di footer sidebar */
   gps:           MapPin,
   /** Expand / collapse grup — panah bawah */
@@ -270,4 +276,11 @@ export const ICON_LOCATION = {
 export const ICON_FINANCE = {
   /** Refund / approval nota keuangan (M9 Approval Refund SA) — ditambah S#137 */
   refund:        ReceiptText,
+} as const
+
+// ─── Monitoring ───────────────────────────────────────────────────────────────
+
+export const ICON_MONITORING = {
+  /** Platform health / activity — PL-S09 Monitoring Dashboard */
+  activity:      Activity,
 } as const

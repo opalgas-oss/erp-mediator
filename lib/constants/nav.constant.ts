@@ -7,6 +7,7 @@
 // Updated: Sesi #135 — tambah grup pengguna (M7 Roles & Permissions)
 // Updated: Sesi #136 — tambah memberships ke grup pengguna (M8 User Membership)
 // Updated: Sesi #137 — tambah refunds ke grup pengguna (M9 Approval Refund SA)
+// Updated: Sesi #153 — tambah grup monitoring (PL-S09 Platform Health)
 //
 // CARA PAKAI:
 //   import { SA_NAV_GROUPS, navItemToPath } from '@/lib/constants/nav.constant'
@@ -152,6 +153,19 @@ export const SA_NAV_GROUPS: NavGroup[] = [
         key:      'refunds',
         labelKey: 'nav_menu_refunds',
         path:     '/dashboard/superadmin/refunds',
+      },
+    ],
+  },
+  {
+    key:      'monitoring',
+    labelKey: 'sidebar_menu_monitoring',
+    icon:     ICON_NAV.monitoring,
+    iconSize: 15,
+    items: [
+      {
+        key:      'monitoring',
+        labelKey: 'nav_menu_platform_health',
+        path:     '/dashboard/superadmin/monitoring',
       },
     ],
   },
