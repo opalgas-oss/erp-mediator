@@ -2,12 +2,17 @@
 
 // components/ConfigItem.tsx
 // Komponen satu baris item konfigurasi di dashboard SuperAdmin.
-// Mendukung 5 tipe render: toggle, number-unit, select-only, timing, json-per-role.
+// Mendukung 6 tipe render: toggle, number-unit, select-only, timing, json-per-role, text-field.
 //
 // PERUBAHAN Sesi #097 — PL-S08 M1:
-//   - Tambah type 'timing'       → render <TimingInput /> untuk field waktu
+//   - Tambah type 'timing'        → render <TimingInput /> untuk field waktu
 //   - Tambah type 'json-per-role' → render <PerRoleJsonEditor /> untuk field JSON per role
 //   - Update interface ConfigItemData: tambah field fieldName, valueType, perRoleOptions
+//
+// PERUBAHAN Sesi #163 — Fix T-027:
+//   - Tambah type 'text-field' → render <Input type="text" /> untuk tipe_data='text'
+//   - Contoh: vendor_blocked_statuses (comma-separated string seperti 'PENDING,REVIEW')
+//   - Sebelum fix: tipe_data='text' fallthrough ke 'number-unit' → render input number (salah)
 
 import type { JSX }          from 'react'
 import { Input }             from '@/components/ui/input'
@@ -22,7 +27,7 @@ export interface ConfigItemData {
   id:              string
   label:           string
   fieldName?:      string   // nama kolom DB — wajib untuk type 'timing' dan 'json-per-role'
-  type:            'toggle' | 'number-unit' | 'select-only' | 'timing' | 'json-per-role'
+  type:            'toggle' | 'number-unit' | 'select-only' | 'timing' | 'json-per-role' | 'text-field'
   value:           number | boolean | string
   unit?:           string
   units?:          string[]
@@ -219,6 +224,40 @@ export function ConfigItem({
           onChange={(jsonStr) => onValueChange(jsonStr)}
           disabled={!item.enabled}
         />
+        <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />
+      </div>
+    )
+  }
+
+  // ── text-field — input teks bebas untuk tipe_data='text' ─────────────────
+  // Contoh: vendor_blocked_statuses menyimpan comma-separated string 'PENDING,REVIEW'
+  // T-027 Fix S#163: sebelumnya tipe 'text' fallthrough ke 'number-unit' (salah)
+  if (item.type === 'text-field') {
+    return (
+      <div className="space-y-0.5">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
+          <span className="flex-1 min-w-0 text-xs sm:text-sm font-medium text-slate-700">
+            {item.label}
+          </span>
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
+            <span className="text-xs text-slate-500">
+              {item.enabled ? 'Aktif' : 'Tidak Aktif'}
+            </span>
+            <Switch
+              checked={item.enabled}
+              onCheckedChange={onEnabledToggle}
+              className="h-4 w-8 sm:h-5 sm:w-9 data-[state=checked]:bg-blue-600 flex-shrink-0"
+            />
+            <Input
+              type="text"
+              value={String(item.value)}
+              onChange={(e) => onValueChange(e.target.value)}
+              disabled={!item.enabled}
+              className="w-48 h-7 px-2 text-xs disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+              placeholder="contoh: PENDING,REVIEW"
+            />
+          </div>
+        </div>
         <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />
       </div>
     )

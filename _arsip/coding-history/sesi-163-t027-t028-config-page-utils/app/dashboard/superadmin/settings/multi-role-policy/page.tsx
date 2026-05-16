@@ -5,22 +5,41 @@
 // Mendukung tipe: toggle (boolean), number-unit (number), json-per-role (json).
 //
 // Dibuat: Sesi #097 — PL-S08 M1 Config & Policy Management
-// PERUBAHAN Sesi #163 — Fix T-028 (DRY):
-//   - Hapus definisi lokal mapTipe, mapValue, JsonFieldConfig, ConfigItemType
-//   - Import semua dari @/lib/utils/config-page.utils (satu sumber kebenaran)
 
 export const dynamic = 'force-dynamic'
 
-import { createServerSupabaseClient }              from '@/lib/supabase-server'
-import { ConfigPageClient }                        from '../security-login/ConfigPageClient'
-import { mapTipe, mapValue, type JsonFieldConfig } from '@/lib/utils/config-page.utils'
-import type { ConfigItemData }                     from '@/components/ConfigItem'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { ConfigPageClient }           from '../security-login/ConfigPageClient'
+import type { ConfigItemData }        from '@/components/ConfigItem'
 
 // ─── Konfigurasi tipe per field JSON per-role ─────────────────────────────────
+
+type JsonFieldConfig = {
+  valueType: 'boolean' | 'number' | 'select'
+  options?:  string[]
+}
 
 const JSON_FIELD_CONFIG: Record<string, JsonFieldConfig> = {
   max_concurrent_sessions_per_role: { valueType: 'number' },
   notify_multi_device_login:        { valueType: 'boolean' },
+}
+
+// ─── Helper: map tipe_data DB → type ConfigItem ───────────────────────────────
+
+type ConfigItemType = ConfigItemData['type']
+
+function mapTipe(tipeData: string): ConfigItemType {
+  if (tipeData === 'boolean') return 'toggle'
+  if (tipeData === 'json')    return 'json-per-role'
+  return 'number-unit'
+}
+
+// ─── Helper: map nilai DB (string) → tipe sesuai tipe_data ──────────────────
+
+function mapValue(nilai: string, tipeData: string): number | boolean | string {
+  if (tipeData === 'boolean') return nilai === 'true'
+  if (tipeData === 'number')  return Number(nilai)
+  return nilai
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -36,8 +55,6 @@ export default async function MultiRolePolicyPage() {
     .eq('is_active', true)
     .order('label', { ascending: true })
 
-  // Kelompokkan per kategori → format ConfigGroup[]
-  // Semua items multi_role_policy masuk satu grup 'Multi-Role Policy'
   const groupMap = new Map<string, {
     title:       string
     feature_key: string
@@ -60,13 +77,13 @@ export default async function MultiRolePolicyPage() {
       id:              row.id       as string,
       label:           row.label    as string,
       fieldName:       policyKey,
-      type:            mapTipe(tipeData, policyKey),
+      type:            mapTipe(tipeData),
       value:           mapValue(row.nilai as string, tipeData),
       options:         (row.nilai_enum as string[] | null) ?? undefined,
       valueType:       jsonCfg?.valueType,
       perRoleOptions:  jsonCfg?.options,
       option_group_id: null,
-      adminCanChange:  false, // multi_role_policy = platform-only, tidak bisa di-override tenant
+      adminCanChange:  false,
       enabled:         row.is_active as boolean,
     }
 

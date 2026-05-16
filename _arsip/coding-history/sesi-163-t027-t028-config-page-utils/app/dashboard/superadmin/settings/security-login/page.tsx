@@ -8,19 +8,19 @@
 //   - SuperAdmin WAJIB bisa lihat SEMUA item (aktif maupun tidak aktif)
 //   - Filter is_active hanya dipakai saat sistem MENGEKSEKUSI feature, BUKAN di UI management
 //   - Tanpa fix ini: SuperAdmin tidak bisa menyalakan kembali item yang is_active=false
-// PERUBAHAN Sesi #163 — Fix T-028 (DRY) + T-027 (text-field):
-//   - Hapus definisi lokal mapTipe, mapValue, JsonFieldConfig, ConfigItemType, isTimingField
-//   - Import semua dari @/lib/utils/config-page.utils (satu sumber kebenaran)
-//   - mapTipe sekarang handle tipe_data='text' → 'text-field' (fix vendor_blocked_statuses)
 
 export const dynamic = 'force-dynamic'
 
-import { createServerSupabaseClient }              from '@/lib/supabase-server'
-import { ConfigPageClient }                        from './ConfigPageClient'
-import { mapTipe, mapValue, type JsonFieldConfig } from '@/lib/utils/config-page.utils'
-import type { ConfigItemData }                     from '@/components/ConfigItem'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { ConfigPageClient }           from './ConfigPageClient'
+import type { ConfigItemData }        from '@/components/ConfigItem'
 
 // ─── Konfigurasi tipe per field JSON per-role ─────────────────────────────────
+
+type JsonFieldConfig = {
+  valueType: 'boolean' | 'number' | 'select'
+  options?:  string[]
+}
 
 const JSON_FIELD_CONFIG: Record<string, JsonFieldConfig> = {
   require_otp:                      { valueType: 'select', options: ['required', 'optional', 'disabled'] },
@@ -29,16 +29,39 @@ const JSON_FIELD_CONFIG: Record<string, JsonFieldConfig> = {
   notify_multi_device_login:        { valueType: 'boolean' },
 }
 
+// ─── Helper: deteksi field timing dari suffix nama kolom ─────────────────────
+
+const TIMING_SUFFIXES = ['_seconds', '_minutes', '_hours', '_days'] as const
+
+function isTimingField(policyKey: string): boolean {
+  return TIMING_SUFFIXES.some((s) => policyKey.endsWith(s))
+}
+
+// ─── Helper: map tipe_data DB → type ConfigItem ───────────────────────────────
+
+type ConfigItemType = ConfigItemData['type']
+
+function mapTipe(tipeData: string, policyKey: string): ConfigItemType {
+  if (tipeData === 'boolean')                             return 'toggle'
+  if (tipeData === 'select')                              return 'select-only'
+  if (tipeData === 'json')                                return 'json-per-role'
+  if (tipeData === 'number' && isTimingField(policyKey))  return 'timing'
+  return 'number-unit'
+}
+
+// ─── Helper: map nilai DB (string) → tipe sesuai tipe_data ──────────────────
+
+function mapValue(nilai: string, tipeData: string): number | boolean | string {
+  if (tipeData === 'boolean') return nilai === 'true'
+  if (tipeData === 'number')  return Number(nilai)
+  return nilai
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function LoginSettingsPage() {
   const db = createServerSupabaseClient()
 
-  // S#110 FIX: Tidak ada filter is_active di sini.
-  // SuperAdmin harus lihat SEMUA item agar bisa ON/OFF feature dari dashboard.
-  // is_active dibaca dan diteruskan ke UI sebagai prop `enabled` di setiap ConfigItemData.
-  // Filter is_active hanya dipakai saat sistem mengeksekusi feature di runtime
-  // (bukan di halaman management ini).
   const { data } = await db
     .from('config_registry')
     .select('*')
@@ -46,7 +69,6 @@ export default async function LoginSettingsPage() {
     .is('tenant_id', null)
     .order('label', { ascending: true })
 
-  // Kelompokkan per kategori → format ConfigGroup[]
   const groupMap = new Map<string, {
     title:       string
     feature_key: string
