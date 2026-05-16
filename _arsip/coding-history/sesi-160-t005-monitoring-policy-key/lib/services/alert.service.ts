@@ -9,30 +9,35 @@
 
 import 'server-only'
 import { getCredential }      from '@/lib/services/credential.service'
-import { getConfigValues }    from '@/lib/config-registry'
 import { findRulesByProvider } from '@/lib/repositories/alert-rules.repository'
 import { findLastAlertAt, insertAlertLog } from '@/lib/repositories/alert-log.repository'
 import { findRecentByProvider }            from '@/lib/repositories/provider-metrics.repository'
 import type { MonitoringStatus }           from '@/lib/types/monitoring.types'
 import { MONITORING_STATUS, ALERT_TYPE }   from '@/lib/constants/monitoring.constant'
+import { createServerSupabaseClient }                    from '@/lib/supabase-server'
 
 // ─── getAlertTarget — ambil nomor WA + email dari config_registry ────────────
 
-/**
- * Ambil nomor WA + email penerima alert dari config_registry via getConfigValues.
- * Menggunakan cache unstable_cache TTL 300s dari config-registry.ts
- * (sebelumnya: query Supabase langsung via feature_key — tidak ada cache).
- *
- * FIX Sesi #160 — T-005 Opsi B:
- *   Sebelumnya: query direct `.in('feature_key', ['monitoring.superadmin_alert_wa_number', ...])`
- *   Sesudah: getConfigValues('monitoring') — konsisten dengan pola config_registry lain.
- *   DB: feature_key semua row monitoring diubah ke 'monitoring', policy_key diisi.
- */
 async function getAlertTarget(): Promise<{ waNumber: string | null; email: string | null }> {
-  const cfg = await getConfigValues('monitoring')
+  const supabase = createServerSupabaseClient()
+
+  const { data } = await supabase
+    .from('config_registry')
+    .select('feature_key, nilai')
+    .in('feature_key', [
+      'monitoring.superadmin_alert_wa_number',
+      'monitoring.superadmin_alert_email',
+    ])
+    .eq('is_active', true)
+
+  const map: Record<string, string> = {}
+  for (const row of (data ?? [])) {
+    map[row.feature_key] = row.nilai
+  }
+
   return {
-    waNumber: cfg['superadmin_alert_wa_number'] || null,
-    email:    cfg['superadmin_alert_email']    || null,
+    waNumber: map['monitoring.superadmin_alert_wa_number'] || null,
+    email:    map['monitoring.superadmin_alert_email']    || null,
   }
 }
 
