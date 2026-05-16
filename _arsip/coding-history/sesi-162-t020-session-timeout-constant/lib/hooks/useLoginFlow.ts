@@ -41,7 +41,6 @@ import {
   ambilNamaSuperadmin, tulisSessionLogSuperadmin,
   aturCookieSession, hitungTujuanRedirect, kirimActivityLoginBerhasil,
 } from './login/loginSessionHelpers'
-import { SESSION_DEFAULT_TIMEOUT_MINUTES } from '@/lib/auth'
 
 // ─── Return type hook ────────────────────────────────────────────────────────
 export interface LoginFlowState {
@@ -105,7 +104,7 @@ export function useLoginFlow(): LoginFlowState {
   const [maxOtpPercobaan,setMaxOtpPercobaan]= useState(3)
   const [configLogin,    setConfigLogin]    = useState<Record<string, string>>({
     gps_timeout_seconds: '10', gps_cache_ttl_minutes: '30', gps_mode: 'required',
-    password_min_length: '8', session_timeout_minutes: String(SESSION_DEFAULT_TIMEOUT_MINUTES), require_otp: 'true',
+    password_min_length: '8', session_timeout_minutes: '480', require_otp: 'true',
   })
   const [dbPesan, setDbPesan] = useState<Record<string, string>>({})
 
@@ -240,7 +239,7 @@ export function useLoginFlow(): LoginFlowState {
     authData:    { user: { id: string; email?: string | null }; session: { access_token: string } },
     hadAttempts: boolean,
   ) {
-    const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || String(SESSION_DEFAULT_TIMEOUT_MINUTES))
+    const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || '480')
     aturCookieSession({ roleDipilih: ROLES.SUPERADMIN, tenantId: '', gpsKota: gpsRef.current?.kota ?? null, sessionTimeoutMinutes })
     await tulisSessionLogSuperadmin(authData.user.id, gpsRef.current?.kota ?? '')
     const namaSA = await ambilNamaSuperadmin(authData.user.id)
@@ -316,17 +315,8 @@ export function useLoginFlow(): LoginFlowState {
   async function selesaiLogin() {
     setIsLoading(true); setTahap('SELESAI')
     try {
-      const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || String(SESSION_DEFAULT_TIMEOUT_MINUTES))
+      const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || '480')
 
-      // OPTIMASI Sesi #076 — Temuan 1: eliminasi blocking ~172ms sebelum redirect
-      // Sebelumnya: await Promise.all([fetchSessionLog, fetchUserPresence]) → blocking round-trip
-      // Sekarang:
-      //   1. Generate sessionId di client (crypto.randomUUID — tidak perlu tunggu server)
-      //   2. aturCookieSession dulu — cookie harus set sebelum redirect
-      //   3. fetchSessionLog + fetchUserPresence fire-and-forget — tidak blocking
-      //   4. kirimActivityLoginBerhasil dengan sessionId yang sama
-      //   5. router.push LANGSUNG tanpa tunggu apapun
-      // Saving: ~172ms per login Vendor (post-OTP), ~172ms untuk role lain
       const sessionId = crypto.randomUUID()
 
       aturCookieSession({ roleDipilih, tenantId, gpsKota: gpsRef.current?.kota ?? null, sessionTimeoutMinutes })
@@ -400,9 +390,6 @@ export function useLoginFlow(): LoginFlowState {
     setIsLoading(true); setError('')
     if (!(await pastikanGPS())) { setIsLoading(false); return }
 
-    // ─── REFACTOR Sesi #068: 1 unified action — 1x signInWithPassword untuk semua role ──
-    // Sebelumnya: SA action → Vendor action → flow lama (3 sequential, 2-3x signIn)
-    // Sekarang: 1 action, 1 signIn, role dibaca dari JWT, parallel DB calls per role
     try {
       const result = await loginUnifiedAction({
         email, password,
@@ -411,12 +398,10 @@ export function useLoginFlow(): LoginFlowState {
         redirectTo,
       })
 
-      // SA, AdminTenant, Vendor, Customer: handle per skenario
       if (result.ok && result.redirectTo && result.uid) {
         const roleFromResult = result.tenantId === undefined ? ROLES.SUPERADMIN
           : result.nomorWa !== undefined ? ROLES.VENDOR : ROLES.ADMIN_TENANT
 
-        // Vendor: perlu OTP sebelum redirect
         if (roleFromResult === ROLES.VENDOR && result.nama) {
           const tid = result.tenantId ?? ''
           const wa  = result.nomorWa  ?? ''
@@ -432,25 +417,19 @@ export function useLoginFlow(): LoginFlowState {
           return
         }
 
-        // SA + AdminTenant + Customer: redirect langsung
         router.push(result.redirectTo); return
       }
 
-      // Error dari unified action
       if (!result.ok && result.errorKey) {
         setError(m(result.errorKey, result.errorVars)); setIsLoading(false); return
       }
     } catch (err) {
       console.error('[handleLogin] unified action error — koneksi gagal:', err)
-      // PERBAIKAN Sesi #076 — Temuan 2: cegah double signInWithPassword
-      // Sebelumnya: catch jatuh ke runFlowLama() → memanggil signInWithPassword kedua kali dari client
-      // Sekarang: tampilkan error koneksi, tidak fallback ke flow lama
       setError(m('login_error_koneksi_gagal'))
       setIsLoading(false)
       return
     }
 
-    // ─── Fallback: flow lama untuk Customer atau role tidak dikenal ──────────
     await runFlowLama()
   }
 
@@ -461,7 +440,6 @@ export function useLoginFlow(): LoginFlowState {
       const data = await fetchVerifyOTP({ uid, tenantId, inputCode: otpInput })
       if (data.success) {
         fetchActivityLog({ uid, tenantId, nama, role: roleDipilih, sessionId: '', actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'Verifikasi OTP berhasil', result: 'SUCCESS', gpsKota: gpsRef.current?.kota || '' })
-        // Sesi #062: Biometric dihapus dari login flow → langsung selesaiLogin()
         await selesaiLogin()
       } else if (data.result === 'EXPIRED') {
         setError(m('otp_error_kadaluarsa')); setIsLoading(false)

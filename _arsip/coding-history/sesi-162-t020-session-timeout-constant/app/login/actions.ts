@@ -24,7 +24,6 @@ import { createServerSupabaseClient }          from '@/lib/supabase-server'
 import { getAccountLock }                       from '@/lib/services/account-lock.service'
 import { getConfigValues, parseConfigNumber }   from '@/lib/config-registry'
 import { ROLES, ACCOUNT_LOCK_STATUS }           from '@/lib/constants'
-import { SESSION_DEFAULT_TIMEOUT_MINUTES }       from '@/lib/auth'
 import {
   decodeAppClaims, formatLockUntilWIB, hitungTujuanRedirectServer,
   setCookiesLoginServer, jalankanAfterTasksLogin,
@@ -96,7 +95,7 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     getConfigValues('security_login'),
   ])
 
-  const sessionTimeoutMinutes = parseConfigNumber(sessionCfg['session_timeout_minutes'], SESSION_DEFAULT_TIMEOUT_MINUTES)
+  const sessionTimeoutMinutes = parseConfigNumber(sessionCfg['session_timeout_minutes'], 480)
 
   // Jika akun terkunci: pastikan session di-clear dulu baru return error
   if (lock.locked) {

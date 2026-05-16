@@ -10,17 +10,8 @@
 //   - Gunakan window.location.href (bukan router.push) agar Supabase client cache
 //     benar-benar bersih — mencegah middleware baca sesi lama dan redirect balik
 
-// Update: Sesi #162 — T-020: tambah SESSION_DEFAULT_TIMEOUT_MINUTES sebagai konstanta bersama
-//          Ganti magic number 8 * 3600 di setSessionCookies dengan konstanta ini
-
 import { createBrowserSupabaseClient } from '@/lib/supabase-client'
 import { ROLES } from '@/lib/constants'
-
-// ─── Konstanta timeout sesi — satu-satunya sumber kebenaran fallback ─────────
-// Dipakai sebagai emergency fallback ketika config_registry tidak dapat dibaca.
-// Nilai aktual SELALU dibaca dari security_login.session_timeout_minutes di DB.
-// WAJIB sinkron dengan nilai default di config_registry (keputusan Sesi #162).
-export const SESSION_DEFAULT_TIMEOUT_MINUTES = 480  // 8 jam — emergency fallback only
 
 // ─── Konstanta sesi ───────────────────────────────────────────────────────────
 
@@ -56,11 +47,10 @@ export const ROLE_DASHBOARD: Record<string, string> = {
 
 // ─── Simpan cookie sesi setelah login ────────────────────────────────────────
 // maxAgeSeconds dibaca dari config_registry.session_timeout_minutes — tidak hardcode
-// Emergency fallback: SESSION_DEFAULT_TIMEOUT_MINUTES (= 480 menit = 8 jam)
-// CATATAN: Semua caller aktif selalu pass maxAgeSeconds — fallback ini adalah dead path
+// Default 8 jam (28800 detik) sebagai fallback aman
 
 export function setSessionCookies(role: string, tenantId: string, maxAgeSeconds?: number): void {
-  const maxAge = maxAgeSeconds ?? (SESSION_DEFAULT_TIMEOUT_MINUTES * 60)
+  const maxAge = maxAgeSeconds ?? (8 * 3600)
   document.cookie = `session_role=${role}; path=/; max-age=${maxAge}; SameSite=Strict`
   document.cookie = `session_tenant=${tenantId}; path=/; max-age=${maxAge}; SameSite=Strict`
 }

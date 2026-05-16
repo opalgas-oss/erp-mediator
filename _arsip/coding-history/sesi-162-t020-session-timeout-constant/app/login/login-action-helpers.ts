@@ -46,7 +46,6 @@ import {
 } from '@/lib/repositories/user.repository'
 import { getPlatformTimezone, getConfigValues, parseConfigNumber } from '@/lib/config-registry'
 import { ROLES, UNLOCK_METHOD } from '@/lib/constants'
-import { SESSION_DEFAULT_TIMEOUT_MINUTES } from '@/lib/auth'
 
 // ─── Tipe Shared ─────────────────────────────────────────────────────────────
 
@@ -189,11 +188,11 @@ export async function setCookiesLoginServer(
   params:      SetCookiesParams,
   cookieStore: ReadonlyRequestCookies,
 ): Promise<void> {
-  let sessionTimeoutMinutes = params.sessionTimeoutMinutes ?? SESSION_DEFAULT_TIMEOUT_MINUTES
+  let sessionTimeoutMinutes = params.sessionTimeoutMinutes ?? 480
   if (!params.sessionTimeoutMinutes) {
     try {
       const cfg = await getConfigValues('security_login')
-      sessionTimeoutMinutes = parseConfigNumber(cfg['session_timeout_minutes'], SESSION_DEFAULT_TIMEOUT_MINUTES)
+      sessionTimeoutMinutes = parseConfigNumber(cfg['session_timeout_minutes'], 480)
     } catch { /* pakai default */ }
   }
   const maxAge  = sessionTimeoutMinutes * 60
