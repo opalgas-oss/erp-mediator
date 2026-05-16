@@ -7,23 +7,29 @@
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
 // Diupdate: Sesi #141 — M6 Fix Fase F
-// Diupdate: Sesi #159 — T-062: STATUS_TABS hardcode dihapus → terima statusTabs dari page.tsx (M4)
 
 import { useState, useCallback, useTransition } from 'react'
 import { useRouter }                             from 'next/navigation'
 import { toast }                                 from 'sonner'
-import { TenantTable }        from './TenantTable'
+import { TenantTable }       from './TenantTable'
 import { DialogTambahTenant } from './DialogTambahTenant'
 import type { TenantListItem, TenantLifecycleStatus } from '@/lib/types/tenant.types'
 
 interface Props {
   initialData:  TenantListItem[]
   initialTotal: number
-  /** Tab filter status — diisi dari M4 grup 'tenant_status' oleh page.tsx (RSC). */
-  statusTabs:   { value: TenantLifecycleStatus | 'all'; label: string }[]
 }
 
-export function TenantsClient({ initialData, initialTotal, statusTabs }: Props) {
+const STATUS_TABS: { value: TenantLifecycleStatus | 'all'; label: string }[] = [
+  { value: 'all',        label: 'Semua' },
+  { value: 'active',     label: 'Aktif' },
+  { value: 'pending',    label: 'Menunggu aktivasi' },
+  { value: 'suspended',  label: 'Dinonaktifkan' },
+  { value: 'expired',    label: 'Kadaluarsa' },
+  { value: 'terminated', label: 'Diakhiri' },
+]
+
+export function TenantsClient({ initialData, initialTotal }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
 
@@ -57,11 +63,11 @@ export function TenantsClient({ initialData, initialTotal, statusTabs }: Props) 
     finally { setLoading(false) }
   }, [])
 
-  const handleTabChange  = (status: TenantLifecycleStatus | 'all') => { setActiveTab(status); setPage(1); fetchData({ status, search, page: 1 }) }
-  const handleSearch     = (val: string) => { setSearch(val); setPage(1); fetchData({ status: activeTab, search: val, page: 1 }) }
+  const handleTabChange = (status: TenantLifecycleStatus | 'all') => { setActiveTab(status); setPage(1); fetchData({ status, search, page: 1 }) }
+  const handleSearch    = (val: string) => { setSearch(val); setPage(1); fetchData({ status: activeTab, search: val, page: 1 }) }
   const handlePageChange = (p: number) => { setPage(p); fetchData({ status: activeTab, search, page: p }) }
-  const handleRowClick   = (id: string) => { startTransition(() => router.push(`/dashboard/superadmin/tenants/${id}`)) }
-  const handleSuccess    = () => { setDialogOpen(false); toast.success('Tenant berhasil dibuat'); fetchData({ status: activeTab, search, page: 1 }) }
+  const handleRowClick  = (id: string) => { startTransition(() => router.push(`/dashboard/superadmin/tenants/${id}`)) }
+  const handleSuccess   = () => { setDialogOpen(false); toast.success('Tenant berhasil dibuat'); fetchData({ status: activeTab, search, page: 1 }) }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 24 }}>
@@ -80,9 +86,9 @@ export function TenantsClient({ initialData, initialTotal, statusTabs }: Props) 
         </button>
       </div>
 
-      {/* Tabs — border-bottom style (E8) — label + urutan dari M4 via statusTabs prop */}
+      {/* Tabs — border-bottom style (E8) */}
       <div style={{ display: 'flex', borderBottomWidth: '0.5px', borderBottomStyle: 'solid', borderBottomColor: 'rgba(0,0,0,0.12)' }}>
-        {statusTabs.map(tab => (
+        {STATUS_TABS.map(tab => (
           <button
             key={tab.value}
             onClick={() => handleTabChange(tab.value)}

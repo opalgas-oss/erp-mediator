@@ -26,9 +26,13 @@ import {
   dropdownRepo_deactivateGroup,
   dropdownRepo_destroyGroup,
 } from '@/lib/repositories/master-dropdown-group.repository'
-import { dropdownRepo_findOptionsByGroupId } from '@/lib/repositories/master-dropdown-option.repository'
+import {
+  dropdownRepo_findOptionsByGroupId,
+  dropdownRepo_findOptionsByGroupSlug,
+} from '@/lib/repositories/master-dropdown-option.repository'
 import type {
   MasterDropdownGroup,
+  MasterDropdownOption,
   GrupDenganOpsi,
   BuatGrupPayload,
   UbahGrupPayload,
@@ -98,6 +102,20 @@ export async function MasterDropdownService_getGroupDetail(
 
   if (!grup) return null
   return { ...grup, opsi }
+}
+
+/**
+ * Ambil semua opsi aktif untuk satu grup berdasarkan slug grup.
+ * Dipakai oleh RSC page untuk build status tabs dinamis dari M4.
+ * Contoh: TenantsPage fetch opsi 'tenant_status' → build tab filter.
+ * Return [] jika grup tidak ditemukan.
+ *
+ * Ditambahkan: Sesi #159 — T-062 fix STATUS_TABS hardcode → M4
+ */
+export async function MasterDropdownService_getOptionsByGroupSlug(
+  slug: string
+): Promise<MasterDropdownOption[]> {
+  return dropdownRepo_findOptionsByGroupSlug(slug)
 }
 
 // ─── Mutation ───────────────────────────────────────────────────────────────

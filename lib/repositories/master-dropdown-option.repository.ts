@@ -6,12 +6,13 @@
 // Operasi terhadap entitas GROUP → master-dropdown-group.repository.ts.
 // Pemecahan by entitas dilakukan SEJAK AWAL agar growth-friendly (ATURAN 9 + ATURAN 31).
 //
-// 4 fungsi:
-//   - findOptionsByGroupId                       (read)
-//   - insertOption, updateOption                 (mutation)
-//   - setDefaultOption                           (via SP — atomic + validasi platform-level)
+// 5 fungsi:
+//   - findOptionsByGroupId, findOptionsByGroupSlug  (read)
+//   - insertOption, updateOption                    (mutation)
+//   - setDefaultOption                              (via SP — atomic + validasi platform-level)
 //
 // Dibuat: Sesi #114 — M4 Master Dropdown FASE 3 Step 3.3
+// Diupdate: Sesi #159 — tambah findOptionsByGroupSlug (T-062 fix)
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -42,6 +43,31 @@ export async function dropdownRepo_findOptionsByGroupId(
 
   if (error) throw new Error(`[master-dropdown-option.repository] findOptionsByGroupId: ${error.message}`)
   return (data ?? []) as MasterDropdownOption[]
+}
+
+/**
+ * Ambil semua opsi aktif untuk satu grup berdasarkan slug grup.
+ * Dipakai oleh RSC page yang perlu build status tabs dari M4 (misal: TenantsPage).
+ * Return [] jika grup tidak ditemukan atau tidak ada opsi.
+ *
+ * Ditambahkan: Sesi #159 — T-062 fix STATUS_TABS hardcode → M4
+ */
+export async function dropdownRepo_findOptionsByGroupSlug(
+  groupSlug: string
+): Promise<MasterDropdownOption[]> {
+  const db = createServerSupabaseClient()
+
+  const { data: grup, error: grupError } = await db
+    .from('master_dropdown_groups')
+    .select('id')
+    .eq('slug', groupSlug)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (grupError) throw new Error(`[master-dropdown-option.repository] findOptionsByGroupSlug: ${grupError.message}`)
+  if (!grup) return []
+
+  return dropdownRepo_findOptionsByGroupId(grup.id)
 }
 
 // ─── Mutation ───────────────────────────────────────────────────────────────
