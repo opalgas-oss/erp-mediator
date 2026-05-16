@@ -13,7 +13,6 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { collectL1Metrics, collectL3Metrics } from '@/lib/services/metrics-collector.service'
-import { getConfigValue, parseConfigNumber }   from '@/lib/config-registry'
 import crypto from 'crypto'
 
 // ─── verifyQStashSignature ────────────────────────────────────────────────────
@@ -80,10 +79,7 @@ export async function POST(req: NextRequest) {
       })
     } else {
       // Ping health setiap 1 menit (default)
-      // Baca retentionDays dari config — SA bisa ubah via dashboard Monitoring
-      const retentionStr  = await getConfigValue('monitoring', 'data_retention_days', '30')
-      const retentionDays = parseConfigNumber(retentionStr, 30)
-      const result        = await collectL1Metrics(retentionDays)
+      const result = await collectL1Metrics()
       return NextResponse.json({
         success:   true,
         layer:     'L1',

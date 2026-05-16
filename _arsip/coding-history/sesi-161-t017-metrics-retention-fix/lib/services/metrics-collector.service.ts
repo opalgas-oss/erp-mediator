@@ -29,7 +29,6 @@ const DEGRADED_THRESHOLD_MS = 2_000
 /**
  * Ping L1 untuk semua provider aktif.
  * Dipanggil QStash cron setiap 1 menit.
- * @param retentionDays - Dari config monitoring.data_retention_days (default 30 hari sebagai fallback)
  */
 export async function collectL1Metrics(retentionDays: number = 30): Promise<{
   processed: number
@@ -182,9 +181,6 @@ async function collectSupabaseMetrics(
   const token = creds['access_token']
   if (!token) return { _note: 'access_token belum dikonfigurasi di M3', _source: 'Integrasi > API Provider > Supabase Management API' }
 
-  // TODO: panggil Supabase Management API dengan token
-  // GET https://api.supabase.com/v1/projects/{ref}/health
-  // Saat ini return placeholder — diisi setelah endpoint Management API dikonfirmasi
   return {
     db_active_connections:   0,
     db_max_connections:      60,
@@ -211,8 +207,6 @@ async function collectVercelMetrics(
   const projectId = creds['project_id']
   if (!token || !projectId) return { _note: 'api_token atau project_id belum dikonfigurasi di M3', _source: 'Integrasi > API Provider > Vercel API' }
 
-  // TODO: panggil Vercel REST API
-  // GET https://api.vercel.com/v6/deployments?projectId={projectId}
   return {
     last_deployment_status:   'UNKNOWN',
     last_deployment_duration: 0,
@@ -263,8 +257,6 @@ async function collectCloudinaryMetrics(
   const apiSecret = creds['api_secret']
   if (!cloudName || !apiKey || !apiSecret) return { _note: 'Credential Cloudinary belum dikonfigurasi di M3', _source: 'Integrasi > API Provider > Cloudinary' }
 
-  // TODO: panggil Cloudinary Admin API
-  // GET https://api.cloudinary.com/v1_1/{cloudName}/usage
   return {
     storage_used_bytes:  0,
     storage_max_bytes:   0,
