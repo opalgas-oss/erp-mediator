@@ -8,7 +8,6 @@
 //                                  → Fonnte WA (notifikasi)
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.4
-// Update: Sesi #162 — T-019: ganti hardcode pesan WA → getMessage+interpolate dari message_library
 
 import 'server-only'
 import {
@@ -20,7 +19,6 @@ import {
 } from '@/lib/repositories/tenant-pic.repository'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getCredential } from '@/lib/services/credential.service'
-import { getMessage, interpolate } from '@/lib/message-library'
 import type {
   TenantPICHistory,
   PICKartu,
@@ -237,26 +235,16 @@ export async function TenantPICService_updateCadangan(
 }
 
 // ─── Private: kirimNotifikasiGantiPIC ─────────────────────────────────────────
-// FIX T-019 Sesi #162: ganti template string hardcode → getMessage+interpolate
-// Template dikelola SA via M2 Pesan (key: notif_wa_ganti_pic, kategori: notif_wa)
-// Variabel: {user_name}, {tipe_pic}, {tanggal_efektif}
-
-const NOTIF_WA_GANTI_PIC_FALLBACK =
-  'Halo {user_name},\n\n' +
-  'Anda telah ditunjuk sebagai PIC {tipe_pic} untuk tenant ini.\n' +
-  'Berlaku mulai: {tanggal_efektif}\n\n' +
-  'Tautan aktivasi akun akan segera dikirimkan.'
 
 async function kirimNotifikasiGantiPIC(input: GantiPICPayload): Promise<void> {
   const apiKey = await getCredential('fonnte', 'api_token')
   if (!apiKey) return
 
-  const template = await getMessage('notif_wa_ganti_pic', NOTIF_WA_GANTI_PIC_FALLBACK)
-  const pesan    = interpolate(template, {
-    user_name:       input.user_name,
-    tipe_pic:        input.tipe_pic,
-    tanggal_efektif: input.tanggal_efektif,
-  })
+  const pesan =
+    `Halo ${input.user_name},\n\n` +
+    `Anda telah ditunjuk sebagai PIC ${input.tipe_pic}.\n` +
+    `Berlaku mulai: ${input.tanggal_efektif}\n\n` +
+    `Tautan aktivasi akun akan segera dikirimkan.`
 
   await fetch('https://api.fonnte.com/send', {
     method:  'POST',
