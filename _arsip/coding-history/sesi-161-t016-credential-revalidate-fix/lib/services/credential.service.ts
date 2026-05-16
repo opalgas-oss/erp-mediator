@@ -7,7 +7,6 @@
 
 import 'server-only'
 import { unstable_cache } from 'next/cache'
-import { getConfigValue, parseConfigNumber } from '@/lib/config-registry'
 import {
   spGetCredential,
   getAllByProvider,
@@ -97,8 +96,6 @@ async function getCredentialFromDB(
   fieldKey:     string
 ): Promise<string | null> {
   try {
-    const ttlStr = await getConfigValue('platform_general', 'redis_ttl_credentials_seconds', '900')
-    const ttl    = parseConfigNumber(ttlStr, 900)
     const cached = unstable_cache(
       async () => {
         const result: CredentialResult = await spGetCredential({ providerKode, fieldKey })
@@ -107,7 +104,7 @@ async function getCredentialFromDB(
         return result.encrypted_value
       },
       [`credential:${providerKode}:${fieldKey}`],
-      { revalidate: ttl, tags: ['credentials', `credential:${providerKode}`] }
+      { revalidate: 15 * 60, tags: ['credentials', `credential:${providerKode}`] }
     )
     return await cached()
   } catch {
@@ -126,8 +123,6 @@ export async function getCredentialsByProvider(
   const envFields: Record<string, string> = ENV_FALLBACK[providerKode] ?? {}
 
   try {
-    const ttlStr = await getConfigValue('platform_general', 'redis_ttl_credentials_seconds', '900')
-    const ttl    = parseConfigNumber(ttlStr, 900)
     const cached = unstable_cache(
       async () => {
         const creds = await getAllByProvider(providerKode)
@@ -140,7 +135,7 @@ export async function getCredentialsByProvider(
         return map
       },
       [`credentials:provider:${providerKode}`],
-      { revalidate: ttl, tags: ['credentials', `credential:${providerKode}`] }
+      { revalidate: 15 * 60, tags: ['credentials', `credential:${providerKode}`] }
     )
     const fromDB = await cached()
     Object.assign(result, fromDB)
