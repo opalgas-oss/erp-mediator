@@ -55,11 +55,7 @@ export async function getMessagesByKategori(
     },
     [`messages:kategori:${cacheKey}`],
     {
-      // FIX T-024 S#163: ganti hardcode 15*60 → env var MESSAGE_CACHE_TTL
-      // Chicken-egg paradox: message-library tidak bisa baca TTL dari config_registry
-      // (circular dependency). Env var adalah satu-satunya kompromi yang aman.
-      // Default 900 = 15 menit = sama dengan nilai hardcode lama.
-      revalidate: parseInt(process.env.MESSAGE_CACHE_TTL ?? '900', 10),
+      revalidate: 15 * 60,
       tags: ['messages', ...list.map(k => `messages:${k}`)],
     }
   )
@@ -90,11 +86,7 @@ export async function getMessage(
     },
     [`messages:single:${key}`],
     {
-      // FIX T-024 S#163: ganti hardcode 15*60 → env var MESSAGE_CACHE_TTL
-      // Chicken-egg paradox: message-library tidak bisa baca TTL dari config_registry
-      // (circular dependency). Env var adalah satu-satunya kompromi yang aman.
-      // Default 900 = 15 menit = sama dengan nilai hardcode lama.
-      revalidate: parseInt(process.env.MESSAGE_CACHE_TTL ?? '900', 10),
+      revalidate: 15 * 60,
       tags: ['messages', `messages:key:${key}`],
     }
   )
