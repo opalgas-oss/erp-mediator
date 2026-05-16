@@ -9,7 +9,7 @@
 
 import 'server-only'
 import { getCredential }      from '@/lib/services/credential.service'
-import { getConfigValues, getPlatformTimezone } from '@/lib/config-registry'
+import { getConfigValues }    from '@/lib/config-registry'
 import { findRulesByProvider } from '@/lib/repositories/alert-rules.repository'
 import { findLastAlertAt, insertAlertLog } from '@/lib/repositories/alert-log.repository'
 import { findRecentByProvider }            from '@/lib/repositories/provider-metrics.repository'
@@ -83,7 +83,7 @@ async function evaluateRule(
 
   // Ambil target notifikasi dari config_registry
   const { waNumber, email } = await getAlertTarget()
-  const message = await buildAlertMessage(providerId, rule.alert_type, currentStatus, responseTimeMs)
+  const message = buildAlertMessage(providerId, rule.alert_type, currentStatus, responseTimeMs)
 
   const [resultWa, resultEmail] = await Promise.allSettled([
     rule.notif_channels.includes('WA') && waNumber
@@ -126,14 +126,13 @@ function checkRuleTrigger(
 
 // ─── buildAlertMessage ────────────────────────────────────────────────────────
 
-async function buildAlertMessage(
+function buildAlertMessage(
   providerId:     string,
   alertType:      string,
   status:         MonitoringStatus,
   responseTimeMs: number | null
-): Promise<string> {
-  const timezone = await getPlatformTimezone()
-  const time = new Date().toLocaleString('id-ID', { timeZone: timezone })
+): string {
+  const time = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })
   const ms   = responseTimeMs !== null ? ` (${responseTimeMs}ms)` : ''
   return (
     `[ERP Mediator Alert] ${time} WIB\n` +
