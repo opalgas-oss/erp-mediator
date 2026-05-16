@@ -8,6 +8,7 @@
 // Updated: Sesi #136 — tambah memberships ke grup pengguna (M8 User Membership)
 // Updated: Sesi #137 — tambah refunds ke grup pengguna (M9 Approval Refund SA)
 // Updated: Sesi #153 — tambah grup monitoring (PL-S09 Platform Health)
+// Updated: Sesi #164 — T-029: tambah platform_general ke grup konfigurasi
 //
 // CARA PAKAI:
 //   import { SA_NAV_GROUPS, navItemToPath } from '@/lib/constants/nav.constant'
@@ -67,6 +68,7 @@ export const SA_NAV_GROUPS: NavGroup[] = [
     items: [
       { key: 'security_login',    labelKey: 'nav_menu_security_login'    },
       { key: 'multi_role_policy', labelKey: 'nav_menu_multi_role_policy' },
+      { key: 'platform_general',  labelKey: 'nav_menu_platform_general'  },
       { key: 'register_user',     labelKey: 'nav_menu_register_user'     },
       { key: 'register_vendor',   labelKey: 'nav_menu_register_vendor'   },
       { key: 'order_form',        labelKey: 'nav_menu_order_form'        },

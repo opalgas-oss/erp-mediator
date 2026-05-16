@@ -1,0 +1,121 @@
+// lib/constants/nav.constant.ts
+// Sentralisasi struktur navigasi sidebar SuperAdmin.
+// SATU sumber kebenaran untuk: grup menu, sub-menu, path, urutan, icon.
+//
+// Dibuat: Sesi #100 — Sentralisasi UI
+// Updated: Sesi #133 — tambah grup manajemen (M6 Tenant Management + Master Kategori)
+// Updated: Sesi #135 — tambah grup pengguna (M7 Roles & Permissions)
+// Updated: Sesi #136 — tambah memberships ke grup pengguna (M8 User Membership)
+// Updated: Sesi #137 — tambah refunds ke grup pengguna (M9 Approval Refund SA)
+// Updated: Sesi #153 — tambah grup monitoring (PL-S09 Platform Health)
+
+import { ICON_NAV }    from '@/lib/constants/icons.constant'
+import type { LucideIcon } from '@/lib/constants/icons.constant'
+
+export interface NavSubItem {
+  key:      string
+  labelKey: string
+  path?:    string
+}
+
+export interface NavGroup {
+  key:      string
+  labelKey: string
+  icon:     LucideIcon
+  iconSize: number
+  items:    NavSubItem[]
+}
+
+export function navItemToPath(item: NavSubItem): string {
+  if (item.path) return item.path
+  return `/dashboard/superadmin/settings/${item.key.replace(/_/g, '-')}`
+}
+
+export const SA_NAV_GROUPS: NavGroup[] = [
+  {
+    key:      'konfigurasi',
+    labelKey: 'sidebar_menu_konfigurasi',
+    icon:     ICON_NAV.konfigurasi,
+    iconSize: 15,
+    items: [
+      { key: 'security_login',    labelKey: 'nav_menu_security_login'    },
+      { key: 'multi_role_policy', labelKey: 'nav_menu_multi_role_policy' },
+      { key: 'register_user',     labelKey: 'nav_menu_register_user'     },
+      { key: 'register_vendor',   labelKey: 'nav_menu_register_vendor'   },
+      { key: 'order_form',        labelKey: 'nav_menu_order_form'        },
+      { key: 'bidding_vendor',    labelKey: 'nav_menu_bidding_vendor'    },
+      { key: 'payment',           labelKey: 'nav_menu_payment'           },
+      { key: 'branding',          labelKey: 'nav_menu_branding'          },
+      { key: 'pesan',             labelKey: 'nav_menu_pesan'             },
+      { key: 'sistem',            labelKey: 'nav_menu_sistem'            },
+      { key: 'pilihan_opsi',      labelKey: 'nav_menu_pilihan_opsi',
+        path: '/dashboard/superadmin/dropdowns' },
+    ],
+  },
+  {
+    key:      'konten',
+    labelKey: 'sidebar_menu_konten',
+    icon:     ICON_NAV.konten,
+    iconSize: 15,
+    items: [
+      { key: 'messages', labelKey: 'nav_menu_messages',
+        path: '/dashboard/superadmin/messages' },
+    ],
+  },
+  {
+    key:      'integrasi',
+    labelKey: 'sidebar_menu_integrasi',
+    icon:     ICON_NAV.integrasi,
+    iconSize: 15,
+    items: [
+      { key: 'providers', labelKey: 'nav_menu_providers',
+        path: '/dashboard/superadmin/providers' },
+    ],
+  },
+  {
+    key:      'manajemen',
+    labelKey: 'sidebar_menu_manajemen',
+    icon:     ICON_NAV.manajemen,
+    iconSize: 15,
+    items: [
+      { key: 'tenants',    labelKey: 'nav_menu_manajemen_tenant',
+        path: '/dashboard/superadmin/tenants' },
+      { key: 'categories', labelKey: 'nav_menu_master_kategori',
+        path: '/dashboard/superadmin/categories' },
+      { key: 'wilayah',    labelKey: 'nav_menu_master_wilayah',
+        path: '/dashboard/superadmin/wilayah' },
+    ],
+  },
+  {
+    key:      'pengguna',
+    labelKey: 'sidebar_menu_pengguna',
+    icon:     ICON_NAV.pengguna,
+    iconSize: 15,
+    items: [
+      { key: 'roles',       labelKey: 'nav_menu_roles_permissions',
+        path: '/dashboard/superadmin/roles' },
+      { key: 'permissions', labelKey: 'nav_menu_permissions',
+        path: '/dashboard/superadmin/permissions' },
+      { key: 'memberships', labelKey: 'nav_menu_memberships',
+        path: '/dashboard/superadmin/memberships' },
+      { key: 'refunds',     labelKey: 'nav_menu_refunds',
+        path: '/dashboard/superadmin/refunds' },
+    ],
+  },
+  {
+    key:      'monitoring',
+    labelKey: 'sidebar_menu_monitoring',
+    icon:     ICON_NAV.monitoring,
+    iconSize: 15,
+    items: [
+      { key: 'monitoring', labelKey: 'nav_menu_platform_health',
+        path: '/dashboard/superadmin/monitoring' },
+    ],
+  },
+]
+
+export const SA_VALID_FEATURE_KEYS = new Set<string>(
+  SA_NAV_GROUPS
+    .filter(g => g.key === 'konfigurasi')
+    .flatMap(g => g.items.map(i => i.key))
+)
