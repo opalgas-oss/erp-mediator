@@ -42,6 +42,7 @@ export interface ParamSendOTP {
   tenantId: string
   role:     string
   nomorWa:  string
+  email?:   string   // opsional — diisi jika channel OTP = email
   nama?:    string
 }
 
@@ -142,8 +143,9 @@ export async function fetchCheckSession(params: ParamCheckSession) {
 
 // ─── FUNGSI: fetchSendOTP ────────────────────────────────────────────────────
 /**
- * Kirim OTP via WhatsApp — /api/auth/send-otp.
- * @param params - uid, tenantId, role, nomorWa, nama
+ * Kirim OTP via channel yang dikonfigurasi SA (whatsapp/email) — /api/auth/send-otp.
+ * PERUBAHAN Sesi #167 — T-039: tambah email opsional untuk channel email.
+ * @param params - uid, tenantId, role, nomorWa, email?, nama?
  * @returns success, otp_expiry_minutes, otp_max_attempts, resend_cooldown_seconds
  */
 export async function fetchSendOTP(params: ParamSendOTP) {
@@ -151,7 +153,9 @@ export async function fetchSendOTP(params: ParamSendOTP) {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       uid: params.uid, tenant_id: params.tenantId,
-      role: params.role, nomor_wa: params.nomorWa, nama: params.nama ?? '',
+      role: params.role, nomor_wa: params.nomorWa,
+      email: params.email ?? '',
+      nama: params.nama ?? '',
     }),
   })
   return res.json()

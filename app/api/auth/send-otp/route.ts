@@ -1,9 +1,13 @@
 // app/api/auth/send-otp/route.ts
-// POST — Generate OTP, simpan ke otp_codes, kirim via Fonnte WhatsApp.
+// POST — Generate OTP, simpan ke otp_codes, kirim via channel yang dikonfigurasi SA.
 // REFACTOR Sesi #052 — BLOK E-04 TODO_ARSITEKTUR_LAYER_v1:
 //   - Semua logika dipindahkan ke OTPService.sendOTP()
 //   - Route handler hanya: validasi input → panggil service → return response
 //   - Tidak ada lagi query DB langsung atau getCredential di route
+//
+// PERUBAHAN Sesi #167 — T-039:
+//   - Tambah field email (opsional) ke RequestSchema — diisi jika channel = email.
+//   - Pass email ke sendOTP() params.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z }                         from 'zod'
@@ -17,6 +21,7 @@ const RequestSchema = z.object({
   tenant_id: z.string(),
   role:      z.string().min(1, 'role wajib diisi'),
   nomor_wa:  z.string().min(1, 'nomor_wa wajib diisi'),
+  email:     z.string().email().optional().or(z.literal('')),  // opsional — untuk channel email
   nama:      z.string().default(''),
 })
 
@@ -40,7 +45,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { uid, tenant_id, role, nomor_wa, nama } = parsed.data
+    const { uid, tenant_id, role, nomor_wa, email, nama } = parsed.data
 
     // ── Delegasi ke OTPService ────────────────────────────────────────────────
     const result = await sendOTP({
@@ -48,6 +53,7 @@ export async function POST(request: NextRequest) {
       tenantId: tenant_id,
       role,
       nomorWa:  nomor_wa,
+      email:    email || undefined,
       nama:     nama || undefined,
     })
 

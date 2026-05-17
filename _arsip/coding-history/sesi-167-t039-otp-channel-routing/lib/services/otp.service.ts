@@ -1,6 +1,6 @@
 // lib/services/otp.service.ts
-// Service layer untuk OTP — generate, simpan, kirim WA/Email, verifikasi.
-// Panggil repository B-03 (otp) + CredentialService (Fonnte/SMTP token).
+// Service layer untuk OTP — generate, simpan, kirim WA, verifikasi.
+// Panggil repository B-03 (otp) + CredentialService (Fonnte token).
 // Dibuat: Sesi #052 — BLOK C-04 TODO_ARSITEKTUR_LAYER_v1
 //
 // PERUBAHAN Sesi #068:
@@ -21,7 +21,7 @@
 //
 // FIX Sesi #157 — B1-01 + B1-02: key config salah → nilai selalu fallback, SA tidak bisa ubah:
 //   B1-01: cfg['otp_expiry_minutes'] → cfg['otp_expiry_seconds'] (key DB = otp_expiry_seconds, nilai 300 detik).
-//          Rename var otpExpiryMenit → otpExpiryDetik. Hapus x60 di kalkulasi expiredAt + Redis TTL.
+//          Rename var otpExpiryMenit → otpExpiryDetik. Hapus ×60 di kalkulasi expiredAt + Redis TTL.
 //          Return otp_expiry_minutes: Math.round(otpExpiryDetik / 60) agar client tetap terima menit.
 //   B1-02: cfg['otp_max_attempts'] → cfg['max_otp_attempts'] (key DB = max_otp_attempts).
 //
@@ -30,14 +30,6 @@
 //                        "817193" tersimpan sebagai string, tapi get() return 817193 (number).
 //                        Strict equality 817193 === "817193" selalu false → OTP selalu WRONG.
 //                        Fix: String(storedCode) === params.inputCode (safe untuk string & number).
-//
-// PERUBAHAN Sesi #167 — T-039 OTP Channel Routing:
-//   sendOTP() — Baca default_otp_channel dari config_registry.
-//               'whatsapp' → kirim via Fonnte (path lama, tidak berubah).
-//               'email'    → kirim via SMTP (lib/utils/smtp.server.ts, nodemailer).
-//               'sms'      → return error informatif (belum ada provider SMS di platform).
-//               Tambah field email? di SendOTPParams (wajib jika channel=email).
-//               Promise.all diperluas: tambah getMessage('notif_email_otp_login').
 //
 // ARSITEKTUR:
 //   Route Handler → OTPService → OTPRepository + CredentialService + MessageLibrary
@@ -54,7 +46,6 @@ import { getRedisClient }                                          from '@/lib/r
 import { getCredential }                                           from '@/lib/services/credential.service'
 import { getMessage, interpolate }                                 from '@/lib/message-library'
 import { getConfigValues, parseConfigNumber, getPlatformTimezone } from '@/lib/config-registry'
-import { sendSmtpOTP }                                             from '@/lib/utils/smtp.server'
 import {
   findNamaBrandById,
   findDefaultNamaBrand,
@@ -67,7 +58,6 @@ export interface SendOTPParams {
   tenantId: string
   role:     string
   nomorWa:  string
-  email?:   string   // wajib diisi jika default_otp_channel = 'email'
   nama?:    string
 }
 
@@ -79,7 +69,7 @@ export interface SendOTPResult {
   resend_cooldown_seconds?: number
 }
 
-// ─── Tipe untuk verifyAndConsume ─────────────────────────────────────────────
+// ─── Tipe untuk verifyAndConsume ──────────────────────────────────────────────
 
 export interface VerifyOTPParams {
   uid:       string
@@ -88,6 +78,8 @@ export interface VerifyOTPParams {
 }
 
 // ─── PRIVATE: buat Redis key untuk OTP ───────────────────────────────────────
+// Format: otp:{uid}:{tenantId} — include tenantId untuk isolasi multi-tenant.
+// tenantId bisa string kosong (SA tidak punya tenant) → pakai '_' sebagai fallback.
 function makeOTPRedisKey(uid: string, tenantId: string): string {
   return `otp:${uid}:${tenantId || '_'}`
 }
@@ -113,45 +105,27 @@ async function getNamaPlatform(tenantId?: string): Promise<string> {
 }
 
 // ─── FUNGSI: sendOTP ──────────────────────────────────────────────────────────
-/**
- * Generate OTP, simpan ke Redis (primary) dan PostgreSQL (async audit trail).
- * Kirim via channel yang dikonfigurasi SA: whatsapp (Fonnte) atau email (SMTP).
- *
- * OPTIMASI Sesi #068 — Promise.all untuk call independen (GRUP A).
- * PERUBAHAN Sesi #084 — Redis primary, PostgreSQL async audit (GRUP B).
- * PERUBAHAN Sesi #167 — channel routing: whatsapp / email / error-if-sms.
- *
- * @param params - uid, tenantId, role, nomorWa, email?, nama?
- * @returns SendOTPResult berisi success + config OTP untuk client
- */
 export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
 
-  // ── GRUP A: call paralel — config + credential WA + platform info ─────────
-  const WA_FALLBACK =
+  const FALLBACK =
     '*Kode OTP Anda: {otp_code}*\n\n' +
     'Untuk masuk sebagai *{role}* di {nama_platform}.\n\n' +
-    'Berlaku hingga pukul *{expired_jam} WIB* tanggal {expired_tanggal}.\n\n' +
-    '*JANGAN berikan kode ini kepada siapapun*.'
+    '⏰ Berlaku hingga pukul *{expired_jam} WIB* tanggal {expired_tanggal}.\n\n' +
+    '🚫 *JANGAN berikan kode ini kepada siapapun*.'
 
-  const EMAIL_FALLBACK =
-    'Kode OTP Anda: {otp_code}\n\n' +
-    'Untuk masuk sebagai {role} di {nama_platform}.\n\n' +
-    'Berlaku hingga pukul {expired_jam} WIB tanggal {expired_tanggal}.\n\n' +
-    'JANGAN berikan kode ini kepada siapapun.'
-
-  const [cfg, apiKey, namaPlatform, timezone, waTemplate, emailTemplate] = await Promise.all([
+  const [cfg, apiKey, namaPlatform, timezone, template] = await Promise.all([
     getConfigValues('security_login'),
     getCredential('fonnte', 'api_token'),
     getNamaPlatform(params.tenantId),
     getPlatformTimezone(),
-    getMessage('notif_wa_otp_login',    WA_FALLBACK),
-    getMessage('notif_email_otp_login', EMAIL_FALLBACK),
+    getMessage('notif_wa_otp_login', FALLBACK),
   ])
 
-  // ── Baca channel dari config (T-039) — default ke 'whatsapp' ──────────────
-  const channel = (cfg['default_otp_channel'] ?? 'whatsapp').toLowerCase().trim()
+  if (!apiKey) {
+    console.error('[OTPService] Fonnte api_token tidak ditemukan')
+    return { success: false, message: 'Konfigurasi WhatsApp belum siap' }
+  }
 
-  // ── Parse config + generate OTP ───────────────────────────────────────────
   const otpDigits         = parseConfigNumber(cfg['otp_digits'], 6)
   const otpExpiryDetik    = parseConfigNumber(cfg['otp_expiry_seconds'], 300)
   const otpMaxAttempts    = parseConfigNumber(cfg['max_otp_attempts'], 3)
@@ -160,8 +134,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
   const kodeOTP   = generateOTPCode(otpDigits)
   const expiredAt = new Date(Date.now() + otpExpiryDetik * 1000)
   const redisKey  = makeOTPRedisKey(params.uid, params.tenantId)
-
-  // ── GRUP B: simpan OTP — Redis primary, PostgreSQL async audit ────────────
 
   const redis   = await getRedisClient()
   let   redisOk = false
@@ -196,7 +168,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     }
   }
 
-  // ── Format waktu expired ───────────────────────────────────────────────────
   const expiredJam = expiredAt.toLocaleTimeString('id-ID', {
     hour: '2-digit', minute: '2-digit', timeZone: timezone, hour12: false,
   })
@@ -204,63 +175,29 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     day: '2-digit', month: 'long', year: 'numeric', timeZone: timezone,
   })
 
-  const interpolateVars = {
+  const pesan = interpolate(template, {
     otp_code:        kodeOTP,
     nama:            params.nama || params.role,
     role:            params.role,
     nama_platform:   namaPlatform,
     expired_jam:     expiredJam,
     expired_tanggal: expiredTanggal,
-  }
+  })
 
-  // ── Routing channel (T-039) ────────────────────────────────────────────────
-
-  if (channel === 'whatsapp') {
-    // ── Path WA: Fonnte API ───────────────────────────────────────────────────
-    if (!apiKey) {
-      console.error('[OTPService] Fonnte api_token tidak ditemukan')
-      return { success: false, message: 'Konfigurasi WhatsApp belum siap' }
-    }
-    try {
-      const response = await fetch('https://api.fonnte.com/send', {
-        method:  'POST',
-        headers: { 'Authorization': apiKey, 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ target: params.nomorWa, message: interpolate(waTemplate, interpolateVars) }),
-      })
-      if (!response.ok) {
-        const errBody = await response.text()
-        console.error('[OTPService] Fonnte error:', response.status, errBody)
-        return { success: false, message: 'Gagal mengirim OTP via WhatsApp' }
-      }
-    } catch (err) {
-      console.error('[OTPService] sendOTP WA error:', err)
+  try {
+    const response = await fetch('https://api.fonnte.com/send', {
+      method:  'POST',
+      headers: { 'Authorization': apiKey, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ target: params.nomorWa, message: pesan }),
+    })
+    if (!response.ok) {
+      const errBody = await response.text()
+      console.error('[OTPService] Fonnte error:', response.status, errBody)
       return { success: false, message: 'Gagal mengirim OTP via WhatsApp' }
     }
-
-  } else if (channel === 'email') {
-    // ── Path Email: SMTP via smtp.server.ts ───────────────────────────────────
-    if (!params.email) {
-      console.error('[OTPService] Channel email dipilih tapi params.email kosong')
-      return { success: false, message: 'Alamat email tidak tersedia untuk pengiriman OTP' }
-    }
-    const textBody  = interpolate(emailTemplate, interpolateVars)
-    const htmlBody  = `<p>${textBody.replace(/\n/g, '<br>')}</p>`
-    const smtpResult = await sendSmtpOTP({
-      toEmail:  params.email,
-      toNama:   params.nama || params.role,
-      subject:  `Kode OTP Login - ${namaPlatform}`,
-      textBody,
-      htmlBody,
-    })
-    if (!smtpResult.success) return smtpResult
-
-  } else {
-    // ── Channel tidak dikenal atau SMS (belum ada provider) ───────────────────
-    console.error('[OTPService] Channel OTP tidak didukung:', channel)
-    return {
-      success: false,
-      message: `Channel OTP '${channel}' belum dikonfigurasi. Pilih 'whatsapp' atau 'email' di pengaturan SA.`,
-    }
+  } catch (err) {
+    console.error('[OTPService] sendOTP WA error:', err)
+    return { success: false, message: 'Gagal mengirim OTP via WhatsApp' }
   }
 
   return {
@@ -272,21 +209,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
 }
 
 // ─── FUNGSI: verifyAndConsume ─────────────────────────────────────────────────
-/**
- * Verifikasi kode OTP — Redis fast path, fallback ke SP PostgreSQL.
- *
- * PERUBAHAN Sesi #084 (E2 Redis OTP Phase 1):
- *   Redis hit + match   → DEL Redis + PostgreSQL consumed async → return 'OK'
- *   Redis hit + mismatch → return 'WRONG' langsung (tanpa DB call)
- *   Redis miss / Redis down → fallback SP PostgreSQL (path lama)
- *
- * FIX Sesi #085 (TC-E04):
- *   Upstash get<string>() auto-JSON.parse numeric string → number.
- *   Pakai String(storedCode) untuk normalisasi tipe sebelum comparison.
- *
- * @param params - uid, tenantId, inputCode
- * @returns OTPVerifyResult: 'OK' | 'EXPIRED' | 'WRONG' | 'NOT_FOUND' | 'ALREADY_USED'
- */
 export async function verifyAndConsume(
   params: VerifyOTPParams
 ): Promise<OTPVerifyResult> {

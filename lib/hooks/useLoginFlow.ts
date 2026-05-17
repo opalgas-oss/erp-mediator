@@ -302,7 +302,8 @@ export function useLoginFlow(): LoginFlowState {
   async function kirimOTP(uidUser: string, tid: string, role: string, waNumber: string, namaUser: string) {
     setIsLoading(true); setError('')
     try {
-      const resData = await fetchSendOTP({ uid: uidUser, tenantId: tid, role, nomorWa: waNumber, nama: namaUser })
+      // PERUBAHAN Sesi #167 — T-039: pass email (dari state closure) untuk channel email
+      const resData = await fetchSendOTP({ uid: uidUser, tenantId: tid, role, nomorWa: waNumber, email, nama: namaUser })
       fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: resData.success ? 'OTP berhasil dikirim' : 'OTP gagal dikirim', result: resData.success ? 'SUCCESS' : 'FAILED', gpsKota: gpsRef.current?.kota || '' })
       setMaxOtpPercobaan(resData.otp_max_attempts ?? 3)
       otpTimer.mulaiTimer(resData.resend_cooldown_seconds ?? 60)
