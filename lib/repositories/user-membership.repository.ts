@@ -251,3 +251,37 @@ export async function membershipRepo_checkExisting(
   if (error) throw new Error(`[user-membership.repository] checkExisting: ${error.message}`)
   return data !== null
 }
+
+/**
+ * Cek apakah slot tenant+role sudah ditempati user LAIN yang aktif.
+ *
+ * Dipakai untuk gate allow_account_sharing (T-052):
+ * Jika allow_account_sharing=false, satu slot (tenant_id + role_id)
+ * hanya boleh dipegang oleh satu user aktif di waktu yang sama.
+ * User yang sedang di-assign (excludeUserId) tidak dihitung sebagai 'lain'.
+ *
+ * @param tenantId      - Tenant ID yang akan di-assign
+ * @param roleId        - Role ID yang akan di-assign
+ * @param excludeUserId - UID user yang sedang diproses (dikecualikan dari pengecekan)
+ * @returns true jika slot sudah ditempati user lain
+ */
+export async function membershipRepo_checkRoleSlotOccupied(
+  tenantId:      string,
+  roleId:        number,
+  excludeUserId: string
+): Promise<boolean> {
+  const db = createServerSupabaseClient()
+
+  const { data, error } = await db
+    .from('user_memberships')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('role_id', roleId)
+    .eq('status', 'active')
+    .neq('user_id', excludeUserId)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw new Error(`[user-membership.repository] checkRoleSlotOccupied: ${error.message}`)
+  return data !== null
+}

@@ -14,13 +14,13 @@
 //   - MembershipService_revokeRole         (revoke dengan last-membership check)
 //
 // Dibuat: Sesi #136 — M8 User Membership Management
-// PERUBAHAN Sesi #169 — Fix T-049 (multi_role_policy LOOP):
-//   MembershipService_assignRole() sebelumnya tidak baca config_registry sama sekali.
-//   SA bisa set allow_multi_role=false atau max_roles_per_user=1 → tidak ada efek.
-//   Fix: tambah 5 gate check via getConfigValues('multi_role_policy') sebelum insert.
-//   Gates: allow_multi_role, max_roles_per_user, allow_multi_tenant,
-//          max_tenants_per_user, allow_simultaneous_roles.
-//   auto_assign_customer_role (T-049b): dikerjakan di registration flow, bukan di sini.
+// PERUBAHAN Sesi #170 — Fix T-052 partial (allow_account_sharing):
+//   Gate 6: allow_account_sharing=false → satu slot (tenant_id+role_id) hanya
+//   boleh dipegang 1 user aktif. Cek via membershipRepo_checkRoleSlotOccupied.
+//   6 key lain di T-052 di-defer: require_unique_email + require_unique_phone
+//   (tunggu registration flow), require_kyc_for_vendor + vendor_auto_approve
+//   (tunggu M5 Vendor Approval), require_kyc_for_admin_tenant (tunggu KYC service),
+//   periodic_access_review_days (tunggu cron access review).
 
 import 'server-only'
 import {
@@ -29,6 +29,7 @@ import {
   membershipRepo_insert,
   membershipRepo_revoke,
   membershipRepo_checkExisting,
+  membershipRepo_checkRoleSlotOccupied,
 } from '@/lib/repositories/user-membership.repository'
 import {
   getConfigValues,
@@ -85,17 +86,18 @@ export async function MembershipService_getUserMemberships(
 /**
  * Assign role baru ke user di tenant tertentu.
  *
- * URUTAN VALIDASI (S#169 — T-049 Fix):
+ * URUTAN VALIDASI (S#169 T-049 + S#170 T-052):
  *   1. Parameter check (userId, tenantId, roleId wajib)
- *   2. Baca multi_role_policy dari config_registry (5 key)
+ *   2. Baca multi_role_policy dari config_registry (6 key)
  *   3. Fetch semua membership aktif user (reuse membershipRepo_findByUserId)
  *   4. Gate 1 — allow_multi_role: user tidak boleh punya >1 membership jika false
  *   5. Gate 2 — max_roles_per_user: batas total membership aktif
  *   6. Gate 3 — allow_multi_tenant: user tidak boleh aktif di tenant berbeda jika false
  *   7. Gate 4 — max_tenants_per_user: batas jumlah tenant unik yang user aktif di dalamnya
  *   8. Gate 5 — allow_simultaneous_roles: user tidak boleh punya >1 role di tenant SAMA jika false
- *   9. Duplikat check: kombinasi user+tenant+role (status active) sudah ada?
- *  10. Insert membership baru
+ *   9. Gate 6 — allow_account_sharing: jika false, slot tenant+role hanya boleh 1 user aktif
+ *  10. Duplikat check: kombinasi user+tenant+role (status active) sudah ada?
+ *  11. Insert membership baru
  *
  * Return id membership baru jika sukses.
  * Throw error dengan pesan informatif untuk setiap gate yang gagal.
@@ -119,6 +121,7 @@ export async function MembershipService_assignRole(
   const allowMultiTenant    = parseConfigBoolean(cfg['allow_multi_tenant'],      true)
   const maxTenantsPerUser   = parseConfigNumber( cfg['max_tenants_per_user'],    10)
   const allowSimultaneous   = parseConfigBoolean(cfg['allow_simultaneous_roles'], false)
+  const allowAccountSharing = parseConfigBoolean(cfg['allow_account_sharing'],   true)
 
   // ── Fetch semua membership aktif user (1 query, reuse fungsi existing) ────
   const { memberships: allMemberships } = await membershipRepo_findByUserId(userId)
@@ -182,6 +185,25 @@ export async function MembershipService_assignRole(
         'Simultaneous roles di satu tenant tidak diizinkan. ' +
         'User sudah memiliki role aktif di tenant ini. ' +
         'Revoke role tersebut terlebih dahulu.'
+      )
+    }
+  }
+
+  // ── Gate 6 — allow_account_sharing ─────────────────────────────────────────
+  // Jika false: satu slot (tenant_id + role_id) hanya boleh dipegang oleh
+  // 1 user aktif di waktu yang sama. Cegah berbagi akses posisi yang sama
+  // ke beberapa user berbeda di tenant yang sama.
+  if (!allowAccountSharing) {
+    const slotOccupied = await membershipRepo_checkRoleSlotOccupied(
+      payload.tenant_id,
+      payload.role_id,
+      userId
+    )
+    if (slotOccupied) {
+      throw new Error(
+        'Account sharing tidak diizinkan di platform ini. ' +
+        'Slot role ini di tenant yang dipilih sudah ditempati oleh user lain yang aktif. ' +
+        'Revoke keanggotaan user tersebut terlebih dahulu.'
       )
     }
   }
