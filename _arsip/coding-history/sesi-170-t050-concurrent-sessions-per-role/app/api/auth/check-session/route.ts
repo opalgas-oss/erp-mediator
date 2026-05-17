@@ -6,21 +6,15 @@
 //   "blocked: true" dihapus — diganti "hasActiveSession: true" + sessionData.
 //   Client yang memutuskan apakah tampilkan peringatan atau langsung lanjut.
 //
-// FIX Sesi #170 — T-050: enforce max_concurrent_sessions_per_role per role.
-//   `max_concurrent_sessions_per_role` JSON per-role ({"super_admin":1,...}) dibaca
-//   dari multi_role_policy. Jika sesi aktif per role >= max (dan max >= 0) → blocked: true.
-//   max = -1 berarti unlimited → skip blokir.
-//
-// CATATAN (koreksi comment outdated S#074):
-//   Route ini dipanggil dari runFlowLama() di useLoginFlow.ts (flow Customer lama).
-//   loginUnifiedAction di actions.ts TIDAK memanggil cekSesiParalel() secara langsung
-//   — concurrent check hanya terjadi via client-side useLoginFlow.ts → POST route ini.
+// CATATAN: Route ini masih dipanggil dari runFlowLama() di useLoginFlow.ts
+//   (untuk fallback Customer via flow lama). loginUnifiedAction sudah pakai
+//   cekSesiParalel() dari login-session-check.ts secara langsung.
 //
 // REFACTOR Sesi #052 — BLOK E-06: Pakai SessionService.findActiveSessions
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { z }                          from 'zod'
-import { getConfigValue, getConfigValues } from '@/lib/config-registry'
+import { getConfigValue }             from '@/lib/config-registry'
 import { findActiveSessions }         from '@/lib/services/session.service'
 
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
@@ -57,23 +51,8 @@ export async function POST(request: NextRequest) {
 
     const { uid, tenant_id, role: roleLogin } = parsed.data
 
-    // ── Baca config sekaligus — manfaatkan cache TTL 300s ────────────────────
-    const [rule, multiRoleCfg] = await Promise.all([
-      getConfigValue('security_login', 'concurrent_rule', 'different_role_only'),
-      getConfigValues('multi_role_policy'),
-    ])
-
-    // ── Parse max_concurrent_sessions_per_role (JSON per-role) ───────────────
-    // Format DB: {"customer":-1,"vendor":-1,"admin_tenant":-1,"super_admin":1}
-    // -1 = unlimited (tidak diblokir). >= 0 = batas ketat.
-    let maxPerRole: Record<string, number> = {}
-    try {
-      const raw = multiRoleCfg['max_concurrent_sessions_per_role'] ?? '{}'
-      maxPerRole = JSON.parse(raw)
-    } catch {
-      // JSON rusak → abaikan, tidak blokir login
-      maxPerRole = {}
-    }
+    // ── Baca concurrent_rule dari config_registry ─────────────────────────────
+    const rule = await getConfigValue('security_login', 'concurrent_rule', 'different_role_only')
 
     // ── Rule 'none' → izinkan langsung, tidak perlu tampilkan peringatan ──────
     if (rule === 'none') {
@@ -86,25 +65,6 @@ export async function POST(request: NextRequest) {
     // ── Tidak ada sesi aktif → izinkan ───────────────────────────────────────
     if (sessions.length === 0) {
       return NextResponse.json({ hasActiveSession: false, blocked: false })
-    }
-
-    // ── T-050: Cek max_concurrent_sessions_per_role SEBELUM concurrent_rule ──
-    // Hard block: jika sesi aktif untuk role ini >= max (dan max >= 0)
-    if (roleLogin) {
-      const roleKey     = roleLogin.toLowerCase()
-      const maxForRole  = maxPerRole[roleKey]
-      if (typeof maxForRole === 'number' && maxForRole >= 0) {
-        const sesiRoleAktif = sessions.filter(
-          s => (s.role ?? '').toLowerCase() === roleKey
-        )
-        if (sesiRoleAktif.length >= maxForRole) {
-          return NextResponse.json({
-            hasActiveSession: true,
-            blocked: true,
-            blockedReason: `Batas sesi aktif untuk role ${roleLogin} adalah ${maxForRole}. Harap logout dari perangkat lain terlebih dahulu.`,
-          })
-        }
-      }
     }
 
     // ── Ada sesi aktif — ambil data sesi pertama sebagai referensi ───────────

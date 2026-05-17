@@ -7,23 +7,16 @@
 //   Rule 'none'              → selalu izinkan
 //   Rule 'always'            → beri info jika ada sesi aktif
 //   Rule 'different_role_only' → beri info hanya jika role berbeda
-//
-// FIX Sesi #170 — T-050: enforce max_concurrent_sessions_per_role per role.
-//   Tambah field `diblokir?: boolean` ke HasilCekSesiParalel.
-//   Jika sesi aktif per role >= max (dan max >= 0) → diblokir: true (hard block).
-//   max = -1 berarti unlimited → skip blokir.
 
 'use server'
 
-import { findActiveSessions }          from '@/lib/services/session.service'
-import { getConfigValue, getConfigValues } from '@/lib/config-registry'
+import { findActiveSessions } from '@/lib/services/session.service'
+import { getConfigValue }     from '@/lib/config-registry'
 
 // ─── Tipe hasil cek sesi paralel ─────────────────────────────────────────────
 
 export interface HasilCekSesiParalel {
-  adaSesi:      boolean
-  diblokir?:    boolean    // T-050: hard block jika max_concurrent_sessions_per_role terlampaui
-  pesanBlokir?: string     // pesan informatif saat diblokir = true
+  adaSesi:   boolean
   sesiData?: {
     device:   string
     gps_kota: string
@@ -36,12 +29,10 @@ export interface HasilCekSesiParalel {
 /**
  * Cek apakah user sudah punya sesi aktif di tenant yang sama.
  * Tidak memblokir — hanya mengembalikan info sesi aktif jika ada.
- * FIX T-050: jika max_concurrent_sessions_per_role terlampaui → diblokir = true.
  * @param uid       - UID user dari JWT
  * @param tenantId  - Tenant ID dari JWT
- * @param roleLogin - Role yang sedang login (untuk filter different_role_only + T-050)
+ * @param roleLogin - Role yang sedang login (untuk filter different_role_only)
  * @returns adaSesi: true jika perlu ditampilkan peringatan ke user
- *          diblokir: true jika login harus diblokir (hard block per max sesi role)
  */
 export async function cekSesiParalel(
   uid:       string,
@@ -49,44 +40,13 @@ export async function cekSesiParalel(
   roleLogin: string,
 ): Promise<HasilCekSesiParalel> {
   try {
-    const [rule, multiRoleCfg] = await Promise.all([
-      getConfigValue('security_login', 'concurrent_rule', 'different_role_only'),
-      getConfigValues('multi_role_policy'),
-    ])
+    const rule = await getConfigValue('security_login', 'concurrent_rule', 'different_role_only')
 
     if (rule === 'none') return { adaSesi: false }
 
     const sessions = await findActiveSessions(uid, tenantId)
     if (sessions.length === 0) return { adaSesi: false }
 
-    // ── T-050: Cek max_concurrent_sessions_per_role (hard block) ─────────────
-    // Format DB: {"customer":-1,"vendor":-1,"admin_tenant":-1,"super_admin":1}
-    // -1 = unlimited. >= 0 = batas ketat.
-    let maxPerRole: Record<string, number> = {}
-    try {
-      const raw = multiRoleCfg['max_concurrent_sessions_per_role'] ?? '{}'
-      maxPerRole = JSON.parse(raw)
-    } catch {
-      // JSON rusak → abaikan, tidak blokir login
-      maxPerRole = {}
-    }
-
-    const roleKey    = roleLogin.toLowerCase()
-    const maxForRole = maxPerRole[roleKey]
-    if (typeof maxForRole === 'number' && maxForRole >= 0) {
-      const sesiRoleAktif = sessions.filter(
-        s => (s.role ?? '').toLowerCase() === roleKey
-      )
-      if (sesiRoleAktif.length >= maxForRole) {
-        return {
-          adaSesi: true,
-          diblokir: true,
-          pesanBlokir: `Batas sesi aktif untuk role ${roleLogin} adalah ${maxForRole}. Harap logout dari perangkat lain terlebih dahulu.`,
-        }
-      }
-    }
-
-    // ── Lanjut ke concurrent_rule (soft warning) ──────────────────────────────
     const first    = sessions[0]
     const sesiData = {
       device:   first.device   ?? '',
