@@ -26,16 +26,12 @@ import {
 import { ACCOUNT_LOCK_STATUS, UNLOCK_METHOD } from '@/lib/constants'
 import type { UnlockMethodType } from '@/lib/constants'
 
-// ─── Tipe untuk unlockAccount (object param — maks 4 param terpenuhi) ────────
-
 export interface UnlockAccountParams {
   uid:            string
   email?:         string
   method:         UnlockMethodType
   unlockedByUid?: string
 }
-
-// ─── Tipe untuk sendLockNotificationWA ───────────────────────────────────────
 
 export interface LockNotificationParams {
   nomor_wa:           string
@@ -46,8 +42,6 @@ export interface LockNotificationParams {
   tenantId?:          string | null
 }
 
-// ─── Tipe untuk incrementLockCount ───────────────────────────────────────────
-
 export interface IncrementLockParams {
   uid:      string
   email:    string
@@ -56,14 +50,6 @@ export interface IncrementLockParams {
   tenantId: string | null
 }
 
-// ─── FUNGSI: getAccountLock ──────────────────────────────────────────────────
-// Ambil record account_locks berdasarkan email.
-// Delegasi langsung ke repository — tidak ada logika bisnis.
-/**
- * Ambil record lock berdasarkan email — delegasi ke repository.
- * @param email - Email user yang dicari
- * @returns AccountLockDoc jika ada, null jika belum pernah gagal login
- */
 export async function getAccountLock(email: string): Promise<AccountLockDoc | null> {
   try {
     return await findByEmail(email)
@@ -73,42 +59,21 @@ export async function getAccountLock(email: string): Promise<AccountLockDoc | nu
   }
 }
 
-// ─── FUNGSI: incrementLockCount ──────────────────────────────────────────────
-// Orchestrator: baca config → panggil SP via repository → return hasil.
-// Semua logika atomik (cek expired, increment, lock) sudah di SP.
-// FIX Sesi #157 — B1-03: key config salah → nilai selalu fallback 15 menit, SA tidak bisa ubah durasi lockout.
-//   cfg['lock_duration_minutes'] → cfg['lockout_duration_minutes'] (key DB = lockout_duration_minutes, nilai 30 menit).
-//   Fallback juga disamakan dari 15 → 30 (konsisten dengan default DB).
-// FIX T-035 Sesi #166: baca progressive_lockout_enabled + max_lock_duration_hours dari config.
-//   Diteruskan ke SP sebagai parameter — SP yang hitung durasi progressive secara atomik.
-//   Formula: LEAST(base × 2^lock_count_sebelumnya, max_durasi_menit)
-//   Lock ke-1: 30 mnt | Lock ke-2: 60 mnt | Lock ke-3: 120 mnt | ... | cap max_lock_duration_hours jam.
-// FIX T-036 Sesi #166: baca login_attempts_reset_hours dari config.
-//   Diteruskan ke SP sebagai p_reset_hours — SP reset count ke 0 jika last_attempt_at
-//   sudah lebih dari N jam yang lalu (status unlocked, user idle lama).
-/**
- * Baca config → panggil SP via repository — atomic increment + lock.
- * @param data - IncrementLockParams berisi uid, email, nama, nomor_wa, tenantId
- * @returns Object berisi locked, lock_until, count, lock_count
- */
+// FIX Sesi #157 — B1-03: key config salah → nilai selalu fallback 15 menit
+// FIX T-035 Sesi #166: baca progressive_lockout_enabled + max_lock_duration_hours
 export async function incrementLockCount(data: IncrementLockParams): Promise<{
   locked:      boolean
   lock_until?: string | null
   count:       number
   lock_count:  number
 }> {
-  // Baca konfigurasi dari config_registry (dengan cache)
   const cfg                = await getConfigValues('security_login')
   const maxPercobaan       = parseConfigNumber(cfg['max_login_attempts'], 5)
   const durasiMenit        = parseConfigNumber(cfg['lockout_duration_minutes'], 30)
   const progressiveEnabled = parseConfigBoolean(cfg['progressive_lockout_enabled'], false)
   const maxLockJam         = parseConfigNumber(cfg['max_lock_duration_hours'], 24)
   const maxLockMenit       = maxLockJam * 60
-  const resetJam           = parseConfigNumber(cfg['login_attempts_reset_hours'], 0)
 
-  // Panggil SP via repository — atomic, race-condition safe
-  // SP menghitung durasi lockout progressive secara internal menggunakan lock_count existing
-  // SP mereset counter jika user idle lebih dari resetJam jam (last_attempt_at cek di SP)
   const result: IncrementLockResult = await spIncrementLockCount({
     email:                      data.email,
     uid:                        data.uid,
@@ -119,7 +84,6 @@ export async function incrementLockCount(data: IncrementLockParams): Promise<{
     lock_duration_minutes:      durasiMenit,
     progressive_enabled:        progressiveEnabled,
     max_lock_duration_minutes:  maxLockMenit,
-    reset_hours:                resetJam,
   })
 
   return {
@@ -130,14 +94,6 @@ export async function incrementLockCount(data: IncrementLockParams): Promise<{
   }
 }
 
-// ─── FUNGSI: unlockAccount ───────────────────────────────────────────────────
-// Unlock akun — object param (refactor dari 5 param → 1 object).
-// Delegasi ke SP via repository.
-/**
- * Unlock akun — object param (refactor dari 5 param ke 1 object).
- * @param params - UnlockAccountParams berisi uid, email, method, unlockedByUid
- * @returns UnlockResult berisi success dan matched_by
- */
 export async function unlockAccount(params: UnlockAccountParams): Promise<UnlockResult> {
   try {
     return await spUnlockAccount({
@@ -152,14 +108,12 @@ export async function unlockAccount(params: UnlockAccountParams): Promise<Unlock
   }
 }
 
-// ─── PRIVATE: ambil nama platform dari tabel tenants via repository ───────────
 async function getNamaPlatform(tenantId?: string | null): Promise<string> {
   try {
     if (tenantId) {
       const tenant = await findNamaBrandById(tenantId)
       if (tenant?.nama_brand) return tenant.nama_brand
     }
-    // Fallback: ambil tenant aktif pertama
     const defaultTenant = await findDefaultNamaBrand()
     return defaultTenant?.nama_brand ?? ''
   } catch {
@@ -167,48 +121,27 @@ async function getNamaPlatform(tenantId?: string | null): Promise<string> {
   }
 }
 
-// ─── FUNGSI: sendLockNotificationWA ──────────────────────────────────────────
-// Kirim notifikasi WhatsApp via Fonnte saat akun dikunci.
-// Credential Fonnte dibaca via credential-reader (akan migrasi ke CredentialService).
-/**
- * Kirim notifikasi WhatsApp via Fonnte saat akun dikunci.
- * Cek config notify_superadmin_on_lock sebelum kirim.
- * @param data - LockNotificationParams berisi nomor_wa, nama, lock_until, dll
- * @returns Object berisi success dan reason (jika gagal)
- */
 export async function sendLockNotificationWA(
   data: LockNotificationParams
 ): Promise<{ success: boolean; reason?: string }> {
-  // Cek config: apakah notifikasi diaktifkan?
   const cfg = await getConfigValues('security_login')
   const notifEnabled = parseConfigBoolean(cfg['notify_superadmin_on_lock'], true)
-  if (!notifEnabled) {
-    return { success: true, reason: 'Notifikasi dinonaktifkan di config' }
-  }
+  if (!notifEnabled) return { success: true, reason: 'Notifikasi dinonaktifkan di config' }
 
-  // Ambil API token Fonnte dari credential DB
   const apiKey = await getCredential('fonnte', 'api_token')
   if (!apiKey) {
     console.warn('[AccountLockService] Fonnte api_token tidak ditemukan')
     return { success: false, reason: 'Fonnte api_token tidak ditemukan' }
   }
 
-  // Ambil nama platform
   const namaPlatform = await getNamaPlatform(data.tenantId)
-
-  // Format waktu kunci — timezone dari config_registry
-  const timezone    = await getPlatformTimezone()
+  const timezone     = await getPlatformTimezone()
   const lockUntilWIB = data.lock_until.toLocaleTimeString('id-ID', {
     hour: '2-digit', minute: '2-digit', timeZone: timezone, hour12: false,
   })
 
-  // Template pesan — dari message_library, fallback hardcode
   const TEMPLATE_FALLBACK =
-    'Halo {nama},\n\n' +
-    'Akun Anda di {nama_platform} dikunci karena terlalu banyak percobaan login yang gagal ({max_login_attempts} percobaan).\n\n' +
-    'Akun akan terbuka kembali pada pukul {lock_until_wib} WIB.\n\n' +
-    'Jika bukan Anda yang mencoba login, segera hubungi SuperAdmin:\n{superadmin_email}\n\n' +
-    'Abaikan pesan ini jika ini memang Anda.'
+    'Halo {nama},\n\nAkun Anda di {nama_platform} dikunci karena terlalu banyak percobaan login yang gagal ({max_login_attempts} percobaan).\n\nAkun akan terbuka kembali pada pukul {lock_until_wib} WIB.\n\nJika bukan Anda yang mencoba login, segera hubungi SuperAdmin:\n{superadmin_email}\n\nAbaikan pesan ini jika ini memang Anda.'
 
   const template = await getMessage('notif_wa_akun_dikunci', TEMPLATE_FALLBACK)
   const pesan    = interpolate(template, {
@@ -219,14 +152,12 @@ export async function sendLockNotificationWA(
     superadmin_email:   data.superadmin_email,
   })
 
-  // Kirim via Fonnte API
   try {
     const response = await fetch('https://api.fonnte.com/send', {
       method:  'POST',
       headers: { 'Authorization': apiKey, 'Content-Type': 'application/json' },
       body:    JSON.stringify({ target: data.nomor_wa, message: pesan }),
     })
-    const responseBody = await response.json().catch(() => ({}))
     if (!response.ok) {
       console.error('[AccountLockService] Fonnte HTTP error:', response.status)
       return { success: false, reason: `HTTP ${response.status}` }

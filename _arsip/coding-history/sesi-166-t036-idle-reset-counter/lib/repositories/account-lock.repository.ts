@@ -6,8 +6,6 @@
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 
-// ─── Tipe Data ──────────────────────────────────────────────────────────────
-
 export interface AccountLockDoc {
   uid:            string
   email:          string
@@ -37,13 +35,6 @@ export interface UnlockResult {
   matched_by: 'uid' | 'email' | null
 }
 
-// ─── Repository ─────────────────────────────────────────────────────────────
-
-/**
- * Cari record account_locks berdasarkan email.
- * @param email - Email user yang dicari
- * @returns AccountLockDoc jika ditemukan, null jika tidak ada
- */
 export async function findByEmail(email: string): Promise<AccountLockDoc | null> {
   const db = createServerSupabaseClient()
   const { data, error } = await db
@@ -59,16 +50,8 @@ export async function findByEmail(email: string): Promise<AccountLockDoc | null>
 
 /**
  * Panggil SP sp_increment_lock_count — atomic increment + lock jika melebihi batas.
- * SP menerima config sebagai parameter (bukan baca DB sendiri).
  * FIX T-035 Sesi #166: tambah p_progressive_enabled + p_max_lock_duration_minutes
- *   agar SP bisa menghitung durasi lockout progressive secara atomik.
- * FIX T-036 Sesi #166: tambah p_reset_hours
- *   agar SP bisa reset counter jika user idle lebih dari N jam.
- * @param params - email, uid, nama, nomor_wa, tenant_id, max_attempts,
- *                 lock_duration_minutes, progressive_enabled, max_lock_duration_minutes,
- *                 reset_hours
- * @returns IncrementLockResult berisi locked, lock_until, count, lock_count
- * @throws Error jika SP gagal dieksekusi
+ * @param params - 9 parameter (7 original + 2 baru T-035)
  */
 export async function spIncrementLockCount(params: {
   email:                       string
@@ -80,7 +63,6 @@ export async function spIncrementLockCount(params: {
   lock_duration_minutes:       number
   progressive_enabled?:        boolean
   max_lock_duration_minutes?:  number
-  reset_hours?:                number
 }): Promise<IncrementLockResult> {
   const db = createServerSupabaseClient()
   const { data, error } = await db.rpc('sp_increment_lock_count', {
@@ -93,19 +75,12 @@ export async function spIncrementLockCount(params: {
     p_lock_duration_minutes:      params.lock_duration_minutes,
     p_progressive_enabled:        params.progressive_enabled ?? false,
     p_max_lock_duration_minutes:  params.max_lock_duration_minutes ?? 1440,
-    p_reset_hours:                params.reset_hours ?? 0,
   })
 
   if (error) throw new Error(`[account-lock.repository] spIncrementLockCount: ${error.message}`)
   return data as IncrementLockResult
 }
 
-/**
- * Panggil SP sp_unlock_account — coba unlock via uid dulu, fallback email.
- * @param params - uid, email, method (auto|manual), unlocked_by
- * @returns UnlockResult berisi success dan matched_by ('uid'|'email'|null)
- * @throws Error jika SP gagal dieksekusi
- */
 export async function spUnlockAccount(params: {
   uid?:          string | null
   email?:        string | null
