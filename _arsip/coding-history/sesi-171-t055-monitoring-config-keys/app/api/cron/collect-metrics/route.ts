@@ -3,10 +3,6 @@
 // Dipanggil oleh: QStash scheduler (bukan browser langsung)
 // Verifikasi signature QStash wajib sebelum eksekusi apapun
 // Dibuat: Sesi #153 — PL-S09 Step 3.5
-// PERUBAHAN Sesi #161 — T-017: tambah baca data_retention_days dari config_registry
-// PERUBAHAN Sesi #171 — T-055: refactor ke getConfigValues (1 round-trip),
-//   tambah baca alert_threshold_response_ms + alert_cooldown_minutes + alert_consecutive_failures,
-//   pass 4 nilai ke collectL1Metrics() agar upsertDefaultRules() bisa dipanggil dengan nilai dari config.
 //
 // Catatan desain:
 // - QSTASH_CURRENT_SIGNING_KEY tetap di .env (bootstrap level — CREDENTIAL_SYSTEM_SPEC BAB 2 Kategori 1)
@@ -17,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { collectL1Metrics, collectL3Metrics } from '@/lib/services/metrics-collector.service'
-import { getConfigValues, parseConfigNumber }   from '@/lib/config-registry'
+import { getConfigValue, parseConfigNumber }   from '@/lib/config-registry'
 import crypto from 'crypto'
 
 // ─── verifyQStashSignature ────────────────────────────────────────────────────
@@ -84,14 +80,10 @@ export async function POST(req: NextRequest) {
       })
     } else {
       // Ping health setiap 1 menit (default)
-      // Baca 4 key monitoring sekaligus dalam 1 round-trip DB (efisiensi vs 4x getConfigValue terpisah)
-      // FIX T-055 S#171: tambah alert_threshold_response_ms + alert_cooldown_minutes + alert_consecutive_failures
-      const cfg            = await getConfigValues('monitoring')
-      const retentionDays  = parseConfigNumber(cfg['data_retention_days']         ?? '30',  30)
-      const thresholdMs    = parseConfigNumber(cfg['alert_threshold_response_ms'] ?? '3000', 3000)
-      const cooldown       = parseConfigNumber(cfg['alert_cooldown_minutes']       ?? '30',  30)
-      const consecutive    = parseConfigNumber(cfg['alert_consecutive_failures']   ?? '3',   3)
-      const result         = await collectL1Metrics(retentionDays, thresholdMs, cooldown, consecutive)
+      // Baca retentionDays dari config — SA bisa ubah via dashboard Monitoring
+      const retentionStr  = await getConfigValue('monitoring', 'data_retention_days', '30')
+      const retentionDays = parseConfigNumber(retentionStr, 30)
+      const result        = await collectL1Metrics(retentionDays)
       return NextResponse.json({
         success:   true,
         layer:     'L1',
