@@ -18,8 +18,11 @@ import {
 } from '@/lib/repositories/account-lock.repository'
 import { getConfigValues, parseConfigNumber, parseConfigBoolean, getPlatformTimezone } from '@/lib/config-registry'
 import { getMessage, interpolate } from '@/lib/message-library'
-import { getCredential }        from '@/lib/services/credential.service'
-import { getNamaBrandPlatform } from '@/lib/utils/brand.server'
+import { getCredential } from '@/lib/services/credential.service'
+import {
+  findNamaBrandById,
+  findDefaultNamaBrand,
+} from '@/lib/repositories/tenant.repository'
 import { ACCOUNT_LOCK_STATUS, UNLOCK_METHOD } from '@/lib/constants'
 import type { UnlockMethodType } from '@/lib/constants'
 
@@ -149,6 +152,21 @@ export async function unlockAccount(params: UnlockAccountParams): Promise<Unlock
   }
 }
 
+// ─── PRIVATE: ambil nama platform dari tabel tenants via repository ───────────
+async function getNamaPlatform(tenantId?: string | null): Promise<string> {
+  try {
+    if (tenantId) {
+      const tenant = await findNamaBrandById(tenantId)
+      if (tenant?.nama_brand) return tenant.nama_brand
+    }
+    // Fallback: ambil tenant aktif pertama
+    const defaultTenant = await findDefaultNamaBrand()
+    return defaultTenant?.nama_brand ?? ''
+  } catch {
+    return ''
+  }
+}
+
 // ─── FUNGSI: sendLockNotificationWA ──────────────────────────────────────────
 // Kirim notifikasi WhatsApp via Fonnte saat akun dikunci.
 // Credential Fonnte dibaca via credential-reader (akan migrasi ke CredentialService).
@@ -175,8 +193,8 @@ export async function sendLockNotificationWA(
     return { success: false, reason: 'Fonnte api_token tidak ditemukan' }
   }
 
-  // Ambil nama platform — shared utility (lib/utils/brand.server.ts)
-  const namaPlatform = await getNamaBrandPlatform(data.tenantId)
+  // Ambil nama platform
+  const namaPlatform = await getNamaPlatform(data.tenantId)
 
   // Format waktu kunci — timezone dari config_registry
   const timezone    = await getPlatformTimezone()

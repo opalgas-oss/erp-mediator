@@ -5,7 +5,7 @@
 //
 // PERUBAHAN Sesi #068:
 //   sendOTP() — 6 DB call sequential → Promise.all paralel (5 call sekaligus).
-//   Call yang diparallelkan: getConfigValues + getCredential + getNamaBrandPlatform
+//   Call yang diparallelkan: getConfigValues + getCredential + getNamaPlatform
 //   + getPlatformTimezone + getMessage (semua independen, tidak saling bergantung).
 //   otpUpsert tetap sequential setelah Promise.all (butuh hasil cfg untuk expiredAt).
 //
@@ -54,8 +54,11 @@ import { getRedisClient }                                          from '@/lib/r
 import { getCredential }                                           from '@/lib/services/credential.service'
 import { getMessage, interpolate }                                 from '@/lib/message-library'
 import { getConfigValues, parseConfigNumber, getPlatformTimezone } from '@/lib/config-registry'
-import { sendSmtpOTP }             from '@/lib/utils/smtp.server'
-import { getNamaBrandPlatform }    from '@/lib/utils/brand.server'
+import { sendSmtpOTP }                                             from '@/lib/utils/smtp.server'
+import {
+  findNamaBrandById,
+  findDefaultNamaBrand,
+} from '@/lib/repositories/tenant.repository'
 
 // ─── Tipe untuk sendOTP ──────────────────────────────────────────────────────
 
@@ -95,6 +98,20 @@ function generateOTPCode(panjang: number): string {
   return Math.floor(Math.random() * max).toString().padStart(panjang, '0')
 }
 
+// ─── PRIVATE: ambil nama platform dari tenant via repository ─────────────────
+async function getNamaPlatform(tenantId?: string): Promise<string> {
+  try {
+    if (tenantId) {
+      const tenant = await findNamaBrandById(tenantId)
+      if (tenant?.nama_brand) return tenant.nama_brand
+    }
+    const defaultTenant = await findDefaultNamaBrand()
+    return defaultTenant?.nama_brand ?? ''
+  } catch {
+    return ''
+  }
+}
+
 // ─── FUNGSI: sendOTP ──────────────────────────────────────────────────────────
 /**
  * Generate OTP, simpan ke Redis (primary) dan PostgreSQL (async audit trail).
@@ -125,7 +142,7 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
   const [cfg, apiKey, namaPlatform, timezone, waTemplate, emailTemplate] = await Promise.all([
     getConfigValues('security_login'),
     getCredential('fonnte', 'api_token'),
-    getNamaBrandPlatform(params.tenantId),
+    getNamaPlatform(params.tenantId),
     getPlatformTimezone(),
     getMessage('notif_wa_otp_login',    WA_FALLBACK),
     getMessage('notif_email_otp_login', EMAIL_FALLBACK),
