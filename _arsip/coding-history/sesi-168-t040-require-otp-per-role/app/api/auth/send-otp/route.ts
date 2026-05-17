@@ -2,28 +2,17 @@
 // POST — Generate OTP, simpan ke otp_codes, kirim via channel yang dikonfigurasi SA.
 // REFACTOR Sesi #052 — BLOK E-04 TODO_ARSITEKTUR_LAYER_v1:
 //   - Semua logika dipindahkan ke OTPService.sendOTP()
-//   - Route handler hanya: validasi input → gate require_otp → panggil service → return response
+//   - Route handler hanya: validasi input → panggil service → return response
 //   - Tidak ada lagi query DB langsung atau getCredential di route
 //
 // PERUBAHAN Sesi #167 — T-039:
 //   - Tambah field email (opsional) ke RequestSchema — diisi jika channel = email.
 //   - Pass email ke sendOTP() params.
-//
-// PERUBAHAN Sesi #168 — T-040:
-//   - SERVER-SIDE GATE: baca require_otp JSON per-role dari config_registry sebelum sendOTP.
-//   - Mode 'disabled' → return {success:true, otp_skipped:true} tanpa kirim OTP.
-//   - Mode 'optional' → cek user_profiles.app_metadata.use_otp:
-//       null/false → {success:true, otp_skipped:true} (per spec: null → false → skip).
-//       true       → lanjut sendOTP().
-//   - Mode 'required' → lanjut sendOTP() tanpa cek preferensi.
 
-import { NextRequest, NextResponse }    from 'next/server'
-import { z }                            from 'zod'
-import { verifyJWT }                    from '@/lib/auth-server'
-import { sendOTP }                      from '@/lib/services/otp.service'
-import { getConfigValues }              from '@/lib/config-registry'
-import { createServerSupabaseClient }   from '@/lib/supabase-server'
-import { parseRequireOtpForRole }       from '@/app/login/login-types'
+import { NextRequest, NextResponse } from 'next/server'
+import { z }                         from 'zod'
+import { verifyJWT }                 from '@/lib/auth-server'
+import { sendOTP }                   from '@/lib/services/otp.service'
 
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
 
@@ -57,41 +46,6 @@ export async function POST(request: NextRequest) {
     }
 
     const { uid, tenant_id, role, nomor_wa, email, nama } = parsed.data
-
-    // ── SERVER-SIDE GATE: cek require_otp per role (T-040) ───────────────────
-    //
-    // Gate ini adalah sumber kebenaran server-side — tidak bisa di-bypass oleh client.
-    // Membaca require_otp JSON per-role dari config_registry, bukan dari client state.
-    const cfg           = await getConfigValues('security_login')
-    const requireOtpRaw = cfg['require_otp'] ?? 'required'
-    const otpMode       = parseRequireOtpForRole(requireOtpRaw, role)
-
-    if (otpMode === 'disabled') {
-      // SA set role ini 'disabled' → OTP tidak dikirim
-      return NextResponse.json({ success: true, otp_skipped: true })
-    }
-
-    if (otpMode === 'optional') {
-      // SA set role ini 'optional' → cek preferensi user di user_profiles.use_otp
-      // Kolom dedicated BOOLEAN NOT NULL DEFAULT FALSE (T-040 S#168)
-      // Per spec (WORKFLOW_LOGIN_FITUR_LANJUTAN BAB 3.2): false → skip OTP
-      const db = createServerSupabaseClient()
-      const { data: profile } = await db
-        .from('user_profiles')
-        .select('use_otp')
-        .eq('id', uid)
-        .eq('tenant_id', tenant_id || '')
-        .maybeSingle()
-
-      const useOtp = profile?.use_otp === true
-      if (!useOtp) {
-        // use_otp = false (default) → skip OTP
-        return NextResponse.json({ success: true, otp_skipped: true })
-      }
-      // use_otp = true → lanjut kirim OTP
-    }
-
-    // otpMode === 'required' ATAU optional+use_otp=true → lanjut sendOTP()
 
     // ── Delegasi ke OTPService ────────────────────────────────────────────────
     const result = await sendOTP({

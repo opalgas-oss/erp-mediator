@@ -23,7 +23,6 @@ import { ROLES }                                    from '@/lib/constants'
 import {
   DEFAULT_PESAN, SUPABASE_ERROR_KEYS,
   decodeJwtPayload, extractConfigItems, findConfigValue,
-  parseRequireOtpForRole,
 } from '@/app/login/login-types'
 import type { Tahap, DataSesiParalel } from '@/app/login/login-types'
 
@@ -287,16 +286,13 @@ export function useLoginFlow(): LoginFlowState {
 
   async function lanjutSetelahRole(role: string, tid: string, uidUser: string, namaUser: string, waNumber: string) {
     try {
-      // PERUBAHAN Sesi #168 — T-040: ganti boolean check dengan parseRequireOtpForRole()
-      // Gate client-side: hanya untuk skip API call sepenuhnya jika mode 'disabled'.
-      // Mode 'optional' dan 'required' tetap memanggil API — server gate yang tentukan.
-      const otpMode = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', role)
-      if (otpMode === 'disabled') {
-        // SA set role ini 'disabled' → langsung selesaiLogin tanpa panggil API
-        await selesaiLogin()
-      } else {
-        // 'required' atau 'optional' → panggil API; server gate yang cek preferensi optional
+      const requireOtp = configLogin['require_otp'] === 'true'
+      const isCustomer = role.toUpperCase() === ROLES.CUSTOMER
+      if (!isCustomer && requireOtp) {
         await kirimOTP(uidUser, tid, role, waNumber, namaUser)
+      } else {
+        // Sesi #062: Biometric dihapus dari login flow → langsung selesaiLogin()
+        await selesaiLogin()
       }
     } catch {
       setError(m('login_error_gagal_config')); setTahap('KREDENSIAL'); setIsLoading(false)
@@ -308,15 +304,6 @@ export function useLoginFlow(): LoginFlowState {
     try {
       // PERUBAHAN Sesi #167 — T-039: pass email (dari state closure) untuk channel email
       const resData = await fetchSendOTP({ uid: uidUser, tenantId: tid, role, nomorWa: waNumber, email, nama: namaUser })
-
-      // PERUBAHAN Sesi #168 — T-040: handle otp_skipped dari server gate
-      // Server gate return {success:true, otp_skipped:true} jika mode='disabled' atau optional+no-pref
-      if (resData.otp_skipped) {
-        fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'OTP dilewati (mode config SA)', result: 'SUCCESS', gpsKota: gpsRef.current?.kota || '' })
-        await selesaiLogin()
-        return
-      }
-
       fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: resData.success ? 'OTP berhasil dikirim' : 'OTP gagal dikirim', result: resData.success ? 'SUCCESS' : 'FAILED', gpsKota: gpsRef.current?.kota || '' })
       setMaxOtpPercobaan(resData.otp_max_attempts ?? 3)
       otpTimer.mulaiTimer(resData.resend_cooldown_seconds ?? 60)
@@ -332,20 +319,10 @@ export function useLoginFlow(): LoginFlowState {
     try {
       const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || String(SESSION_DEFAULT_TIMEOUT_MINUTES))
 
-      // OPTIMASI Sesi #076 — Temuan 1: eliminasi blocking ~172ms sebelum redirect
-      // Sebelumnya: await Promise.all([fetchSessionLog, fetchUserPresence]) → blocking round-trip
-      // Sekarang:
-      //   1. Generate sessionId di client (crypto.randomUUID — tidak perlu tunggu server)
-      //   2. aturCookieSession dulu — cookie harus set sebelum redirect
-      //   3. fetchSessionLog + fetchUserPresence fire-and-forget — tidak blocking
-      //   4. kirimActivityLoginBerhasil dengan sessionId yang sama
-      //   5. router.push LANGSUNG tanpa tunggu apapun
-      // Saving: ~172ms per login Vendor (post-OTP), ~172ms untuk role lain
       const sessionId = crypto.randomUUID()
 
       aturCookieSession({ roleDipilih, tenantId, gpsKota: gpsRef.current?.kota ?? null, sessionTimeoutMinutes })
 
-      // Fire-and-forget — tidak blocking redirect
       fetchSessionLog({
         uid, tenantId: tenantId || null, role: roleDipilih,
         gpsKota: gpsRef.current?.kota ?? '', sessionId,
@@ -414,9 +391,6 @@ export function useLoginFlow(): LoginFlowState {
     setIsLoading(true); setError('')
     if (!(await pastikanGPS())) { setIsLoading(false); return }
 
-    // ─── REFACTOR Sesi #068: 1 unified action — 1x signInWithPassword untuk semua role ──
-    // Sebelumnya: SA action → Vendor action → flow lama (3 sequential, 2-3x signIn)
-    // Sekarang: 1 action, 1 signIn, role dibaca dari JWT, parallel DB calls per role
     try {
       const result = await loginUnifiedAction({
         email, password,
@@ -425,48 +399,38 @@ export function useLoginFlow(): LoginFlowState {
         redirectTo,
       })
 
-      // SA, AdminTenant, Vendor, Customer: handle per skenario
       if (result.ok && result.redirectTo && result.uid) {
         const roleFromResult = result.tenantId === undefined ? ROLES.SUPERADMIN
           : result.nomorWa !== undefined ? ROLES.VENDOR : ROLES.ADMIN_TENANT
 
-        // Vendor: perlu OTP sebelum redirect
         if (roleFromResult === ROLES.VENDOR && result.nama) {
           const tid = result.tenantId ?? ''
           const wa  = result.nomorWa  ?? ''
           setUid(result.uid); setNama(result.nama)
           setTenantId(tid); setNomorWA(wa)
           setRoleDipilih(ROLES.VENDOR); setUserEmail(email)
-          // PERUBAHAN Sesi #168 — T-040: ganti boolean check dengan parseRequireOtpForRole()
-          // Gate client-side untuk Vendor di unified action flow.
-          const otpMode = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', ROLES.VENDOR)
-          if (otpMode === 'disabled') {
-            await selesaiLogin()
-          } else {
+          const requireOtp = configLogin['require_otp'] === 'true'
+          if (requireOtp) {
             await kirimOTP(result.uid, tid, ROLES.VENDOR, wa, result.nama)
+          } else {
+            await selesaiLogin()
           }
           return
         }
 
-        // SA + AdminTenant + Customer: redirect langsung
         router.push(result.redirectTo); return
       }
 
-      // Error dari unified action
       if (!result.ok && result.errorKey) {
         setError(m(result.errorKey, result.errorVars)); setIsLoading(false); return
       }
     } catch (err) {
       console.error('[handleLogin] unified action error — koneksi gagal:', err)
-      // PERBAIKAN Sesi #076 — Temuan 2: cegah double signInWithPassword
-      // Sebelumnya: catch jatuh ke runFlowLama() → memanggil signInWithPassword kedua kali dari client
-      // Sekarang: tampilkan error koneksi, tidak fallback ke flow lama
       setError(m('login_error_koneksi_gagal'))
       setIsLoading(false)
       return
     }
 
-    // ─── Fallback: flow lama untuk Customer atau role tidak dikenal ──────────
     await runFlowLama()
   }
 
@@ -477,7 +441,6 @@ export function useLoginFlow(): LoginFlowState {
       const data = await fetchVerifyOTP({ uid, tenantId, inputCode: otpInput })
       if (data.success) {
         fetchActivityLog({ uid, tenantId, nama, role: roleDipilih, sessionId: '', actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'Verifikasi OTP berhasil', result: 'SUCCESS', gpsKota: gpsRef.current?.kota || '' })
-        // Sesi #062: Biometric dihapus dari login flow → langsung selesaiLogin()
         await selesaiLogin()
       } else if (data.result === 'EXPIRED') {
         setError(m('otp_error_kadaluarsa')); setIsLoading(false)
