@@ -39,10 +39,6 @@
 //               Tambah field email? di SendOTPParams (wajib jika channel=email).
 //               Promise.all diperluas: tambah getMessage('notif_email_otp_login').
 //
-// PERUBAHAN Sesi #173 — SL-D002+K002 refactor duplikasi Fonnte:
-//   sendOTP() channel=whatsapp — ganti inline fetch Fonnte dengan sendFonnteWA()
-//   dari lib/utils/fonnte.server.ts. Token tetap diambil dalam Promise.all (efisien).
-//
 // ARSITEKTUR:
 //   Route Handler → OTPService → OTPRepository + CredentialService + MessageLibrary
 //   OTPService juga panggil: config-registry untuk config OTP.
@@ -60,7 +56,6 @@ import { getMessage, interpolate }                                 from '@/lib/m
 import { getConfigValues, parseConfigNumber, getPlatformTimezone } from '@/lib/config-registry'
 import { sendSmtpOTP }             from '@/lib/utils/smtp.server'
 import { getNamaBrandPlatform }    from '@/lib/utils/brand.server'
-import { sendFonnteWA }            from '@/lib/utils/fonnte.server'
 
 // ─── Tipe untuk sendOTP ──────────────────────────────────────────────────────
 
@@ -210,13 +205,14 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
       return { success: false, message: 'Konfigurasi WhatsApp belum siap' }
     }
     try {
-      const waResult = await sendFonnteWA(
-        params.nomorWa,
-        interpolate(waTemplate, interpolateVars),
-        apiKey
-      )
-      if (!waResult.success) {
-        console.error('[OTPService] Fonnte error:', waResult.reason)
+      const response = await fetch('https://api.fonnte.com/send', {
+        method:  'POST',
+        headers: { 'Authorization': apiKey, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ target: params.nomorWa, message: interpolate(waTemplate, interpolateVars) }),
+      })
+      if (!response.ok) {
+        const errBody = await response.text()
+        console.error('[OTPService] Fonnte error:', response.status, errBody)
         return { success: false, message: 'Gagal mengirim OTP via WhatsApp' }
       }
     } catch (err) {

@@ -21,7 +21,6 @@ import {
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getCredential } from '@/lib/services/credential.service'
 import { getMessage, interpolate } from '@/lib/message-library'
-import { sendFonnteWA } from '@/lib/utils/fonnte.server'
 import type {
   TenantPICHistory,
   PICKartu,
@@ -259,7 +258,9 @@ async function kirimNotifikasiGantiPIC(input: GantiPICPayload): Promise<void> {
     tanggal_efektif: input.tanggal_efektif,
   })
 
-  // Kirim via Fonnte API — shared utility (lib/utils/fonnte.server.ts)
-  // Fire-and-forget: caller sudah wrap dengan void ... .catch()
-  await sendFonnteWA(input.user_wa.replace(/\D/g, ''), pesan, apiKey)
+  await fetch('https://api.fonnte.com/send', {
+    method:  'POST',
+    headers: { 'Authorization': apiKey, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ target: input.user_wa.replace(/\D/g, ''), message: pesan }),
+  })
 }

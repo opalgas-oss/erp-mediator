@@ -13,7 +13,6 @@ import { getConfigValues, getPlatformTimezone } from '@/lib/config-registry'
 import { findRulesByProvider } from '@/lib/repositories/alert-rules.repository'
 import { findLastAlertAt, insertAlertLog } from '@/lib/repositories/alert-log.repository'
 import { findRecentByProvider }            from '@/lib/repositories/provider-metrics.repository'
-import { sendFonnteWA }                    from '@/lib/utils/fonnte.server'
 import type { MonitoringStatus }           from '@/lib/types/monitoring.types'
 import { MONITORING_STATUS, ALERT_TYPE }   from '@/lib/constants/monitoring.constant'
 
@@ -147,10 +146,9 @@ async function buildAlertMessage(
 // ─── sendWAAlert — via Fonnte (dari M3 credential.service) ───────────────────
 
 /**
- * Kirim WA via Fonnte — shared utility sendFonnteWA (lib/utils/fonnte.server.ts).
+ * Kirim WA via Fonnte.
  * Token Fonnte diambil dari M3 DB via credential.service (ATURAN 11 — tidak duplikasi .env).
  * Nomor tujuan dari config_registry monitoring.superadmin_alert_wa_number.
- * Throw Error jika token tidak ada atau sendFonnteWA gagal — ditangkap Promise.allSettled caller.
  */
 async function sendWAAlert(message: string, targetNumber: string): Promise<boolean> {
   // Token diambil dari M3 (bukan process.env langsung)
@@ -158,9 +156,15 @@ async function sendWAAlert(message: string, targetNumber: string): Promise<boole
   if (!token) throw new Error('Token Fonnte belum dikonfigurasi di M3 Credential Management')
   if (!targetNumber) throw new Error('Nomor WA penerima alert belum dikonfigurasi di Config Registry')
 
-  const result = await sendFonnteWA(targetNumber, message, token)
-  if (!result.success) {
-    throw new Error(`Fonnte error: ${result.reason ?? 'Unknown error'}`)
+  const res = await fetch('https://api.fonnte.com/send', {
+    method:  'POST',
+    headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ target: targetNumber, message, countryCode: '62' }),
+  })
+
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Fonnte error ${res.status}: ${body}`)
   }
   return true
 }

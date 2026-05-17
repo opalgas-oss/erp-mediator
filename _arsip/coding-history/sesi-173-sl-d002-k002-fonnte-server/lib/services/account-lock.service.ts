@@ -20,7 +20,6 @@ import { getConfigValues, parseConfigNumber, parseConfigBoolean, getPlatformTime
 import { getMessage, interpolate } from '@/lib/message-library'
 import { getCredential }        from '@/lib/services/credential.service'
 import { getNamaBrandPlatform } from '@/lib/utils/brand.server'
-import { sendFonnteWA }         from '@/lib/utils/fonnte.server'
 import { ACCOUNT_LOCK_STATUS, UNLOCK_METHOD } from '@/lib/constants'
 import type { UnlockMethodType } from '@/lib/constants'
 
@@ -202,6 +201,22 @@ export async function sendLockNotificationWA(
     superadmin_email:   data.superadmin_email,
   })
 
-  // Kirim via Fonnte API — shared utility (lib/utils/fonnte.server.ts)
-  return await sendFonnteWA(data.nomor_wa, pesan, apiKey)
+  // Kirim via Fonnte API
+  try {
+    const response = await fetch('https://api.fonnte.com/send', {
+      method:  'POST',
+      headers: { 'Authorization': apiKey, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ target: data.nomor_wa, message: pesan }),
+    })
+    const responseBody = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      console.error('[AccountLockService] Fonnte HTTP error:', response.status)
+      return { success: false, reason: `HTTP ${response.status}` }
+    }
+    return { success: true }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'Unknown error'
+    console.error('[AccountLockService] sendLockNotificationWA error:', err)
+    return { success: false, reason }
+  }
 }
