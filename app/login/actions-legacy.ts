@@ -13,6 +13,7 @@
 
 import { createServerSupabaseClient }  from '@/lib/supabase-server'
 import { getAccountLock }              from '@/lib/services/account-lock.service'
+import { getConfigValues, parseConfigNumber } from '@/lib/config-registry'
 import { ROLES, ACCOUNT_LOCK_STATUS }  from '@/lib/constants'
 import {
   decodeAppClaims, formatLockUntilWIB, hitungTujuanRedirectServer,
@@ -43,7 +44,10 @@ async function cekLockAwal(email: string): Promise<
 export async function loginSuperadminAction(params: LoginActionParams): Promise<LoginActionResult> {
   const { email, password, device, gpsKota, redirectTo } = params
 
-  if (!buildLoginFormSchema().safeParse({ email, password }).success)
+  // FIX T-048: baca password_min_length dari config_registry (legacy fallback)
+  const legacyCfg = await getConfigValues('security_login')
+  const pwMin     = parseConfigNumber(legacyCfg['password_min_length'], 8)
+  if (!buildLoginFormSchema(pwMin).safeParse({ email, password }).success)
     return { ok: false, errorKey: 'login_error_umum' }
 
   const lock = await cekLockAwal(email)
@@ -77,7 +81,10 @@ export async function loginSuperadminAction(params: LoginActionParams): Promise<
 export async function loginVendorAction(params: LoginActionParams): Promise<LoginActionResult> {
   const { email, password, device, gpsKota, redirectTo } = params
 
-  if (!buildLoginFormSchema().safeParse({ email, password }).success)
+  // FIX T-048: baca password_min_length dari config_registry (legacy fallback)
+  const legacyCfgV = await getConfigValues('security_login')
+  const pwMinV     = parseConfigNumber(legacyCfgV['password_min_length'], 8)
+  if (!buildLoginFormSchema(pwMinV).safeParse({ email, password }).success)
     return { ok: false, errorKey: 'login_error_umum' }
 
   const lock = await cekLockAwal(email)
@@ -129,7 +136,10 @@ export async function loginVendorAction(params: LoginActionParams): Promise<Logi
 export async function loginAdminTenantAction(params: LoginActionParams): Promise<LoginActionResult> {
   const { email, password, device, gpsKota, redirectTo } = params
 
-  if (!buildLoginFormSchema().safeParse({ email, password }).success)
+  // FIX T-048: baca password_min_length dari config_registry (legacy fallback)
+  const legacyCfgAT = await getConfigValues('security_login')
+  const pwMinAT     = parseConfigNumber(legacyCfgAT['password_min_length'], 8)
+  if (!buildLoginFormSchema(pwMinAT).safeParse({ email, password }).success)
     return { ok: false, errorKey: 'login_error_umum' }
 
   const lock = await cekLockAwal(email)

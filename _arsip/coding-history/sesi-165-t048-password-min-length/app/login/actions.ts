@@ -1,4 +1,6 @@
-// app/login/actions.ts
+// app/login/actions.ts — PRE-T-048 SNAPSHOT (S#165)
+// BUG T-048: LOGIN_FORM_SCHEMA module-level dibuat dengan default 8
+//            SA ubah password_min_length di dashboard tidak ada efek
 // Server Actions login — Unified action untuk semua role.
 //
 // OPTIMASI Sesi #075 — Custom Access Token Hook + eliminasi DB query:
@@ -8,18 +10,10 @@
 //      (skip DB query sepenuhnya). Jika hook belum aktif, fallback ke DB query.
 //
 // OPTIMASI Sesi #076 — Cold start improvement:
-//   4. FIX T-048 S#165: LOGIN_FORM_SCHEMA DIHAPUS dari module-level.
-//      Sebelumnya: buildLoginFormSchema() dipanggil sekali saat module dimuat dengan default 8.
-//      Sesudahnya: buildLoginFormSchema(passwordMinLength) per-request dari config_registry.
-//      Password validation tetap dalam 1 round-trip berkat getConfigValues sudah di Promise.all.
+//   4. LOGIN_FORM_SCHEMA dipindah ke module-level constant — tidak re-create Zod schema tiap request
 //   5. getConfigValues('security_login') masuk ke Promise.all yang sudah ada — parallel dengan
 //      cekLockAwal + signInWithPassword. Warm: 0ms saving (sudah cached). Cold: ~50-80ms saving.
-//      sessionTimeoutMinutes + passwordMinLength keduanya diambil dari sessionCfg.
-//
-// SPLIT Sesi #074: dipecah dari 15.8 KB → actions.ts + actions-legacy.ts + login-session-check.ts
-// FIX Sesi #074: tambah Customer handler.
-// REFACTOR Sesi #068: 1 signInWithPassword untuk semua role.
-// PENTING: buatSupabaseSSR() → 1x cookies() → tidak ada regresi double-cookies +700ms.
+//      sessionTimeoutMinutes diteruskan ke setCookiesLoginServer → skip DB call di sana.
 
 'use server'
 
@@ -33,8 +27,6 @@ import {
   setCookiesLoginServer, jalankanAfterTasksLogin,
   buildLoginFormSchema, buatSupabaseSSR, prosesGagalLogin,
 } from './login-action-helpers'
-
-// ─── Tipe ────────────────────────────────────────────────────────────────────
 
 export interface LoginActionParams {
   email:       string
@@ -55,7 +47,9 @@ export interface LoginActionResult {
   nomorWa?:     string
 }
 
-// ─── Helper: cek lock sebelum proses ─────────────────────────────────────────
+// BUG T-048: hardcode 8 — schema dibuat sekali saat module load, tidak baca config
+const LOGIN_FORM_SCHEMA = buildLoginFormSchema()
+
 async function cekLockAwal(email: string): Promise<
   { locked: true;  result: LoginActionResult } |
   { locked: false; hadAttempts: boolean }
@@ -70,21 +64,15 @@ async function cekLockAwal(email: string): Promise<
   return { locked: false, hadAttempts: (lockDoc?.count ?? 0) > 0 }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// loginUnifiedAction
-// ═════════════════════════════════════════════════════════════════════════════
-
 export async function loginUnifiedAction(params: LoginActionParams): Promise<LoginActionResult> {
   const { email, password, device, gpsKota, redirectTo } = params
 
-  // buatSupabaseSSR dulu — cookieStore harus tersedia sebelum Promise.all
+  // BUG T-048: LOGIN_FORM_SCHEMA selalu pakai 8 meskipun SA ubah ke 12
+  if (!LOGIN_FORM_SCHEMA.safeParse({ email, password }).success)
+    return { ok: false, errorKey: 'login_error_umum' }
+
   const { supabase, cookieStore } = await buatSupabaseSSR()
 
-  // OPTIMASI #075 + #076 + FIX T-048:
-  //   cekLockAwal + signInWithPassword + getConfigValues SEMUA PARALLEL.
-  //   Warm: getConfigValues = 0ms (module-level Map cache — sudah ada).
-  //   Cold start: getConfigValues ~50-80ms → tidak blocking karena parallel.
-  //   sessionTimeoutMinutes + passwordMinLength keduanya dari sessionCfg (1 fetch, 2 nilai).
   const [lock, authResult, sessionCfg] = await Promise.all([
     cekLockAwal(email),
     supabase.auth.signInWithPassword({ email, password }),
@@ -92,14 +80,7 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
   ])
 
   const sessionTimeoutMinutes = parseConfigNumber(sessionCfg['session_timeout_minutes'], SESSION_DEFAULT_TIMEOUT_MINUTES)
-  const passwordMinLength     = parseConfigNumber(sessionCfg['password_min_length'], 8)
 
-  // FIX T-048: validasi schema per-request dengan passwordMinLength dari config_registry.
-  // SA ubah password_min_length di dashboard → efektif pada login berikutnya.
-  if (!buildLoginFormSchema(passwordMinLength).safeParse({ email, password }).success)
-    return { ok: false, errorKey: 'login_error_umum' }
-
-  // Jika akun terkunci: pastikan session di-clear dulu baru return error
   if (lock.locked) {
     if (!authResult.error && authResult.data?.session) {
       try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
@@ -117,53 +98,37 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     return prosesGagalLogin(email, userRow?.tenant_id ?? null, authError?.message ?? '')
   }
 
-  // claims sekarang berisi: role, tenantId, nama, vendorStatus?, nomorWa?
   const claims    = decodeAppClaims(authData.session.access_token)
   const { role, tenantId: claimTenantId } = claims
   const uid       = authData.user.id
   const sessionId = crypto.randomUUID()
 
-  // ── SUPERADMIN ────────────────────────────────────────────────────────────
   if (role === ROLES.SUPERADMIN) {
     const nama = claims.nama
     await setCookiesLoginServer({ role: ROLES.SUPERADMIN, tenantId: '', gpsKota, sessionTimeoutMinutes }, cookieStore)
-    jalankanAfterTasksLogin(
-      { uid, tenantId: null, nama, role: ROLES.SUPERADMIN, device, gpsKota, hadAttempts: lock.hadAttempts, email },
-      sessionId
-    )
+    jalankanAfterTasksLogin({ uid, tenantId: null, nama, role: ROLES.SUPERADMIN, device, gpsKota, hadAttempts: lock.hadAttempts, email }, sessionId)
     return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.SUPERADMIN, redirectTo), nama, uid }
   }
 
-  // ── Semua role non-SA wajib punya tenantId di JWT ─────────────────────────
   if (!claimTenantId) {
     try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
     return { ok: false, errorKey: 'login_error_config_belum_lengkap' }
   }
 
-  // ── VENDOR ────────────────────────────────────────────────────────────────
   if (role === ROLES.VENDOR) {
     const nama = claims.nama
-
-    // PATH CEPAT: hook aktif → vendorStatus + nomorWa ada di JWT → skip DB query
     if (claims.vendorStatus !== undefined && claims.nomorWa !== undefined) {
       if (claims.vendorStatus.toUpperCase() !== 'APPROVED') {
         try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
         return { ok: false, errorKey: 'login_error_akun_belum_aktif' }
       }
       await setCookiesLoginServer({ role: ROLES.VENDOR, tenantId: claimTenantId, gpsKota, sessionTimeoutMinutes }, cookieStore)
-      jalankanAfterTasksLogin(
-        { uid, tenantId: claimTenantId, nama, role: ROLES.VENDOR, device, gpsKota, hadAttempts: lock.hadAttempts, email },
-        sessionId
-      )
+      jalankanAfterTasksLogin({ uid, tenantId: claimTenantId, nama, role: ROLES.VENDOR, device, gpsKota, hadAttempts: lock.hadAttempts, email }, sessionId)
       return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo), nama, uid, tenantId: claimTenantId, nomorWa: claims.nomorWa }
     }
-
-    // PATH FALLBACK: hook belum aktif → query DB untuk status + nomor_wa
     const adminDb = createServerSupabaseClient()
     const [profileResult] = await Promise.all([
-      adminDb.from('user_profiles')
-        .select('status, nomor_wa')
-        .eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle(),
+      adminDb.from('user_profiles').select('status, nomor_wa').eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle(),
       setCookiesLoginServer({ role: ROLES.VENDOR, tenantId: claimTenantId, gpsKota, sessionTimeoutMinutes }, cookieStore),
     ])
     const profileRow = profileResult.data
@@ -171,37 +136,24 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
       try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
       return { ok: false, errorKey: 'login_error_akun_belum_aktif' }
     }
-    const nomorWa = profileRow?.nomor_wa ?? ''
-    jalankanAfterTasksLogin(
-      { uid, tenantId: claimTenantId, nama, role: ROLES.VENDOR, device, gpsKota, hadAttempts: lock.hadAttempts, email },
-      sessionId
-    )
-    return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo), nama, uid, tenantId: claimTenantId, nomorWa }
+    jalankanAfterTasksLogin({ uid, tenantId: claimTenantId, nama, role: ROLES.VENDOR, device, gpsKota, hadAttempts: lock.hadAttempts, email }, sessionId)
+    return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo), nama, uid, tenantId: claimTenantId, nomorWa: profileRow?.nomor_wa ?? '' }
   }
 
-  // ── ADMIN TENANT ──────────────────────────────────────────────────────────
   if (role === ROLES.ADMIN_TENANT) {
     const nama = claims.nama
     await setCookiesLoginServer({ role: ROLES.ADMIN_TENANT, tenantId: claimTenantId, gpsKota, sessionTimeoutMinutes }, cookieStore)
-    jalankanAfterTasksLogin(
-      { uid, tenantId: claimTenantId, nama, role: ROLES.ADMIN_TENANT, device, gpsKota, hadAttempts: lock.hadAttempts, email },
-      sessionId
-    )
+    jalankanAfterTasksLogin({ uid, tenantId: claimTenantId, nama, role: ROLES.ADMIN_TENANT, device, gpsKota, hadAttempts: lock.hadAttempts, email }, sessionId)
     return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.ADMIN_TENANT, redirectTo), nama, uid, tenantId: claimTenantId }
   }
 
-  // ── CUSTOMER ──────────────────────────────────────────────────────────────
   if (role === ROLES.CUSTOMER) {
     const nama = claims.nama
     await setCookiesLoginServer({ role: ROLES.CUSTOMER, tenantId: claimTenantId, gpsKota, sessionTimeoutMinutes }, cookieStore)
-    jalankanAfterTasksLogin(
-      { uid, tenantId: claimTenantId, nama, role: ROLES.CUSTOMER, device, gpsKota, hadAttempts: lock.hadAttempts, email },
-      sessionId
-    )
+    jalankanAfterTasksLogin({ uid, tenantId: claimTenantId, nama, role: ROLES.CUSTOMER, device, gpsKota, hadAttempts: lock.hadAttempts, email }, sessionId)
     return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.CUSTOMER, redirectTo), nama, uid, tenantId: claimTenantId }
   }
 
-  // ── Role tidak dikenal ────────────────────────────────────────────────────
   try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
   return { ok: false, errorKey: 'login_error_role_tidak_ditemukan' }
 }
