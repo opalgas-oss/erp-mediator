@@ -79,10 +79,7 @@ export async function getAccountLock(email: string): Promise<AccountLockDoc | nu
 // FIX Sesi #157 — B1-03: key config salah → nilai selalu fallback 15 menit, SA tidak bisa ubah durasi lockout.
 //   cfg['lock_duration_minutes'] → cfg['lockout_duration_minutes'] (key DB = lockout_duration_minutes, nilai 30 menit).
 //   Fallback juga disamakan dari 15 → 30 (konsisten dengan default DB).
-// FIX T-035 Sesi #166: baca progressive_lockout_enabled + max_lock_duration_hours dari config.
-//   Diteruskan ke SP sebagai parameter — SP yang hitung durasi progressive secara atomik.
-//   Formula: LEAST(base × 2^lock_count_sebelumnya, max_durasi_menit)
-//   Lock ke-1: 30 mnt | Lock ke-2: 60 mnt | Lock ke-3: 120 mnt | ... | cap max_lock_duration_hours jam.
+// Semua logika atomik (cek expired, increment, lock) sudah di SP — tidak ada perubahan caller/signature.
 /**
  * Baca config → panggil SP via repository — atomic increment + lock.
  * @param data - IncrementLockParams berisi uid, email, nama, nomor_wa, tenantId
@@ -95,25 +92,19 @@ export async function incrementLockCount(data: IncrementLockParams): Promise<{
   lock_count:  number
 }> {
   // Baca konfigurasi dari config_registry (dengan cache)
-  const cfg                = await getConfigValues('security_login')
-  const maxPercobaan       = parseConfigNumber(cfg['max_login_attempts'], 5)
-  const durasiMenit        = parseConfigNumber(cfg['lockout_duration_minutes'], 30)
-  const progressiveEnabled = parseConfigBoolean(cfg['progressive_lockout_enabled'], false)
-  const maxLockJam         = parseConfigNumber(cfg['max_lock_duration_hours'], 24)
-  const maxLockMenit       = maxLockJam * 60
+  const cfg          = await getConfigValues('security_login')
+  const maxPercobaan = parseConfigNumber(cfg['max_login_attempts'], 5)
+  const durasiMenit  = parseConfigNumber(cfg['lockout_duration_minutes'], 30)
 
   // Panggil SP via repository — atomic, race-condition safe
-  // SP menghitung durasi lockout progressive secara internal menggunakan lock_count existing
   const result: IncrementLockResult = await spIncrementLockCount({
-    email:                      data.email,
-    uid:                        data.uid,
-    nama:                       data.nama,
-    nomor_wa:                   data.nomor_wa,
-    tenant_id:                  data.tenantId,
-    max_attempts:               maxPercobaan,
-    lock_duration_minutes:      durasiMenit,
-    progressive_enabled:        progressiveEnabled,
-    max_lock_duration_minutes:  maxLockMenit,
+    email:                 data.email,
+    uid:                   data.uid,
+    nama:                  data.nama,
+    nomor_wa:              data.nomor_wa,
+    tenant_id:             data.tenantId,
+    max_attempts:          maxPercobaan,
+    lock_duration_minutes: durasiMenit,
   })
 
   return {
