@@ -15,7 +15,6 @@
 //   - setDefaultOption                 (via SP — atomic + validasi platform-level)
 //
 // Dibuat: Sesi #114 — M4 Master Dropdown FASE 3 Step 3.4
-// Update: Sesi #175 — SL-D010+K010: hapus validateSlug lokal, import validateDropdownSlug
 
 import 'server-only'
 import {
@@ -24,15 +23,24 @@ import {
   dropdownRepo_setDefaultOption,
 } from '@/lib/repositories/master-dropdown-option.repository'
 import { dropdownRepo_findGroupById } from '@/lib/repositories/master-dropdown-group.repository'
-import { validateDropdownSlug } from '@/lib/utils/validation.server'
 import type {
   MasterDropdownOption,
   BuatOpsiPayload,
   UbahOpsiPayload,
 } from '@/lib/types/master-dropdown.types'
 
-// --- Validation Helpers (lokal) --------------------------------------------
-// validateDropdownSlug -> lib/utils/validation.server.ts (SL-D010, S#175)
+// ─── Validation Helpers (lokal) ─────────────────────────────────────────────
+
+const SLUG_REGEX = /^[a-z][a-z0-9_]*$/
+
+function validateSlug(slug: string): void {
+  if (!slug || slug.length < 2 || slug.length > 64) {
+    throw new Error('Slug opsi harus 2–64 karakter')
+  }
+  if (!SLUG_REGEX.test(slug)) {
+    throw new Error('Slug opsi hanya boleh huruf kecil, angka, dan underscore (mulai dari huruf)')
+  }
+}
 
 function validateLabel(label: string): void {
   if (!label || label.trim().length === 0) {
@@ -64,7 +72,7 @@ function validateSortOrder(value: number): void {
   }
 }
 
-// --- Mutation --------------------------------------------------------------
+// ─── Mutation ───────────────────────────────────────────────────────────────
 
 /**
  * Buat opsi baru di sebuah grup. Validasi:
@@ -77,7 +85,7 @@ export async function MasterDropdownService_createOption(
   payload: BuatOpsiPayload,
   olehUid: string
 ): Promise<MasterDropdownOption> {
-  validateDropdownSlug(payload.slug)
+  validateSlug(payload.slug)
   validateLabel(payload.label)
   validateSortOrder(payload.sort_order)
   validateValueExists(payload)

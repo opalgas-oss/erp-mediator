@@ -15,7 +15,6 @@
 //   - createGroup, updateGroup, deactivateGroup           (mutation)
 //
 // Dibuat: Sesi #114 — M4 Master Dropdown FASE 3 Step 3.4
-// Update: Sesi #175 — SL-D010+K010: hapus validateSlug lokal, import validateDropdownSlug
 
 import 'server-only'
 import {
@@ -31,7 +30,6 @@ import {
   dropdownRepo_findOptionsByGroupId,
   dropdownRepo_findOptionsByGroupSlug,
 } from '@/lib/repositories/master-dropdown-option.repository'
-import { validateDropdownSlug } from '@/lib/utils/validation.server'
 import type {
   MasterDropdownGroup,
   MasterDropdownOption,
@@ -41,8 +39,18 @@ import type {
   DropdownCategory,
 } from '@/lib/types/master-dropdown.types'
 
-// --- Validation Helpers (lokal) --------------------------------------------
-// validateDropdownSlug -> lib/utils/validation.server.ts (SL-D010, S#175)
+// ─── Validation Helpers (lokal) ─────────────────────────────────────────────
+
+const SLUG_REGEX = /^[a-z][a-z0-9_]*$/
+
+function validateSlug(slug: string): void {
+  if (!slug || slug.length < 2 || slug.length > 64) {
+    throw new Error('Slug grup harus 2–64 karakter')
+  }
+  if (!SLUG_REGEX.test(slug)) {
+    throw new Error('Slug grup hanya boleh huruf kecil, angka, dan underscore (mulai dari huruf)')
+  }
+}
 
 function validateDisplayName(name: string): void {
   if (!name || name.trim().length === 0) {
@@ -59,7 +67,7 @@ function validateSortOrder(value: number): void {
   }
 }
 
-// --- Read ------------------------------------------------------------------
+// ─── Read ───────────────────────────────────────────────────────────────────
 
 /**
  * List semua grup dropdown (tanpa opsi). Filter opsional by category + is_active.
@@ -110,7 +118,7 @@ export async function MasterDropdownService_getOptionsByGroupSlug(
   return dropdownRepo_findOptionsByGroupSlug(slug)
 }
 
-// --- Mutation --------------------------------------------------------------
+// ─── Mutation ───────────────────────────────────────────────────────────────
 
 /**
  * Buat grup dropdown baru. Validasi: slug, display_name, sort_order.
@@ -121,7 +129,7 @@ export async function MasterDropdownService_createGroup(
   payload: BuatGrupPayload,
   olehUid: string
 ): Promise<MasterDropdownGroup> {
-  validateDropdownSlug(payload.slug)
+  validateSlug(payload.slug)
   validateDisplayName(payload.display_name)
   validateSortOrder(payload.sort_order)
 

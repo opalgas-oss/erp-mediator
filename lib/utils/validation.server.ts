@@ -6,9 +6,12 @@
 //
 // Dibuat: Sesi #174 — SL-D003+K003: ekstrak validateNomorWa dari
 //         tenant.service.ts + tenant-pic.service.ts (duplikasi identik)
+// Update: Sesi #175 — SL-D010+K010: tambah validateDropdownSlug —
+//         ekstrak dari master-dropdown-group.service.ts + master-dropdown-option.service.ts
 //
 // Registry: code_registry.cr_functions
-//   - validateNomorWa — SECURITY/validation — is_shared=true
+//   - validateNomorWa    — SECURITY/validation — is_shared=true
+//   - validateDropdownSlug — SECURITY/validation — is_shared=true
 
 import 'server-only'
 
@@ -30,5 +33,30 @@ export function validateNomorWa(nomor: string): void {
   const clean = nomor.replace(/\D/g, '')
   if (!clean.startsWith('62') || clean.length < 10 || clean.length > 15) {
     throw new Error('Nomor WA harus format 62xxx (10–15 digit)')
+  }
+}
+
+// ─── validateDropdownSlug ────────────────────────────────────────────────────
+const DROPDOWN_SLUG_REGEX = /^[a-z][a-z0-9_]*$/
+
+/**
+ * Validasi slug dropdown (grup atau opsi) — huruf kecil, angka, underscore,
+ * diawali huruf kecil, panjang 2–64 karakter.
+ *
+ * @param slug - Slug yang akan divalidasi
+ * @throws Error jika format tidak valid
+ *
+ * Dipakai oleh:
+ *   - MasterDropdownService_createGroup()  (lib/services/master-dropdown-group.service.ts)
+ *   - MasterDropdownService_updateGroup()  (lib/services/master-dropdown-group.service.ts)
+ *   - MasterDropdownService_createOption() (lib/services/master-dropdown-option.service.ts)
+ *   - MasterDropdownService_updateOption() (lib/services/master-dropdown-option.service.ts)
+ */
+export function validateDropdownSlug(slug: string): void {
+  if (!slug || slug.length < 2 || slug.length > 64) {
+    throw new Error('Slug harus 2\u201364 karakter')
+  }
+  if (!DROPDOWN_SLUG_REGEX.test(slug)) {
+    throw new Error('Slug hanya boleh huruf kecil, angka, dan underscore (mulai dari huruf)')
   }
 }
