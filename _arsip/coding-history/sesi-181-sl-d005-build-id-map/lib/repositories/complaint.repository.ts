@@ -12,7 +12,6 @@
 //            PostgREST tidak bisa join tanpa FK constraint aktual.
 //            Solusi: query complaints, query tenants by tenant_scope_id, query user_profiles,
 //            merge manual. (sama dengan pola M8 untuk cross-schema join)
-// Refactor S#181: SL-D005 — ganti Object.fromEntries(array.map) dengan buildIdMap()
 //
 // ⚠ AREA RAWAN: complaints.customer_user_id FK ke auth.users (bukan public.user_profiles)
 //   Supabase SDK tidak bisa auto-join cross-schema.
@@ -21,7 +20,6 @@
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { buildIdMap } from '@/lib/utils/db.utils'
 import type {
   ComplaintRow,
   ComplaintWithDetails,
@@ -101,7 +99,9 @@ export async function complaintRepo_findAwaitingSuperAdmin(
 
     if (q2Error) throw new Error(`[complaint.repository] findAwaitingSuperAdmin q2: ${q2Error.message}`)
 
-    tenantMap = buildIdMap((tenants ?? []) as unknown as TenantRow[])
+    tenantMap = Object.fromEntries(
+      ((tenants ?? []) as unknown as TenantRow[]).map(t => [t.id, t])
+    )
   }
 
   // ── Query 3: user_profiles by customer_user_id ────────────────────────────
@@ -117,7 +117,9 @@ export async function complaintRepo_findAwaitingSuperAdmin(
 
     if (q3Error) throw new Error(`[complaint.repository] findAwaitingSuperAdmin q3: ${q3Error.message}`)
 
-    profileMap = buildIdMap((profiles ?? []) as unknown as ProfileRow[])
+    profileMap = Object.fromEntries(
+      ((profiles ?? []) as unknown as ProfileRow[]).map(p => [p.id, p])
+    )
   }
 
   // ── Merge ──────────────────────────────────────────────────────────────────

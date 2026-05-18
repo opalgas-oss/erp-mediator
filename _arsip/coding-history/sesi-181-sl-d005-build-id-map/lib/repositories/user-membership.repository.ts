@@ -10,11 +10,9 @@
 //   - membershipRepo_checkExisting   (cek duplikat kombinasi user+tenant+role)
 //
 // Dibuat: Sesi #136 — M8 User Membership Management
-// Refactor S#181: SL-D005 — ganti Object.fromEntries(array.map) dengan buildIdMap()
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { buildIdMap } from '@/lib/utils/db.utils'
 import type {
   MembershipWithDetails,
   MembershipRow,
@@ -91,7 +89,9 @@ export async function membershipRepo_findAll(
 
     if (q2Error) throw new Error(`[user-membership.repository] findAll q2: ${q2Error.message}`)
 
-    profileMap = buildIdMap((profiles ?? []) as unknown as ProfileRow[])
+    profileMap = Object.fromEntries(
+      ((profiles ?? []) as unknown as ProfileRow[]).map(p => [p.id, p])
+    )
   }
 
   // ── Merge ──────────────────────────────────────────────────────────────────
