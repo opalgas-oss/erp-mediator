@@ -18,7 +18,6 @@ import type {
   BuatRootCategoryPayload,
   BuatSubCategoryPayload,
 } from '@/lib/types/category.types'
-import { classifyHttpError } from '@/lib/utils/http.server'
 
 // ─── GET — List kategori ──────────────────────────────────────────────────────
 
@@ -115,9 +114,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Server error'
     console.error('[POST /api/superadmin/categories] Error:', error)
+    const isValidation = [
+      'wajib', 'Slug', 'karakter', 'huruf', 'sudah digunakan', 'induk', 'diawali',
+    ].some(k => message.includes(k))
     return NextResponse.json(
       { success: false, message },
-      { status: classifyHttpError(message) }
+      { status: isValidation ? 400 : 500 }
     )
   }
 }

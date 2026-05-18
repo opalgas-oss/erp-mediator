@@ -1,3 +1,4 @@
+// app/api/superadmin/dropdowns/groups/route.ts — PRE-EDIT ARSIP S#180
 // app/api/superadmin/dropdowns/groups/route.ts
 // GET  — List semua grup dropdown (SuperAdmin only)
 // POST — Buat grup dropdown baru (SuperAdmin only)
@@ -11,7 +12,6 @@ import {
   MasterDropdownService_createGroup,
 } from '@/lib/services/master-dropdown-group.service'
 import type { BuatGrupPayload, DropdownCategory } from '@/lib/types/master-dropdown.types'
-import { classifyHttpError } from '@/lib/utils/http.server'
 
 // ─── GET — List semua grup beserta opsinya ───────────────────────────────────
 
@@ -59,9 +59,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Server error'
     console.error('[POST /api/superadmin/dropdowns/groups] Error:', error)
+    const isValidationError = [
+      'Slug', 'Nama', 'Sort', 'karakter', 'huruf kecil',
+    ].some(k => message.includes(k))
     return NextResponse.json(
       { success: false, message },
-      { status: classifyHttpError(message) }
+      { status: isValidationError ? 400 : 500 }
     )
   }
 }

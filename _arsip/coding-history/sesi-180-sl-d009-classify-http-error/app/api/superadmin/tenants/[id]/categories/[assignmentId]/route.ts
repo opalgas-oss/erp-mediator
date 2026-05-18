@@ -1,8 +1,4 @@
-// app/api/superadmin/tenants/[id]/categories/[assignmentId]/route.ts
-// PATCH  — Update assignment: suspend / aktifkan-kembali / update-override
-// DELETE — Cabut penugasan kategori (soft delete via SP)
-//
-// Dibuat: Sesi #132 — M6 FASE 3 Step 3.6
+// app/api/superadmin/tenants/[id]/categories/[assignmentId]/route.ts — PRE-EDIT ARSIP S#180
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { requireSuperAdmin }           from '@/lib/auth-server'
@@ -17,17 +13,8 @@ import type {
   RevokeAssignmentPayload,
   UpdateOverridePayload,
 } from '@/lib/types/tenant-category-assignment.types'
-import { classifyHttpError } from '@/lib/utils/http.server'
 
 type RouteContext = { params: Promise<{ id: string; assignmentId: string }> }
-
-// ─── PATCH — Update assignment ────────────────────────────────────────────────
-//
-// Mode via body.action:
-//   action=suspend          → tangguhkan assignment (+ alasan wajib)
-//   action=aktifkan-kembali → aktifkan kembali yang suspended
-//   action=update-override  → update komisi / coverage / SLA
-//   (wajib diisi)
 
 export async function PATCH(
   request: NextRequest,
@@ -36,63 +23,46 @@ export async function PATCH(
   try {
     const auth = await requireSuperAdmin()
     if (!auth.ok) return auth.res
-
     const { assignmentId } = await params
     const body = await request.json() as {
       action: 'suspend' | 'aktifkan-kembali' | 'update-override'
     } & SuspendAssignmentPayload & UpdateOverridePayload
-
     if (!body.action) {
       return NextResponse.json(
         { success: false, message: 'Field action wajib diisi' },
         { status: 400 }
       )
     }
-
     switch (body.action) {
       case 'suspend':
-        await TCAService_suspend(
-          assignmentId,
-          { suspend_reason: body.suspend_reason },
-          auth.uid
-        )
+        await TCAService_suspend(assignmentId, { suspend_reason: body.suspend_reason }, auth.uid)
         break
-
       case 'aktifkan-kembali':
         await TCAService_aktifkanKembali(assignmentId, auth.uid)
         break
-
       case 'update-override':
         await TCAService_updateOverrideKomisi(
           assignmentId,
-          {
-            commission_override: body.commission_override,
-            coverage_areas:      body.coverage_areas,
-            sla_minutes:         body.sla_minutes,
-          },
+          { commission_override: body.commission_override, coverage_areas: body.coverage_areas, sla_minutes: body.sla_minutes },
           auth.uid
         )
         break
-
       default:
         return NextResponse.json(
           { success: false, message: `Action tidak dikenali: ${body.action}` },
           { status: 400 }
         )
     }
-
     return NextResponse.json({ success: true })
-
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Server error'
     console.error('[PATCH /api/superadmin/tenants/[id]/categories/[assignmentId]] Error:', error)
-    const isNotFound = message.includes('tidak ditemukan')
-    const status = isNotFound ? 404 : classifyHttpError(message)
+    const isNotFound   = message.includes('tidak ditemukan')
+    const isValidation = ['wajib', 'Hanya', 'antara', 'komisi'].some(k => message.includes(k))
+    const status = isNotFound ? 404 : isValidation ? 400 : 500
     return NextResponse.json({ success: false, message }, { status })
   }
 }
-
-// ─── DELETE — Cabut penugasan ─────────────────────────────────────────────────
 
 export async function DELETE(
   request: NextRequest,
@@ -101,20 +71,16 @@ export async function DELETE(
   try {
     const auth = await requireSuperAdmin()
     if (!auth.ok) return auth.res
-
     const { assignmentId } = await params
     const body = await request.json() as RevokeAssignmentPayload
-
     if (!body.revoke_reason?.trim()) {
       return NextResponse.json(
         { success: false, message: 'Alasan pencabutan wajib diisi' },
         { status: 400 }
       )
     }
-
     await TCAService_cabut(assignmentId, body, auth.uid)
     return NextResponse.json({ success: true })
-
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Server error'
     console.error('[DELETE /api/superadmin/tenants/[id]/categories/[assignmentId]] Error:', error)

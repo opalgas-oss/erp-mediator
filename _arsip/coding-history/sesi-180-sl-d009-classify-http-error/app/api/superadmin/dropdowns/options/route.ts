@@ -1,3 +1,4 @@
+// app/api/superadmin/dropdowns/options/route.ts — PRE-EDIT ARSIP S#180
 // app/api/superadmin/dropdowns/options/route.ts
 // POST — Buat opsi baru di sebuah grup dropdown (SuperAdmin only)
 //
@@ -7,7 +8,6 @@ import { NextRequest, NextResponse }           from 'next/server'
 import { requireSuperAdmin }                    from '@/lib/auth-server'
 import { MasterDropdownService_createOption }   from '@/lib/services/master-dropdown-option.service'
 import type { BuatOpsiPayload }                 from '@/lib/types/master-dropdown.types'
-import { classifyHttpError } from '@/lib/utils/http.server'
 
 // ─── POST — Buat opsi baru ───────────────────────────────────────────────────
 
@@ -31,8 +31,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Server error'
     console.error('[POST /api/superadmin/dropdowns/options] Error:', error)
-    const isNotFound = message.includes('tidak ditemukan')
-    const status = isNotFound ? 404 : classifyHttpError(message)
+    const isNotFound   = message.includes('tidak ditemukan')
+    const isValidation = [
+      'Slug', 'Label', 'Sort', 'value', 'override', 'aktif', 'karakter',
+    ].some(k => message.includes(k))
+    const status = isNotFound ? 404 : isValidation ? 400 : 500
     return NextResponse.json({ success: false, message }, { status })
   }
 }

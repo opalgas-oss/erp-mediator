@@ -18,7 +18,6 @@ import type {
   TenantTier,
   BuatTenantPayload,
 } from '@/lib/types/tenant.types'
-import { classifyHttpError } from '@/lib/utils/http.server'
 
 // ─── GET — List tenant ────────────────────────────────────────────────────────
 
@@ -90,9 +89,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Server error'
     console.error('[POST /api/superadmin/tenants] Error:', error)
+    const isValidation = [
+      'wajib', 'format', 'karakter', 'sudah digunakan', 'NPWP', 'WA',
+    ].some(k => message.includes(k))
     return NextResponse.json(
       { success: false, message },
-      { status: classifyHttpError(message) }
+      { status: isValidation ? 400 : 500 }
     )
   }
 }
