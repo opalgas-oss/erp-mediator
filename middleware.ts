@@ -26,7 +26,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse }        from 'next/server'
 import type { NextRequest }    from 'next/server'
-import { ROLES, VENDOR_LOGIN_ALLOWED } from '@/lib/constants'
+import { ROLES, VENDOR_LOGIN_ALLOWED, ROLE_TO_DASHBOARD } from '@/lib/constants'
 
 // Konstanta Route Publik
 const PUBLIC_PATHS: string[] = [
@@ -51,12 +51,8 @@ const DASHBOARD_ROLE_MAP: Record<string, string> = {
   '/dashboard/superadmin': ROLES.SUPERADMIN,
 }
 
-const ROLE_REDIRECT: Record<string, string> = {
-  [ROLES.CUSTOMER]:     '/dashboard/customer',
-  [ROLES.VENDOR]:       '/dashboard/vendor',
-  [ROLES.ADMIN_TENANT]: '/dashboard/admin',
-  [ROLES.SUPERADMIN]:   '/dashboard/superadmin',
-}
+// ROLE_TO_DASHBOARD: diimport dari @/lib/constants/routes.constant via @/lib/constants
+// (SL-D007 Sesi #174 — single source of truth, menggantikan ROLE_REDIRECT lokal)
 
 // Tipe membership dari JWT baru (Edge Function v7)
 interface JwtMembership {
@@ -135,8 +131,8 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
           }
         }
         if (loginRole === ROLES.VENDOR) return loginResponse
-        if (loginRole && ROLE_REDIRECT[loginRole]) {
-          return NextResponse.redirect(new URL(ROLE_REDIRECT[loginRole], request.url))
+        if (loginRole && ROLE_TO_DASHBOARD[loginRole]) {
+          return NextResponse.redirect(new URL(ROLE_TO_DASHBOARD[loginRole], request.url))
         }
       }
       return loginResponse
@@ -388,7 +384,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
         return response
       }
 
-      const redirectPath = ROLE_REDIRECT[userRole]
+      const redirectPath = ROLE_TO_DASHBOARD[userRole]
       if (redirectPath) {
         return NextResponse.redirect(new URL(redirectPath, request.url))
       }

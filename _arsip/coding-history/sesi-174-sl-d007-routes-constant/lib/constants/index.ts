@@ -1,3 +1,6 @@
+// lib/constants/index.ts — ARSIP PRE-SL-D007 — Sesi #174
+// Kondisi sebelum: belum ada export ROLE_TO_DASHBOARD
+
 // lib/constants/index.ts
 // Barrel export — semua konstanta diakses dari sini
 //
@@ -26,42 +29,19 @@ export type { OTPTypeValue } from './otp-type.constant'
 export { ACCOUNT_LOCK_STATUS, UNLOCK_METHOD } from './account-lock-status.constant'
 export type { AccountLockStatusType, UnlockMethodType } from './account-lock-status.constant'
 
-// ─── Icon Registry — WAJIB dipakai, jangan import langsung dari lucide-react ──
 export {
-  ICON_NAV,
-  ICON_ACTION,
-  ICON_STATUS,
-  ICON_DATA,
-  ICON_ENTITY,
-  ICON_COMM,
-  ICON_TIME,
-  ICON_LOCATION,
+  ICON_NAV, ICON_ACTION, ICON_STATUS, ICON_DATA,
+  ICON_ENTITY, ICON_COMM, ICON_TIME, ICON_LOCATION,
 } from './icons.constant'
 export type { LucideIcon } from './icons.constant'
 
-// ─── UI — Navigasi, Typography, Warna, Scroll ─────────────────────────────────
-export {
-  SA_NAV_GROUPS,
-  SA_VALID_FEATURE_KEYS,
-  navItemToPath,
-} from './nav.constant'
+export { SA_NAV_GROUPS, SA_VALID_FEATURE_KEYS, navItemToPath } from './nav.constant'
 export type { NavGroup, NavSubItem } from './nav.constant'
 
 export {
-  NAV_CLS,
-  TYPOGRAPHY,
-  SCROLL_CLS,
-  BADGE_KATEGORI,
-  BADGE_CHANNEL,
-  resolveKategoriColor,
-  resolveChannelColor,
+  NAV_CLS, TYPOGRAPHY, SCROLL_CLS, BADGE_KATEGORI, BADGE_CHANNEL,
+  resolveKategoriColor, resolveChannelColor,
 } from './ui-tokens.constant'
 
-export {
-  resolvePageMeta,
-} from './page-meta.constant'
+export { resolvePageMeta } from './page-meta.constant'
 export type { PageMeta } from './page-meta.constant'
-
-// ─── Routes — peta dashboard per role (satu-satunya sumber kebenaran) ────────
-// Dipakai oleh middleware.ts (Edge Runtime) + lib/auth.ts + login hooks
-export { ROLE_TO_DASHBOARD } from './routes.constant'

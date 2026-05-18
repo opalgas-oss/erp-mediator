@@ -1,0 +1,15 @@
+// middleware.ts — ARSIP PRE-SL-D007 — Sesi #174
+// Kondisi sebelum: ROLE_REDIRECT didefinisikan lokal di middleware.ts (4 entries)
+// Setelah fix: ROLE_REDIRECT dihapus → pakai ROLE_TO_DASHBOARD dari routes.constant
+
+// ROLE_REDIRECT yang dihapus:
+// const ROLE_REDIRECT: Record<string, string> = {
+//   [ROLES.CUSTOMER]:     '/dashboard/customer',
+//   [ROLES.VENDOR]:       '/dashboard/vendor',
+//   [ROLES.ADMIN_TENANT]: '/dashboard/admin',
+//   [ROLES.SUPERADMIN]:   '/dashboard/superadmin',
+// }
+//
+// Dipakai di 2 tempat:
+// 1. Guard 1B (/login): if (loginRole && ROLE_REDIRECT[loginRole])
+// 2. Guard 5 (wrong dashboard): const redirectPath = ROLE_REDIRECT[userRole]

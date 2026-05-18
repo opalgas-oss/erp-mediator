@@ -1,5 +1,11 @@
+// lib/auth.ts — ARSIP PRE-SL-D007 — Sesi #174
+// Kondisi sebelum: ROLE_DASHBOARD didefinisikan lokal di file ini
+// lib/constants/routes.constant.ts belum ada
+
 // lib/auth.ts
 // Helper autentikasi — dipakai oleh halaman login dan semua komponen logout
+//
+// PENTING: ROLE_DASHBOARD di sini harus sama persis dengan di middleware.ts
 //
 // PERUBAHAN Sesi #047:
 //   - Tambah performLogout() — satu fungsi terpusat untuk semua logout (DRY)
@@ -7,17 +13,12 @@
 //   - Hapus duplikasi logout logic dari komponen — cukup panggil performLogout()
 //   - Gunakan window.location.href (bukan router.push) agar Supabase client cache
 //     benar-benar bersih — mencegah middleware baca sesi lama dan redirect balik
+
 // Update: Sesi #162 — T-020: tambah SESSION_DEFAULT_TIMEOUT_MINUTES sebagai konstanta bersama
 //          Ganti magic number 8 * 3600 di setSessionCookies dengan konstanta ini
-// Update: Sesi #174 — SL-D007: hapus ROLE_DASHBOARD lokal → re-export ROLE_TO_DASHBOARD
-//          dari lib/constants/routes.constant (single source of truth)
 
 import { createBrowserSupabaseClient } from '@/lib/supabase-client'
-
-// ─── Re-export ROLE_DASHBOARD (backward compat) ───────────────────────────────
-// loginSessionHelpers.ts masih import ROLE_DASHBOARD dari '@/lib/auth' — tetap bekerja.
-// Single source of truth: lib/constants/routes.constant.ts → ROLE_TO_DASHBOARD.
-export { ROLE_TO_DASHBOARD as ROLE_DASHBOARD } from '@/lib/constants/routes.constant'
+import { ROLES } from '@/lib/constants'
 
 // ─── Konstanta timeout sesi — satu-satunya sumber kebenaran fallback ─────────
 // Dipakai sebagai emergency fallback ketika config_registry tidak dapat dibaca.
@@ -40,6 +41,23 @@ const SESSION_COOKIES = [
   'session_tenant',
 ]
 
+// ─── Peta role → halaman dashboard ───────────────────────────────────────────
+// Konstanta arsitektur — terikat file system Next.js App Router
+// TIDAK MASUK config_registry (keputusan Sesi #047 — lihat STATUS_PROJECT)
+// WAJIB sinkron dengan DASHBOARD_ROLE_MAP di middleware.ts
+
+export const ROLE_DASHBOARD: Record<string, string> = {
+  [ROLES.CUSTOMER]:       '/dashboard/customer',
+  [ROLES.VENDOR]:         '/dashboard/vendor',
+  [ROLES.DISPATCHER]:     '/dashboard/admin',
+  [ROLES.FINANCE]:        '/dashboard/admin',
+  [ROLES.SUPPORT]:        '/dashboard/admin',
+  SUPER_ADMIN:            '/dashboard/admin',
+  [ROLES.SUPERADMIN]:     '/dashboard/superadmin',
+  [ROLES.ADMIN_TENANT]:   '/dashboard/admin',
+  [ROLES.PLATFORM_OWNER]: '/dashboard/owner',
+}
+
 // ─── Simpan cookie sesi setelah login ────────────────────────────────────────
 // maxAgeSeconds dibaca dari config_registry.session_timeout_minutes — tidak hardcode
 // Emergency fallback: SESSION_DEFAULT_TIMEOUT_MINUTES (= 480 menit = 8 jam)
@@ -51,45 +69,20 @@ export function setSessionCookies(role: string, tenantId: string, maxAgeSeconds?
   document.cookie = `session_tenant=${tenantId}; path=/; max-age=${maxAge}; SameSite=Strict`
 }
 
-// ─── Fungsi logout terpusat — DEPRECATED Sesi #062 ─────────────────────────
-//
-// @deprecated Gunakan logoutAction() dari '@/app/auth/logout-action' sebagai gantinya.
-//   logoutAction() adalah server action yang menangani semua operasi logout server-side:
-//   invalidasi session, hapus cookies, markLogout, setUserOffline, writeActivityLog.
-//
-// Semua caller sudah dimigrasikan di Sesi #062:
-//   - DashboardHeader.tsx → logoutAction()
-//   - app/dashboard/vendor/page.tsx → logoutAction()
-//
-// performLogout() dipertahankan di sini (tidak dihapus) untuk:
-//   - Referensi rollback jika logoutAction() bermasalah
-//   - Kompatibilitas jika ada caller di luar registry yang belum terdeteksi
-
 export async function performLogout(): Promise<void> {
-  // Langkah 1: tandai session_logs sebagai logout sebelum JWT diinvalidasi
   try {
     await fetch('/api/auth/logout', { method: 'POST' })
-  } catch {
-    // Gagal update session log — tetap lanjut logout
-    // User harus bisa keluar meski DB sedang bermasalah
-  }
+  } catch {}
 
-  // Langkah 2: invalidasi Supabase JWT
   const supabase = createBrowserSupabaseClient()
   await supabase.auth.signOut()
 
-  // Langkah 3: hapus semua session cookie
   SESSION_COOKIES.forEach(name => {
     document.cookie = `${name}=; path=/; max-age=0; SameSite=Strict`
   })
 
-  // Langkah 4: full page reload ke login
-  // WAJIB window.location.href — bukan router.push
   window.location.href = '/login'
 }
-
-// ─── clearSessionCookies — dipertahankan untuk kompatibilitas ────────────────
-// @deprecated Gunakan performLogout() untuk logout yang lengkap dan benar
 
 export async function clearSessionCookies(): Promise<void> {
   await performLogout()
