@@ -9,7 +9,6 @@
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.4
 // Update: Sesi #162 — T-019: ganti hardcode pesan WA → getMessage+interpolate dari message_library
-// Update: Sesi #174 — SL-D003: hapus private validateNomorWa() → import dari validation.server
 
 import 'server-only'
 import {
@@ -23,7 +22,6 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getCredential } from '@/lib/services/credential.service'
 import { getMessage, interpolate } from '@/lib/message-library'
 import { sendFonnteWA } from '@/lib/utils/fonnte.server'
-import { validateNomorWa } from '@/lib/utils/validation.server'
 import type {
   TenantPICHistory,
   PICKartu,
@@ -33,6 +31,13 @@ import type {
 } from '@/lib/types/tenant-pic.types'
 
 // ─── Validation Helpers ──────────────────────────────────────────────────────
+
+function validateNomorWa(nomor: string): void {
+  const clean = nomor.replace(/\D/g, '')
+  if (!clean.startsWith('62') || clean.length < 10 || clean.length > 15) {
+    throw new Error('Nomor WA PIC harus format 62xxx (10–15 digit)')
+  }
+}
 
 function validateTanggalEfektif(tanggal: string): void {
   const efektif = new Date(tanggal)

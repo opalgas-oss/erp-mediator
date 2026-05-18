@@ -6,7 +6,6 @@
 //   API Route → TenantService_* → tenantRepo_* → DB
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.4
-// Update: Sesi #174 — SL-D003: hapus private validateNomorWa() → import dari validation.server
 
 import 'server-only'
 import {
@@ -18,7 +17,6 @@ import {
   tenantRepo_updateContract,
 } from '@/lib/repositories/tenant.repository'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { validateNomorWa } from '@/lib/utils/validation.server'
 import type {
   Tenant,
   TenantListFilter,
@@ -46,6 +44,13 @@ function validateNpwp(npwp: string): void {
   const digits = npwp.replace(/\D/g, '')
   if (digits.length !== 15 && digits.length !== 16) {
     throw new Error('NPWP harus 15 digit (format lama) atau 16 digit (NIK baru)')
+  }
+}
+
+function validateNomorWa(nomor: string): void {
+  const clean = nomor.replace(/\D/g, '')
+  if (!clean.startsWith('62') || clean.length < 10 || clean.length > 15) {
+    throw new Error('Nomor WA harus format 62xxx (10–15 digit)')
   }
 }
 
