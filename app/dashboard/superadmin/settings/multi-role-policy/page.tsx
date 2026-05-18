@@ -8,10 +8,15 @@
 // PERUBAHAN Sesi #163 — Fix T-028 (DRY):
 //   - Hapus definisi lokal mapTipe, mapValue, JsonFieldConfig, ConfigItemType
 //   - Import semua dari @/lib/utils/config-page.utils (satu sumber kebenaran)
+// PERUBAHAN Sesi #177 — Fix PV-10 (Repository Pattern) + fix bug is_active filter:
+//   - Hapus direct db.from('config_registry') di RSC page
+//   - Hapus .eq('is_active', true) yang salah — SA wajib lihat semua item (pola S#110)
+//   - Ganti dengan getConfigPageItems('multi_role_policy') dari lib/config-registry
+//   - Hapus import createServerSupabaseClient (tidak dipakai lagi)
 
 export const dynamic = 'force-dynamic'
 
-import { createServerSupabaseClient }              from '@/lib/supabase-server'
+import { getConfigPageItems }                      from '@/lib/config-registry'
 import { ConfigPageClient }                        from '../security-login/ConfigPageClient'
 import { mapTipe, mapValue, type JsonFieldConfig } from '@/lib/utils/config-page.utils'
 import type { ConfigItemData }                     from '@/components/ConfigItem'
@@ -26,29 +31,22 @@ const JSON_FIELD_CONFIG: Record<string, JsonFieldConfig> = {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function MultiRolePolicyPage() {
-  const db = createServerSupabaseClient()
-
-  const { data } = await db
-    .from('config_registry')
-    .select('*')
-    .eq('feature_key', 'multi_role_policy')
-    .is('tenant_id', null)
-    .eq('is_active', true)
-    .order('label', { ascending: true })
+  // getConfigPageItems: full row data, tidak filter is_active (SA lihat semua — pola S#110)
+  // Fix bug: sebelumnya .eq('is_active', true) menghalangi SA lihat item yang di-disable
+  const rows = await getConfigPageItems('multi_role_policy')
 
   // Kelompokkan per kategori → format ConfigGroup[]
-  // Semua items multi_role_policy masuk satu grup 'Multi-Role Policy'
   const groupMap = new Map<string, {
     title:       string
     feature_key: string
     items:       ConfigItemData[]
   }>()
 
-  for (const row of data ?? []) {
-    const kat        = (row.kategori    as string | null) ?? 'Multi-Role Policy'
-    const policyKey  = (row.policy_key  as string | null) ?? (row.feature_key as string)
-    const tipeData   = row.tipe_data    as string
-    const featureKey = row.feature_key  as string
+  for (const row of rows) {
+    const kat        = row.kategori    ?? 'Multi-Role Policy'
+    const policyKey  = row.policy_key  ?? row.feature_key
+    const tipeData   = row.tipe_data
+    const featureKey = row.feature_key
 
     if (!groupMap.has(kat)) {
       groupMap.set(kat, { title: kat, feature_key: featureKey, items: [] })
@@ -57,23 +55,22 @@ export default async function MultiRolePolicyPage() {
     const jsonCfg = JSON_FIELD_CONFIG[policyKey]
 
     const item: ConfigItemData = {
-      id:              row.id       as string,
-      label:           row.label    as string,
+      id:              row.id,
+      label:           row.label,
       fieldName:       policyKey,
       type:            mapTipe(tipeData, policyKey),
-      value:           mapValue(row.nilai as string, tipeData),
-      options:         (row.nilai_enum as string[] | null) ?? undefined,
+      value:           mapValue(row.nilai, tipeData),
+      options:         row.nilai_enum ?? undefined,
       valueType:       jsonCfg?.valueType,
       perRoleOptions:  jsonCfg?.options,
       option_group_id: null,
       adminCanChange:  false, // multi_role_policy = platform-only, tidak bisa di-override tenant
-      enabled:         row.is_active as boolean,
+      enabled:         row.is_active,
     }
 
     groupMap.get(kat)!.items.push(item)
   }
 
   const initialData = Array.from(groupMap.values())
-
   return <ConfigPageClient initialData={initialData} />
 }

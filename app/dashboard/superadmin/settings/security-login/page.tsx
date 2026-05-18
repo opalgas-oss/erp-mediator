@@ -12,10 +12,14 @@
 //   - Hapus definisi lokal mapTipe, mapValue, JsonFieldConfig, ConfigItemType, isTimingField
 //   - Import semua dari @/lib/utils/config-page.utils (satu sumber kebenaran)
 //   - mapTipe sekarang handle tipe_data='text' → 'text-field' (fix vendor_blocked_statuses)
+// PERUBAHAN Sesi #177 — Fix PV-09 (Repository Pattern):
+//   - Hapus direct db.from('config_registry') di RSC page
+//   - Ganti dengan getConfigPageItems('security_login') dari lib/config-registry
+//   - Hapus import createServerSupabaseClient (tidak dipakai lagi)
 
 export const dynamic = 'force-dynamic'
 
-import { createServerSupabaseClient }              from '@/lib/supabase-server'
+import { getConfigPageItems }                      from '@/lib/config-registry'
 import { ConfigPageClient }                        from './ConfigPageClient'
 import { mapTipe, mapValue, type JsonFieldConfig } from '@/lib/utils/config-page.utils'
 import type { ConfigItemData }                     from '@/components/ConfigItem'
@@ -32,19 +36,8 @@ const JSON_FIELD_CONFIG: Record<string, JsonFieldConfig> = {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function LoginSettingsPage() {
-  const db = createServerSupabaseClient()
-
-  // S#110 FIX: Tidak ada filter is_active di sini.
-  // SuperAdmin harus lihat SEMUA item agar bisa ON/OFF feature dari dashboard.
-  // is_active dibaca dan diteruskan ke UI sebagai prop `enabled` di setiap ConfigItemData.
-  // Filter is_active hanya dipakai saat sistem mengeksekusi feature di runtime
-  // (bukan di halaman management ini).
-  const { data } = await db
-    .from('config_registry')
-    .select('*')
-    .eq('feature_key', 'security_login')
-    .is('tenant_id', null)
-    .order('label', { ascending: true })
+  // getConfigPageItems: full row data, tidak filter is_active (SA lihat semua — pola S#110)
+  const rows = await getConfigPageItems('security_login')
 
   // Kelompokkan per kategori → format ConfigGroup[]
   const groupMap = new Map<string, {
@@ -53,11 +46,11 @@ export default async function LoginSettingsPage() {
     items:       ConfigItemData[]
   }>()
 
-  for (const row of data ?? []) {
-    const kat        = row.kategori    as string
-    const policyKey  = (row.policy_key as string | null) ?? (row.feature_key as string)
-    const tipeData   = row.tipe_data   as string
-    const featureKey = row.feature_key as string
+  for (const row of rows) {
+    const kat        = row.kategori    ?? 'Security Login'
+    const policyKey  = row.policy_key  ?? row.feature_key
+    const tipeData   = row.tipe_data
+    const featureKey = row.feature_key
 
     if (!groupMap.has(kat)) {
       groupMap.set(kat, { title: kat, feature_key: featureKey, items: [] })
@@ -66,23 +59,22 @@ export default async function LoginSettingsPage() {
     const jsonCfg = JSON_FIELD_CONFIG[policyKey]
 
     const item: ConfigItemData = {
-      id:              row.id       as string,
-      label:           row.label    as string,
+      id:              row.id,
+      label:           row.label,
       fieldName:       policyKey,
       type:            mapTipe(tipeData, policyKey),
-      value:           mapValue(row.nilai as string, tipeData),
-      options:         (row.nilai_enum as string[] | null) ?? undefined,
+      value:           mapValue(row.nilai, tipeData),
+      options:         row.nilai_enum ?? undefined,
       valueType:       jsonCfg?.valueType,
       perRoleOptions:  jsonCfg?.options,
       option_group_id: null,
-      adminCanChange:  (row.tenant_can_override as boolean) ?? false,
-      enabled:         (row.is_active as boolean) ?? true,
+      adminCanChange:  row.tenant_can_override ?? false,
+      enabled:         row.is_active ?? true,
     }
 
     groupMap.get(kat)!.items.push(item)
   }
 
   const initialData = Array.from(groupMap.values())
-
   return <ConfigPageClient initialData={initialData} />
 }

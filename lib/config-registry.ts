@@ -19,6 +19,10 @@
 //     → survive cold restart via Vercel Data Cache
 //   - invalidateConfigCache(): thin wrapper revalidateTag (backward compat) [Fix B]
 //   - SuperAdmin update config → revalidateTag di PATCH /api/config → invalidasi benar
+//
+// Update: Sesi #177 — PV-09+PV-10+proaktif platform-general:
+//   Tambah getConfigPageItems() + ConfigRegistryFullItem — untuk RSC page settings.
+//   Menggantikan direct db.from('config_registry') di 3 RSC page settings.
 
 import 'server-only'
 import { cache } from 'react'
@@ -35,6 +39,24 @@ export interface ConfigRegistryItem {
   tipe_data:  string
   nilai_enum: string[] | null
   is_active:  boolean
+}
+
+/**
+ * Full row data config_registry untuk rendering halaman settings SA.
+ * Berbeda dengan ConfigRegistryItem yang tidak punya feature_key, tenant_can_override, kategori.
+ * Dipakai oleh getConfigPageItems() — fix PV-09+PV-10+proaktif S#177.
+ */
+export interface ConfigRegistryFullItem {
+  id:                  string
+  feature_key:         string
+  policy_key:          string | null
+  label:               string
+  nilai:               string
+  tipe_data:           string
+  nilai_enum:          string[] | null
+  tenant_can_override: boolean
+  is_active:           boolean
+  kategori:            string | null
 }
 
 // ─── FUNGSI: invalidateConfigCache ───────────────────────────────────────────
@@ -182,3 +204,50 @@ export async function getPlatformTimezone(): Promise<string> {
   const tz = await getConfigValue('platform_general', 'platform_timezone', 'Asia/Jakarta')
   return tz ?? 'Asia/Jakarta'
 }
+
+// ─── FUNGSI 6: getConfigPageItems ───────────────────────────────────────────────
+/**
+ * Ambil semua item config_registry untuk satu feature_key — data LENGKAP untuk UI.
+ *
+ * Berbeda dengan getConfigValues() yang hanya return { policy_key: nilai }:
+ *   - Return full row: label, tipe_data, nilai_enum, tenant_can_override, is_active, kategori
+ *   - Tidak filter is_active — SA wajib lihat semua item (aktif maupun tidak) per pola S#110.
+ *     (Filter is_active hanya dipakai saat sistem MENGEKSEKUSI feature di runtime,
+ *      bukan di halaman management SuperAdmin.)
+ *
+ * Dipakai oleh RSC page settings:
+ *   - security-login/page.tsx (PV-09 fix S#177)
+ *   - multi-role-policy/page.tsx (PV-10 fix S#177)
+ *   - platform-general/page.tsx (proaktif fix S#177)
+ *
+ * Cache: unstable_cache TTL 300s, tag 'config' — identik dengan getConfigValues().
+ * Invalidasi otomatis saat revalidateTag('config') dipanggil di PATCH /api/config.
+ * React cache() untuk deduplikasi per-request render (in-request dedup).
+ */
+export const getConfigPageItems = cache(
+  unstable_cache(
+    async (featureKey: string): Promise<ConfigRegistryFullItem[]> => {
+      try {
+        const db = createServerSupabaseClient()
+        const { data, error } = await db
+          .from('config_registry')
+          .select('id, feature_key, policy_key, label, nilai, tipe_data, nilai_enum, tenant_can_override, is_active, kategori')
+          .eq('feature_key', featureKey)
+          .is('tenant_id', null)
+          .order('label', { ascending: true })
+
+        if (error) {
+          console.error(`[config-registry] getConfigPageItems(${featureKey}):`, error.message)
+          return []
+        }
+
+        return (data ?? []) as ConfigRegistryFullItem[]
+      } catch (err) {
+        console.error(`[config-registry] getConfigPageItems error:`, err)
+        return []
+      }
+    },
+    ['config-page-items'],
+    { tags: ['config'], revalidate: 300 }
+  )
+)

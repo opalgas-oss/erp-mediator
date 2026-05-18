@@ -13,27 +13,23 @@
 //     - platform_timezone             → input text (IANA timezone string)
 //
 // Dibuat: Sesi #164 — T-029: buat halaman dashboard platform_general
+// PERUBAHAN Sesi #177 — Fix proaktif (Repository Pattern):
+//   - Hapus direct db.from('config_registry') di RSC page
+//   - Ganti dengan getConfigPageItems('platform_general') dari lib/config-registry
+//   - Hapus import createServerSupabaseClient (tidak dipakai lagi)
 
 export const dynamic = 'force-dynamic'
 
-import { createServerSupabaseClient }              from '@/lib/supabase-server'
-import { ConfigPageClient }                        from '../security-login/ConfigPageClient'
-import { mapTipe, mapValue }                       from '@/lib/utils/config-page.utils'
-import type { ConfigItemData }                     from '@/components/ConfigItem'
+import { getConfigPageItems }  from '@/lib/config-registry'
+import { ConfigPageClient }    from '../security-login/ConfigPageClient'
+import { mapTipe, mapValue }   from '@/lib/utils/config-page.utils'
+import type { ConfigItemData } from '@/components/ConfigItem'
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function PlatformGeneralPage() {
-  const db = createServerSupabaseClient()
-
-  // SuperAdmin wajib lihat SEMUA item (aktif maupun tidak) — per pola S#110.
-  // Filter is_active hanya dipakai saat sistem mengeksekusi feature di runtime.
-  const { data } = await db
-    .from('config_registry')
-    .select('*')
-    .eq('feature_key', 'platform_general')
-    .is('tenant_id', null)
-    .order('label', { ascending: true })
+  // getConfigPageItems: full row data, tidak filter is_active (SA lihat semua — pola S#110)
+  const rows = await getConfigPageItems('platform_general')
 
   // Kelompokkan per kategori → format ConfigGroup[]
   const groupMap = new Map<string, {
@@ -42,34 +38,33 @@ export default async function PlatformGeneralPage() {
     items:       ConfigItemData[]
   }>()
 
-  for (const row of data ?? []) {
-    const kat        = (row.kategori    as string | null) ?? 'Platform General'
-    const policyKey  = (row.policy_key  as string | null) ?? (row.feature_key as string)
-    const tipeData   = row.tipe_data    as string
-    const featureKey = row.feature_key  as string
+  for (const row of rows) {
+    const kat        = row.kategori    ?? 'Platform General'
+    const policyKey  = row.policy_key  ?? row.feature_key
+    const tipeData   = row.tipe_data
+    const featureKey = row.feature_key
 
     if (!groupMap.has(kat)) {
       groupMap.set(kat, { title: kat, feature_key: featureKey, items: [] })
     }
 
     const item: ConfigItemData = {
-      id:              row.id       as string,
-      label:           row.label    as string,
+      id:              row.id,
+      label:           row.label,
       fieldName:       policyKey,
       type:            mapTipe(tipeData, policyKey),
-      value:           mapValue(row.nilai as string, tipeData),
-      options:         (row.nilai_enum as string[] | null) ?? undefined,
+      value:           mapValue(row.nilai, tipeData),
+      options:         row.nilai_enum ?? undefined,
       valueType:       undefined,
       perRoleOptions:  undefined,
       option_group_id: null,
       adminCanChange:  false, // platform_general = platform-only, tidak bisa di-override tenant
-      enabled:         row.is_active as boolean,
+      enabled:         row.is_active,
     }
 
     groupMap.get(kat)!.items.push(item)
   }
 
   const initialData = Array.from(groupMap.values())
-
   return <ConfigPageClient initialData={initialData} />
 }
