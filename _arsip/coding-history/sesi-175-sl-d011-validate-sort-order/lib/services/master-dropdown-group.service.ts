@@ -16,7 +16,6 @@
 //
 // Dibuat: Sesi #114 — M4 Master Dropdown FASE 3 Step 3.4
 // Update: Sesi #175 — SL-D010+K010: hapus validateSlug lokal, import validateDropdownSlug
-// Update: Sesi #175 — SL-D011: hapus validateSortOrder lokal, import validateSortOrder
 
 import 'server-only'
 import {
@@ -32,7 +31,7 @@ import {
   dropdownRepo_findOptionsByGroupId,
   dropdownRepo_findOptionsByGroupSlug,
 } from '@/lib/repositories/master-dropdown-option.repository'
-import { validateDropdownSlug, validateSortOrder } from '@/lib/utils/validation.server'
+import { validateDropdownSlug } from '@/lib/utils/validation.server'
 import type {
   MasterDropdownGroup,
   MasterDropdownOption,
@@ -44,7 +43,6 @@ import type {
 
 // --- Validation Helpers (lokal) --------------------------------------------
 // validateDropdownSlug -> lib/utils/validation.server.ts (SL-D010, S#175)
-// validateSortOrder    -> lib/utils/validation.server.ts (SL-D011, S#175)
 
 function validateDisplayName(name: string): void {
   if (!name || name.trim().length === 0) {
@@ -52,6 +50,12 @@ function validateDisplayName(name: string): void {
   }
   if (name.length > 200) {
     throw new Error('Nama tampilan grup maksimal 200 karakter')
+  }
+}
+
+function validateSortOrder(value: number): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error('Sort order harus bilangan bulat non-negatif')
   }
 }
 
