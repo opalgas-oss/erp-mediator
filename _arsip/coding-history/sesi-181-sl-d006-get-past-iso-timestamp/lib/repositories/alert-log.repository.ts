@@ -2,10 +2,8 @@
 // Repository untuk tabel alert_log
 // Dipakai oleh: alert.service.ts, MonitoringClient.tsx (via API)
 // Dibuat: Sesi #151 — PL-S09 Monitoring Dashboard
-// Refactor S#181: SL-D006 — ganti inline new Date(Date.now()-N*ms).toISOString() dengan getPastISOTimestamp()
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { getPastISOTimestamp } from '@/lib/utils/date.utils'
 import type {
   AlertLog,
   InsertAlertLogPayload,
@@ -95,7 +93,7 @@ export async function insertAlertLog(
  */
 export async function countActiveAlertProviders(): Promise<number> {
   const supabase = createServerSupabaseClient()
-  const since24h = getPastISOTimestamp(24, 'hours')
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
   const { data, error } = await supabase
     .from('alert_log')

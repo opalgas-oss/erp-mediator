@@ -2,10 +2,8 @@
 // Repository untuk tabel provider_metrics
 // Dipakai oleh: metrics-collector.service.ts, monitoring.service.ts
 // Dibuat: Sesi #151 — PL-S09 Monitoring Dashboard
-// Refactor S#181: SL-D006 — ganti inline new Date(Date.now()-N*ms).toISOString() dengan getPastISOTimestamp()
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { getPastISOTimestamp } from '@/lib/utils/date.utils'
 import type {
   ProviderMetric,
   InsertProviderMetricPayload,
@@ -23,7 +21,7 @@ export async function findRecentByProvider(
   providerId: string, limitMinutes: number = 60
 ): Promise<ProviderMetric[]> {
   const supabase = createServerSupabaseClient()
-  const since = getPastISOTimestamp(limitMinutes, 'minutes')
+  const since = new Date(Date.now() - limitMinutes * 60 * 1000).toISOString()
   const { data, error } = await supabase
     .from('provider_metrics').select('*')
     .eq('provider_id', providerId).eq('layer', 'L1')
@@ -57,7 +55,7 @@ export async function insertMetric(payload: InsertProviderMetricPayload): Promis
 
 export async function deleteOldMetrics(retentionDays: number = 30): Promise<number> {
   const supabase = createServerSupabaseClient()
-  const cutoff = getPastISOTimestamp(retentionDays, 'days')
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString()
   const { count, error } = await supabase
     .from('provider_metrics').delete({ count: 'exact' }).lt('checked_at', cutoff)
   if (error) throw new Error(`deleteOldMetrics: ${error.message}`)
@@ -68,7 +66,7 @@ export async function computeUptimePct(
   providerId: string, hours: number
 ): Promise<number | null> {
   const supabase = createServerSupabaseClient()
-  const since = getPastISOTimestamp(hours, 'hours')
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
     .from('provider_metrics').select('status')
     .eq('provider_id', providerId).eq('layer', 'L1').gte('checked_at', since)
