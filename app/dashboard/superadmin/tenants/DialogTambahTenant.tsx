@@ -13,18 +13,21 @@
 
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import type { BuatTenantPayload, TenantTipe } from '@/lib/types/tenant.types'
+import type { BuatTenantPayload, TenantTipe, TenantTier } from '@/lib/types/tenant.types'
 import { autoCorrectWA } from '@/lib/utils-client'
 
 interface Props {
   open:      boolean
   onClose:   () => void
   onSuccess: () => void
+  /** Opsi paket billing dari M4 tenant_tipe — FIX T-060b S#178 */
+  tierOpsi:  { value: TenantTier; label: string }[]
 }
 
+// FIX T-060b S#178: tambah tier ke INIT (default 'starter' sampai M4 terload)
 const INIT: BuatTenantPayload = {
   nama_brand: '', nama_legal: '', slug: '',
-  tipe: 'eksternal', npwp: '',
+  tipe: 'eksternal', tier: 'starter', npwp: '',
   pic_name: '', pic_email: '', pic_wa: '',
 }
 
@@ -59,7 +62,7 @@ const S = {
 
 // ─── Komponen ─────────────────────────────────────────────────────────────────
 
-export function DialogTambahTenant({ open, onClose, onSuccess }: Props) {
+export function DialogTambahTenant({ open, onClose, onSuccess, tierOpsi }: Props) {
   const [form,        setForm]        = useState<BuatTenantPayload>(INIT)
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState('')
@@ -197,21 +200,44 @@ export function DialogTambahTenant({ open, onClose, onSuccess }: Props) {
                   <option value="eksternal">Eksternal — disewakan ke pihak ketiga</option>
                 </select>
               </div>
+              {/* FIX T-060b S#178: tambah tier select dari M4 tenant_tipe */}
               <div>
-                <label style={S.label}>NPWP perusahaan *</label>
-                <input
-                  value={form.npwp}
-                  onChange={e => { set('npwp', e.target.value); if (npwpError) setNpwpError('') }}
-                  onBlur={handleNpwpBlur}
-                  placeholder="XX.XXX.XXX.X-XXX.XXX"
-                  style={npwpError ? S.inputErr : S.input}
-                />
-                {npwpError ? (
-                  <span style={S.err}>{npwpError}</span>
-                ) : (
-                  <span style={S.help}>Ketik Nomor NPWP atau NIK, tanpa spasi, simbol titik (.) atau simbol apapun (-)</span>
-                )}
+                <label style={S.label}>Paket billing *</label>
+                <select
+                  value={form.tier}
+                  onChange={e => set('tier', e.target.value as TenantTier)}
+                  style={S.select}
+                >
+                  {tierOpsi.length > 0
+                    ? tierOpsi.map(t => (
+                        <option key={t.value} value={t.value}>{t.label}</option>
+                      ))
+                    : (
+                        <>
+                          <option value="starter">Starter</option>
+                          <option value="growth">Growth</option>
+                          <option value="enterprise">Enterprise</option>
+                        </>
+                      )
+                  }
+                </select>
+                <span style={S.help}>Paket layanan tenant — bisa diubah di halaman detail.</span>
               </div>
+            </div>
+            <div>
+              <label style={S.label}>NPWP perusahaan *</label>
+              <input
+                value={form.npwp}
+                onChange={e => { set('npwp', e.target.value); if (npwpError) setNpwpError('') }}
+                onBlur={handleNpwpBlur}
+                placeholder="XX.XXX.XXX.X-XXX.XXX"
+                style={npwpError ? S.inputErr : S.input}
+              />
+              {npwpError ? (
+                <span style={S.err}>{npwpError}</span>
+              ) : (
+                <span style={S.help}>Ketik Nomor NPWP atau NIK, tanpa spasi, simbol titik (.) atau simbol apapun (-)</span>
+              )}
             </div>
           </div>
 

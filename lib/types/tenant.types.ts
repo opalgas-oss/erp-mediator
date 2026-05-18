@@ -143,11 +143,13 @@ export interface TenantDetailHeader {
 
 // ─── Payload: Buat Tenant (Dialog Tambah Tenant — Opsi B staged minimal) ─────
 
+// FIX T-060b S#178: tambah tier ke BuatTenantPayload agar SA bisa pilih paket saat buat tenant
 export interface BuatTenantPayload {
   nama_brand:  string
   nama_legal:  string
   slug:        string
   tipe:        TenantTipe
+  tier:        TenantTier   // paket billing tenant — dari M4 tenant_tipe (starter/growth/enterprise)
   npwp:        string
   // PIC awal
   pic_name:    string

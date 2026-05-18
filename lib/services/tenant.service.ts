@@ -103,6 +103,7 @@ export async function TenantService_create(
     p_nama_legal:  input.nama_legal.trim(),
     p_slug:        input.slug,
     p_tipe:        input.tipe,
+    p_tier:        input.tier ?? 'starter',  // FIX T-060b S#178: SA bisa pilih tier (default 'starter')
     p_npwp:        input.npwp.replace(/\D/g, ''),
     p_pic_name:    input.pic_name.trim(),
     p_pic_email:   input.pic_email.trim().toLowerCase(),

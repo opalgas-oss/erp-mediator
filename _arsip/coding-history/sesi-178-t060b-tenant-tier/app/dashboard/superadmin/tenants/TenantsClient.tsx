@@ -1,34 +1,25 @@
+// app/dashboard/superadmin/tenants/TenantsClient.tsx — PRE-FIX T-060b S#178
+// Snapshot sebelum: tambah tierOpsi prop + pass ke DialogTambahTenant
+// Dibuat: Sesi #132. Diupdate: Sesi #141, Sesi #159.
 'use client'
-
-// app/dashboard/superadmin/tenants/TenantsClient.tsx
-// Orchestrator halaman List Tenants — filter, search, pagination
-// Style: konsisten dengan Tab Info Umum (inline design tokens)
-// Fix: G04 (style tab border-bottom + count per status)
-//
-// Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
-// Diupdate: Sesi #141 — M6 Fix Fase F
-// Diupdate: Sesi #159 — T-062: STATUS_TABS hardcode dihapus → terima statusTabs dari page.tsx (M4)
 
 import { useState, useCallback, useTransition } from 'react'
 import { useRouter }                             from 'next/navigation'
 import { toast }                                 from 'sonner'
 import { TenantTable }        from './TenantTable'
 import { DialogTambahTenant } from './DialogTambahTenant'
-import type { TenantListItem, TenantLifecycleStatus, TenantTier } from '@/lib/types/tenant.types'
+import type { TenantListItem, TenantLifecycleStatus } from '@/lib/types/tenant.types'
 
+// PRE-FIX: Props tidak punya tierOpsi — Dialog tidak bisa render tier select
 interface Props {
   initialData:  TenantListItem[]
   initialTotal: number
-  /** Tab filter status — diisi dari M4 grup 'tenant_status' oleh page.tsx (RSC). */
   statusTabs:   { value: TenantLifecycleStatus | 'all'; label: string }[]
-  /** Opsi paket billing — diisi dari M4 grup 'tenant_tipe' oleh page.tsx (RSC). FIX T-060b S#178 */
-  tierOpsi:     { value: TenantTier; label: string }[]
 }
 
-export function TenantsClient({ initialData, initialTotal, statusTabs, tierOpsi }: Props) {
+export function TenantsClient({ initialData, initialTotal, statusTabs }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
-
   const [data,       setData]       = useState<TenantListItem[]>(initialData)
   const [total,      setTotal]      = useState(initialTotal)
   const [loading,    setLoading]    = useState(false)
@@ -37,7 +28,6 @@ export function TenantsClient({ initialData, initialTotal, statusTabs, tierOpsi 
   const [page,       setPage]       = useState(1)
   const [sortBy,     setSortBy]     = useState('created_at')
   const [dialogOpen, setDialogOpen] = useState(false)
-
   const limit = 20
   const totalPages = Math.ceil(total / limit)
 
@@ -51,10 +41,7 @@ export function TenantsClient({ initialData, initialTotal, statusTabs, tierOpsi 
       params.set('limit', String(limit))
       const res  = await fetch(`/api/superadmin/tenants?${params}`)
       const json = await res.json()
-      if (json.success) {
-        setData(json.data)
-        setTotal(json.total)
-      }
+      if (json.success) { setData(json.data); setTotal(json.total) }
     } catch { toast.error('Gagal memuat data tenant') }
     finally { setLoading(false) }
   }, [])
@@ -67,95 +54,45 @@ export function TenantsClient({ initialData, initialTotal, statusTabs, tierOpsi 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 24 }}>
-
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: '#1a1a1a' }}>Manajemen Tenant</h1>
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{total} tenant terdaftar</p>
         </div>
-        <button
-          onClick={() => setDialogOpen(true)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#85B7EB', color: '#185FA5', background: '#E6F1FB' }}
-        >
+        <button onClick={() => setDialogOpen(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#85B7EB', color: '#185FA5', background: '#E6F1FB' }}>
           <i className="ti ti-plus" /> Tambah Tenant
         </button>
       </div>
-
-      {/* Tabs — border-bottom style (E8) — label + urutan dari M4 via statusTabs prop */}
       <div style={{ display: 'flex', borderBottomWidth: '0.5px', borderBottomStyle: 'solid', borderBottomColor: 'rgba(0,0,0,0.12)' }}>
         {statusTabs.map(tab => (
-          <button
-            key={tab.value}
-            onClick={() => handleTabChange(tab.value)}
-            style={{
-              padding: '8px 16px', fontSize: 13, cursor: 'pointer',
-              background: 'transparent', borderTopWidth: 0, borderLeftWidth: 0, borderRightWidth: 0,
-              borderBottomWidth: '2px', borderBottomStyle: 'solid',
-              borderBottomColor: activeTab === tab.value ? '#1a1a1a' : 'transparent',
-              color: activeTab === tab.value ? '#1a1a1a' : '#6b7280',
-              fontWeight: activeTab === tab.value ? 500 : 400,
-              whiteSpace: 'nowrap', fontFamily: 'inherit',
-            }}
-          >
+          <button key={tab.value} onClick={() => handleTabChange(tab.value)}
+            style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer', background: 'transparent', borderTopWidth: 0, borderLeftWidth: 0, borderRightWidth: 0, borderBottomWidth: '2px', borderBottomStyle: 'solid', borderBottomColor: activeTab === tab.value ? '#1a1a1a' : 'transparent', color: activeTab === tab.value ? '#1a1a1a' : '#6b7280', fontWeight: activeTab === tab.value ? 500 : 400, whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
             {tab.label}
           </button>
         ))}
       </div>
-
-      {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative' }}>
           <i className="ti ti-search" style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#9ca3af' }} />
-          <input
-            value={search}
-            onChange={e => handleSearch(e.target.value)}
-            placeholder="Cari nama, kode, atau PIC..."
-            style={{ width: 260, padding: '7px 10px 7px 28px', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }}
-          />
+          <input value={search} onChange={e => handleSearch(e.target.value)} placeholder="Cari nama, kode, atau PIC..." style={{ width: 260, padding: '7px 10px 7px 28px', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit' }} />
         </div>
-        <select
-          value={sortBy}
-          onChange={e => setSortBy(e.target.value)}
-          style={{ padding: '7px 10px', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}
-        >
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '7px 10px', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}>
           <option value="created_at">Urutkan: Terbaru</option>
           <option value="nama_brand">Urutkan: Nama A-Z</option>
         </select>
       </div>
-
-      {/* Tabel */}
       <TenantTable data={data} loading={loading} onRowClick={handleRowClick} />
-
-      {/* Pagination */}
       {totalPages > 1 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, color: '#6b7280' }}>
           <span>Menampilkan {(page - 1) * limit + 1}–{Math.min(page * limit, total)} dari {total}</span>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => handlePageChange(page - 1)}
-              disabled={page <= 1}
-              style={{ padding: '5px 12px', fontSize: 12, borderRadius: 8, cursor: page <= 1 ? 'not-allowed' : 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', background: 'transparent', opacity: page <= 1 ? 0.5 : 1 }}
-            >
-              ← Sebelumnya
-            </button>
-            <button
-              onClick={() => handlePageChange(page + 1)}
-              disabled={page >= totalPages}
-              style={{ padding: '5px 12px', fontSize: 12, borderRadius: 8, cursor: page >= totalPages ? 'not-allowed' : 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', background: 'transparent', opacity: page >= totalPages ? 0.5 : 1 }}
-            >
-              Berikutnya →
-            </button>
+            <button onClick={() => handlePageChange(page - 1)} disabled={page <= 1} style={{ padding: '5px 12px', fontSize: 12, borderRadius: 8, cursor: page <= 1 ? 'not-allowed' : 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', background: 'transparent', opacity: page <= 1 ? 0.5 : 1 }}>← Sebelumnya</button>
+            <button onClick={() => handlePageChange(page + 1)} disabled={page >= totalPages} style={{ padding: '5px 12px', fontSize: 12, borderRadius: 8, cursor: page >= totalPages ? 'not-allowed' : 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', background: 'transparent', opacity: page >= totalPages ? 0.5 : 1 }}>Berikutnya →</button>
           </div>
         </div>
       )}
-
-      <DialogTambahTenant
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onSuccess={handleSuccess}
-        tierOpsi={tierOpsi}
-      />
+      {/* PRE-FIX: DialogTambahTenant tidak terima tierOpsi */}
+      <DialogTambahTenant open={dialogOpen} onClose={() => setDialogOpen(false)} onSuccess={handleSuccess} />
     </div>
   )
 }
