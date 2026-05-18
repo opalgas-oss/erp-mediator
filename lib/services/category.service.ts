@@ -6,9 +6,11 @@
 //   API Route → CategoryService_* → categoryRepo_* / categoryTreeRepo_* → DB
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.4
+// Update: Sesi #177 — PV-03: hapus direct DB query di CategoryService_hapus()
+//   Sebelum: createServerSupabaseClient() langsung di service layer
+//   Sesudah: panggil categoryAssignmentRepo_countActiveByCategory() dari repository
 
 import 'server-only'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
 import {
   findById,
   findListItemsWithStats,
@@ -23,6 +25,7 @@ import {
   findAllDenganSub,
   buildTreeForAssignDialog,
 } from '@/lib/repositories/category-tree.repository'
+import { categoryAssignmentRepo_countActiveByCategory } from '@/lib/repositories/tenant-category-assignment.repository'
 import type {
   Category,
   CategoryDenganSub,
@@ -201,16 +204,9 @@ export async function CategoryService_hapus(
   const kategori = await findById(id)
   if (!kategori) throw new Error('Kategori tidak ditemukan')
 
-  // Cek assignment aktif
-  const db = createServerSupabaseClient()
-  const { count } = await db
-    .from('tenant_category_assignments')
-    .select('id', { count: 'exact', head: true })
-    .eq('category_id', id)
-    .in('status', ['active', 'suspended', 'pending_handover'])
-    .is('deleted_at', null)
-
-  if ((count ?? 0) > 0) {
+  // Cek assignment aktif via repository layer (PV-03 fix S#177)
+  const jumlahAktif = await categoryAssignmentRepo_countActiveByCategory(id)
+  if (jumlahAktif > 0) {
     throw new Error(
       'Kategori tidak bisa dihapus karena masih dipegang tenant aktif. ' +
       'Cabut semua penugasan terlebih dahulu.'

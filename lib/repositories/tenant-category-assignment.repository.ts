@@ -271,3 +271,27 @@ export async function initHandoverViaSP(
   if (error) return { ok: false, error: error.message }
   return { ok: true }
 }
+
+// ─── FUNGSI: categoryAssignmentRepo_countActiveByCategory ─────────────────────
+/**
+ * Hitung jumlah assignment aktif untuk satu kategori.
+ * Status yang dihitung: active, suspended, pending_handover.
+ *
+ * Dipakai oleh: CategoryService_hapus() sebagai guard sebelum soft delete.
+ * Memindahkan query DB dari service layer ke repository layer (fix PV-03 S#177).
+ *
+ * @returns Jumlah assignment aktif (0 = aman dihapus)
+ */
+export async function categoryAssignmentRepo_countActiveByCategory(
+  categoryId: string
+): Promise<number> {
+  const db = createServerSupabaseClient()
+  const { count } = await db
+    .from('tenant_category_assignments')
+    .select('id', { count: 'exact', head: true })
+    .eq('category_id', categoryId)
+    .in('status', ['active', 'suspended', 'pending_handover'])
+    .is('deleted_at', null)
+
+  return count ?? 0
+}
