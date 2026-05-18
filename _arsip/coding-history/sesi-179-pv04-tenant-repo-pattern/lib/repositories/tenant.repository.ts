@@ -152,40 +152,10 @@ export async function tenantRepo_findBySlug(
   return data as Pick<Tenant, 'id' | 'slug'>
 }
 
-// ─── M6: tenantRepo_createWithPIC ───────────────────────────────────────────
-/**
- * Buat tenant baru + PIC awal sekaligus via SP sp_create_tenant_with_pic (transactional).
- * Menggantikan direct db.rpc() yang sebelumnya ada di TenantService_create.
- * Dipanggil oleh: TenantService_create (tenant.service.ts)
- * Update: Sesi #179 — PV-04: pindah dari service layer ke repository layer
- * @returns tenant_id (UUID string) dari SP
- */
-export async function tenantRepo_createWithPIC(
-  payload:   BuatTenantPayload,
-  createdBy: string
-): Promise<string> {
-  const db = createServerSupabaseClient()
-  const { data, error } = await db.rpc('sp_create_tenant_with_pic', {
-    p_nama_brand:  payload.nama_brand.trim(),
-    p_nama_legal:  payload.nama_legal.trim(),
-    p_slug:        payload.slug,
-    p_tipe:        payload.tipe,
-    p_tier:        payload.tier ?? 'starter',
-    p_npwp:        payload.npwp.replace(/\D/g, ''),
-    p_pic_name:    payload.pic_name.trim(),
-    p_pic_email:   payload.pic_email.trim().toLowerCase(),
-    p_pic_wa:      payload.pic_wa.replace(/\D/g, ''),
-    p_created_by:  createdBy,
-  })
-
-  if (error) throw new Error(`Gagal membuat tenant: ${error.message}`)
-  return data as string
-}
-
 // ─── M6: tenantRepo_create ────────────────────────────────────────────────────
 /**
  * Insert tenant baru (field minimal — Opsi B staged). Status default: 'pending'.
- * Untuk create + PIC sekaligus (transactional), gunakan tenantRepo_createWithPIC.
+ * Untuk create + PIC sekaligus, gunakan sp_create_tenant_with_pic via Service.
  */
 export async function tenantRepo_create(
   payload: BuatTenantPayload,

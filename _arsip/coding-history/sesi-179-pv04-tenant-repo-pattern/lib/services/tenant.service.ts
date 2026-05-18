@@ -16,8 +16,8 @@ import {
   tenantRepo_updateInfo,
   tenantRepo_updateStatus,
   tenantRepo_updateContract,
-  tenantRepo_createWithPIC,
 } from '@/lib/repositories/tenant.repository'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { validateNomorWa } from '@/lib/utils/validation.server'
 import type {
   Tenant,
@@ -97,7 +97,23 @@ export async function TenantService_create(
     throw new Error(`Kode tenant "${input.slug}" sudah digunakan. Coba "${input.slug}-2"`)
   }
 
-  const tenantId  = await tenantRepo_createWithPIC(input, createdBy)  // PV-04 S#179: dipindah ke repo layer
+  const db = createServerSupabaseClient()
+  const { data, error } = await db.rpc('sp_create_tenant_with_pic', {
+    p_nama_brand:  input.nama_brand.trim(),
+    p_nama_legal:  input.nama_legal.trim(),
+    p_slug:        input.slug,
+    p_tipe:        input.tipe,
+    p_tier:        input.tier ?? 'starter',  // FIX T-060b S#178: SA bisa pilih tier (default 'starter')
+    p_npwp:        input.npwp.replace(/\D/g, ''),
+    p_pic_name:    input.pic_name.trim(),
+    p_pic_email:   input.pic_email.trim().toLowerCase(),
+    p_pic_wa:      input.pic_wa.replace(/\D/g, ''),
+    p_created_by:  createdBy,
+  })
+
+  if (error) throw new Error(`Gagal membuat tenant: ${error.message}`)
+
+  const tenantId  = data as string
   const tenant    = await tenantRepo_findById(tenantId)
   const displayId = tenant?.tenant_display_id ?? tenantId
 
