@@ -18,6 +18,7 @@ import { insertMetric }          from '@/lib/repositories/provider-metrics.repos
 import { upsertDefaultRules }    from '@/lib/repositories/alert-rules.repository'
 import { checkAndSendAlerts }    from '@/lib/services/alert.service'
 import { deleteOldMetrics }      from '@/lib/repositories/provider-metrics.repository'
+import { fetchWithTimeout }      from '@/lib/utils/fetch.server'
 import type {
   MonitoringStatus,
   MonitoringLayer,
@@ -168,11 +169,11 @@ async function pingProvider(
 
   const start = Date.now()
   try {
-    const controller = new AbortController()
-    const t = setTimeout(() => controller.abort(), PING_TIMEOUT_MS)
-    const res = await fetch(targetUrl, { method: 'GET', signal: controller.signal, headers: { 'User-Agent': 'ERP-Mediator-Monitor/1.0' } })
-    clearTimeout(t)
-
+    const res = await fetchWithTimeout(
+      targetUrl,
+      { method: 'GET', headers: { 'User-Agent': 'ERP-Mediator-Monitor/1.0' } },
+      PING_TIMEOUT_MS
+    )
     const ms = Date.now() - start
     const status: MonitoringStatus = res.ok && ms <= DEGRADED_THRESHOLD_MS ? 'UP' : res.ok ? 'DEGRADED' : 'DOWN'
     return { provider_id: providerId, status, response_time_ms: ms, layer: 'L1' as MonitoringLayer, error_detail: !res.ok ? `HTTP ${res.status}` : undefined }

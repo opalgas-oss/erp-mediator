@@ -5,6 +5,7 @@
 // Dibuat: Sesi #109 — M3 Step 5.2b Authenticated Test
 
 import 'server-only'
+import { fetchWithTimeout } from '@/lib/utils/fetch.server'
 import type { HealthStatus, TestKoneksiResult } from '@/lib/types/provider.types'
 
 // ─── Konstanta ───────────────────────────────────────────────────────────────
@@ -12,12 +13,6 @@ import type { HealthStatus, TestKoneksiResult } from '@/lib/types/provider.types
 const TIMEOUT_MS = 10_000
 
 // ─── Helper internal ─────────────────────────────────────────────────────────
-
-function makeController(): { signal: AbortSignal; clear: () => void } {
-  const ac    = new AbortController()
-  const timer = setTimeout(() => ac.abort(), TIMEOUT_MS)
-  return { signal: ac.signal, clear: () => clearTimeout(timer) }
-}
 
 function buildResult(
   berhasil:         boolean,
@@ -41,19 +36,17 @@ async function testSupabase(creds: Record<string, string>): Promise<TestKoneksiR
   if (!project_url || !service_role_key)
     return buildResult(false, null, 'Credential tidak lengkap (project_url + service_role_key wajib)', 0)
 
-  const start        = Date.now()
-  const { signal, clear } = makeController()
+  const start = Date.now()
 
   try {
     const url = `${project_url.replace(/\/$/, '')}/rest/v1/`
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: {
         apikey:         service_role_key,
         Authorization:  `Bearer ${service_role_key}`,
         'Content-Type': 'application/json',
       },
-      signal,
-    }).finally(clear)
+    }, TIMEOUT_MS)
 
     const latency_ms = Date.now() - start
 
@@ -65,7 +58,6 @@ async function testSupabase(creds: Record<string, string>): Promise<TestKoneksiR
     return buildResult(true, false, `Server merespons HTTP ${res.status}`, latency_ms)
 
   } catch (err) {
-    clear()
     return buildResult(false, null, err instanceof Error ? err.message : 'Koneksi gagal', Date.now() - start)
   }
 }
@@ -78,15 +70,13 @@ async function testUpstash(creds: Record<string, string>): Promise<TestKoneksiRe
   if (!rest_url || !rest_token)
     return buildResult(false, null, 'Credential tidak lengkap (rest_url + rest_token wajib)', 0)
 
-  const start        = Date.now()
-  const { signal, clear } = makeController()
+  const start = Date.now()
 
   try {
     const url = `${rest_url.replace(/\/$/, '')}/ping`
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { Authorization: `Bearer ${rest_token}` },
-      signal,
-    }).finally(clear)
+    }, TIMEOUT_MS)
 
     const latency_ms = Date.now() - start
 
@@ -104,7 +94,6 @@ async function testUpstash(creds: Record<string, string>): Promise<TestKoneksiRe
     return buildResult(true, false, `Server merespons HTTP ${res.status}`, latency_ms)
 
   } catch (err) {
-    clear()
     return buildResult(false, null, err instanceof Error ? err.message : 'Koneksi gagal', Date.now() - start)
   }
 }
@@ -117,16 +106,14 @@ async function testCloudinary(creds: Record<string, string>): Promise<TestKoneks
   if (!cloud_name || !api_key || !api_secret)
     return buildResult(false, null, 'Credential tidak lengkap (cloud_name + api_key + api_secret wajib)', 0)
 
-  const start        = Date.now()
-  const { signal, clear } = makeController()
+  const start = Date.now()
 
   try {
     const auth = Buffer.from(`${api_key}:${api_secret}`).toString('base64')
     const url  = `https://api.cloudinary.com/v1_1/${cloud_name}/ping`
-    const res  = await fetch(url, {
+    const res  = await fetchWithTimeout(url, {
       headers: { Authorization: `Basic ${auth}` },
-      signal,
-    }).finally(clear)
+    }, TIMEOUT_MS)
 
     const latency_ms = Date.now() - start
 
@@ -143,7 +130,6 @@ async function testCloudinary(creds: Record<string, string>): Promise<TestKoneks
     return buildResult(true, false, `Server merespons HTTP ${res.status}`, latency_ms)
 
   } catch (err) {
-    clear()
     return buildResult(false, null, err instanceof Error ? err.message : 'Koneksi gagal', Date.now() - start)
   }
 }
@@ -156,16 +142,14 @@ async function testXendit(creds: Record<string, string>): Promise<TestKoneksiRes
   if (!secret_key)
     return buildResult(false, null, 'Credential tidak lengkap (secret_key wajib)', 0)
 
-  const start        = Date.now()
-  const { signal, clear } = makeController()
+  const start = Date.now()
 
   try {
     // Xendit pakai HTTP Basic Auth: username = secret_key, password = kosong
     const auth = Buffer.from(`${secret_key}:`).toString('base64')
-    const res  = await fetch('https://api.xendit.co/balance', {
+    const res  = await fetchWithTimeout('https://api.xendit.co/balance', {
       headers: { Authorization: `Basic ${auth}` },
-      signal,
-    }).finally(clear)
+    }, TIMEOUT_MS)
 
     const latency_ms = Date.now() - start
 
@@ -181,7 +165,6 @@ async function testXendit(creds: Record<string, string>): Promise<TestKoneksiRes
     return buildResult(true, false, `Server merespons HTTP ${res.status}`, latency_ms)
 
   } catch (err) {
-    clear()
     return buildResult(false, null, err instanceof Error ? err.message : 'Koneksi gagal', Date.now() - start)
   }
 }
@@ -194,15 +177,13 @@ async function testFonnte(creds: Record<string, string>): Promise<TestKoneksiRes
   if (!api_token)
     return buildResult(false, null, 'Credential tidak lengkap (api_token wajib)', 0)
 
-  const start        = Date.now()
-  const { signal, clear } = makeController()
+  const start = Date.now()
 
   try {
     // Fonnte: Authorization header langsung berisi token (bukan Bearer)
-    const res = await fetch('https://api.fonnte.com/device', {
+    const res = await fetchWithTimeout('https://api.fonnte.com/device', {
       headers: { Authorization: api_token },
-      signal,
-    }).finally(clear)
+    }, TIMEOUT_MS)
 
     const latency_ms = Date.now() - start
 
@@ -222,7 +203,6 @@ async function testFonnte(creds: Record<string, string>): Promise<TestKoneksiRes
     return buildResult(true, false, `Server merespons HTTP ${res.status}`, latency_ms)
 
   } catch (err) {
-    clear()
     return buildResult(false, null, err instanceof Error ? err.message : 'Koneksi gagal', Date.now() - start)
   }
 }
@@ -235,17 +215,15 @@ async function testTypesense(creds: Record<string, string>): Promise<TestKoneksi
   if (!host || !admin_api_key)
     return buildResult(false, null, 'Credential tidak lengkap (host + admin_api_key wajib)', 0)
 
-  const start        = Date.now()
-  const { signal, clear } = makeController()
+  const start = Date.now()
 
   try {
     const portStr = port ? `:${port}` : ''
     const baseUrl = `${protocol}://${host}${portStr}`
     // GET /collections butuh auth — endpoint yang paling tepat untuk verifikasi admin_api_key
-    const res = await fetch(`${baseUrl}/collections`, {
+    const res = await fetchWithTimeout(`${baseUrl}/collections`, {
       headers: { 'X-TYPESENSE-API-KEY': admin_api_key },
-      signal,
-    }).finally(clear)
+    }, TIMEOUT_MS)
 
     const latency_ms = Date.now() - start
 
@@ -258,7 +236,6 @@ async function testTypesense(creds: Record<string, string>): Promise<TestKoneksi
     return buildResult(true, false, `Server merespons HTTP ${res.status}`, latency_ms)
 
   } catch (err) {
-    clear()
     return buildResult(false, null, err instanceof Error ? err.message : 'Koneksi gagal', Date.now() - start)
   }
 }
@@ -271,8 +248,7 @@ async function testCloudflare(creds: Record<string, string>): Promise<TestKoneks
   if (!api_token)
     return buildResult(false, null, 'Credential tidak lengkap (api_token wajib)', 0)
 
-  const start        = Date.now()
-  const { signal, clear } = makeController()
+  const start = Date.now()
 
   try {
     // Jika zone_id tersedia: test akses ke zone spesifik (lebih akurat)
@@ -281,10 +257,9 @@ async function testCloudflare(creds: Record<string, string>): Promise<TestKoneks
       ? `https://api.cloudflare.com/client/v4/zones/${zone_id}`
       : `https://api.cloudflare.com/client/v4/user`
 
-    const res  = await fetch(url, {
+    const res  = await fetchWithTimeout(url, {
       headers: { Authorization: `Bearer ${api_token}` },
-      signal,
-    }).finally(clear)
+    }, TIMEOUT_MS)
 
     const latency_ms = Date.now() - start
     const body = await res.json().catch(() => null)
@@ -300,7 +275,6 @@ async function testCloudflare(creds: Record<string, string>): Promise<TestKoneks
     return buildResult(true, false, `Server merespons HTTP ${res.status}`, latency_ms)
 
   } catch (err) {
-    clear()
     return buildResult(false, null, err instanceof Error ? err.message : 'Koneksi gagal', Date.now() - start)
   }
 }
