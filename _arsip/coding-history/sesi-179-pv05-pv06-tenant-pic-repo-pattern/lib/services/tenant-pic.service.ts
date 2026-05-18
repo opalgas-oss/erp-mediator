@@ -18,9 +18,8 @@ import {
   buildKartuFromHistory,
   hapusCadanganByTenantId,
   updateCadanganByTenantId,
-  jalankanGantiPICViaSP,
-  tenantPicRepo_tambahCadangan,
 } from '@/lib/repositories/tenant-pic.repository'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getCredential } from '@/lib/services/credential.service'
 import { getMessage, interpolate } from '@/lib/message-library'
 import { sendFonnteWA } from '@/lib/utils/fonnte.server'
@@ -115,8 +114,23 @@ export async function TenantPICService_gantiPIC(
   if (!input.user_email.trim())   throw new Error('Email PIC baru wajib diisi')
   if (!input.alasan_pergantian)   throw new Error('Alasan pergantian wajib dipilih')
 
-  const existing = await jalankanGantiPICViaSP(input, changedBy)  // PV-05 S#179: dipindah ke repo layer
-  if (!existing.ok) throw new Error(`Gagal mengganti PIC: ${existing.error}`)
+  const db = createServerSupabaseClient()
+  const { error } = await db.rpc('sp_change_tenant_pic', {
+    p_tenant_id:            input.tenant_id,
+    p_new_pic_name:         input.user_name.trim(),
+    p_new_pic_email:        input.user_email.trim().toLowerCase(),
+    p_new_pic_wa:           input.user_wa.replace(/\D/g, ''),
+    p_new_pic_jabatan:      input.jabatan ?? null,
+    p_new_pic_relasi:       input.relasi_ke_perusahaan,
+    p_alasan_pergantian:    input.alasan_pergantian,
+    p_tanggal_efektif:      input.tanggal_efektif,
+    p_dokumen_serah_terima: input.dokumen_serah_terima ?? null,
+    p_catatan:              input.catatan ?? null,
+    p_changed_by:           changedBy,
+    p_tipe_pic:             input.tipe_pic,
+  })
+
+  if (error) throw new Error(`Gagal mengganti PIC: ${error.message}`)
 
   // Kirim WA notifikasi (fire-and-forget)
   void kirimNotifikasiGantiPIC(input).catch(err =>
@@ -142,37 +156,35 @@ export async function TenantPICService_tambahCadangan(
   validateNomorWa(input.user_wa)
   if (!input.user_name.trim()) throw new Error('Nama PIC cadangan wajib diisi')
 
-  const result = await tenantPicRepo_tambahCadangan(input, addedBy)  // PV-06 S#179: dipindah ke repo layer
-  if (!result.ok) throw new Error(`Gagal menambah PIC cadangan: ${result.error}`)
+  const db = createServerSupabaseClient()
+  const { error } = await db.rpc('sp_change_tenant_pic', {
+    p_tenant_id:            input.tenant_id,
+    p_new_pic_name:         input.user_name.trim(),
+    p_new_pic_email:        input.user_email.trim().toLowerCase(),
+    p_new_pic_wa:           input.user_wa.replace(/\D/g, ''),
+    p_new_pic_jabatan:      input.jabatan ?? null,
+    p_new_pic_relasi:       input.relasi_ke_perusahaan,
+    p_alasan_pergantian:    null,
+    p_tanggal_efektif:      new Date().toISOString().split('T')[0],
+    p_dokumen_serah_terima: null,
+    p_catatan:              'PIC cadangan ditambahkan',
+    p_changed_by:           addedBy,
+    p_tipe_pic:             'cadangan',
+  })
+
+  if (error) throw new Error(`Gagal menambah PIC cadangan: ${error.message}`)
 }
 
 // --- TenantPICService_hapusCadangan -----------------------------------------
-/**
- * Hapus PIC cadangan aktif (set ended_at = now via repository).
- * Throw error jika tenant tidak punya PIC cadangan aktif.
- * @param tenantId - UUID tenant
- */
 export async function TenantPICService_hapusCadangan(
   tenantId: string
 ): Promise<void> {
   const result = await hapusCadanganByTenantId(tenantId)
-
-  if (!result.ok) {
-    throw new Error(`Gagal menghapus PIC cadangan: ${result.error}`)
-  }
-  if (result.rowsAffected === 0) {
-    throw new Error('Tenant ini tidak memiliki PIC cadangan aktif')
-  }
+  if (!result.ok) throw new Error(`Gagal menghapus PIC cadangan: ${result.error}`)
+  if (result.rowsAffected === 0) throw new Error('Tenant ini tidak memiliki PIC cadangan aktif')
 }
 
 // --- TenantPICService_updateCadangan ----------------------------------------
-/**
- * Update in-place data PIC cadangan aktif (EDIT, bukan pergantian).
- * Tidak menyentuh riwayat — baris cadangan aktif diubah di tempat.
- * Throw error jika tenant tidak punya PIC cadangan aktif.
- * @param tenantId - UUID tenant
- * @param input    - field PIC cadangan yang diubah
- */
 export async function TenantPICService_updateCadangan(
   tenantId: string,
   input: {
@@ -195,19 +207,11 @@ export async function TenantPICService_updateCadangan(
     relasi_ke_perusahaan: input.relasi_ke_perusahaan,
   })
 
-  if (!result.ok) {
-    throw new Error(`Gagal memperbarui PIC cadangan: ${result.error}`)
-  }
-  if (result.rowsAffected === 0) {
-    throw new Error('Tenant ini tidak memiliki PIC cadangan aktif')
-  }
+  if (!result.ok) throw new Error(`Gagal memperbarui PIC cadangan: ${result.error}`)
+  if (result.rowsAffected === 0) throw new Error('Tenant ini tidak memiliki PIC cadangan aktif')
 }
 
 // ─── Private: kirimNotifikasiGantiPIC ─────────────────────────────────────────
-// FIX T-019 Sesi #162: ganti template string hardcode → getMessage+interpolate
-// Template dikelola SA via M2 Pesan (key: notif_wa_ganti_pic, kategori: notif_wa)
-// Variabel: {user_name}, {tipe_pic}, {tanggal_efektif}
-
 const NOTIF_WA_GANTI_PIC_FALLBACK =
   'Halo {user_name},\n\n' +
   'Anda telah ditunjuk sebagai PIC {tipe_pic} untuk tenant ini.\n' +
@@ -217,15 +221,11 @@ const NOTIF_WA_GANTI_PIC_FALLBACK =
 async function kirimNotifikasiGantiPIC(input: GantiPICPayload): Promise<void> {
   const apiKey = await getCredential('fonnte', 'api_token')
   if (!apiKey) return
-
   const template = await getMessage('notif_wa_ganti_pic', NOTIF_WA_GANTI_PIC_FALLBACK)
   const pesan    = interpolate(template, {
     user_name:       input.user_name,
     tipe_pic:        input.tipe_pic,
     tanggal_efektif: input.tanggal_efektif,
   })
-
-  // Kirim via Fonnte API — shared utility (lib/utils/fonnte.server.ts)
-  // Fire-and-forget: caller sudah wrap dengan void ... .catch()
   await sendFonnteWA(input.user_wa.replace(/\D/g, ''), pesan, apiKey)
 }

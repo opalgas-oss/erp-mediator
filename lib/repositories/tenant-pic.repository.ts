@@ -109,7 +109,8 @@ export async function updateUserIdPIC(
  * @param payload - Semua field yang dibutuhkan SP
  */
 export async function jalankanGantiPICViaSP(
-  payload: GantiPICPayload
+  payload:   GantiPICPayload,
+  changedBy: string | null = null
 ): Promise<{ ok: boolean; error?: string }> {
   const db = createServerSupabaseClient()
   const { error } = await db.rpc('sp_change_tenant_pic', {
@@ -123,7 +124,7 @@ export async function jalankanGantiPICViaSP(
     p_tanggal_efektif:        payload.tanggal_efektif,
     p_dokumen_serah_terima:   payload.dokumen_serah_terima ?? null,
     p_catatan:                payload.catatan ?? null,
-    p_changed_by:             null,  // diisi di service layer dari session
+    p_changed_by:             changedBy,  // PV-05 S#179: hapus null hardcode, terima changedBy dari service
     p_tipe_pic:               payload.tipe_pic,
   })
 
@@ -156,6 +157,45 @@ export async function hapusCadanganByTenantId(
 
   if (error) return { ok: false, rowsAffected: 0, error: error.message }
   return { ok: true, rowsAffected: data?.length ?? 0 }
+}
+
+// --- FUNGSI: tenantPicRepo_tambahCadangan -----------------------------------
+/**
+ * Tambah PIC cadangan baru via SP sp_change_tenant_pic.
+ * Berbeda dari jalankanGantiPICViaSP: tidak ada alasan pergantian,
+ * tanggal efektif = hari ini, catatan fixed, tipe_pic selalu 'cadangan'.
+ * Dibuat: Sesi #179 - PV-06: pindah dari TenantPICService_tambahCadangan ke repo layer
+ * Dipanggil oleh: TenantPICService_tambahCadangan (tenant-pic.service.ts)
+ */
+export async function tenantPicRepo_tambahCadangan(
+  input: {
+    tenant_id:            string
+    user_name:            string
+    user_email:           string
+    user_wa:              string
+    jabatan:              string | null
+    relasi_ke_perusahaan: string
+  },
+  addedBy: string
+): Promise<{ ok: boolean; error?: string }> {
+  const db = createServerSupabaseClient()
+  const { error } = await db.rpc('sp_change_tenant_pic', {
+    p_tenant_id:            input.tenant_id,
+    p_new_pic_name:         input.user_name,
+    p_new_pic_email:        input.user_email,
+    p_new_pic_wa:           input.user_wa,
+    p_new_pic_jabatan:      input.jabatan ?? null,
+    p_new_pic_relasi:       input.relasi_ke_perusahaan,
+    p_alasan_pergantian:    null,
+    p_tanggal_efektif:      new Date().toISOString().split('T')[0],
+    p_dokumen_serah_terima: null,
+    p_catatan:              'PIC cadangan ditambahkan',
+    p_changed_by:           addedBy,
+    p_tipe_pic:             'cadangan',
+  })
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
 }
 
 // --- FUNGSI: updateCadanganByTenantId ---------------------------------------
