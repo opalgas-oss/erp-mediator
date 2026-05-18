@@ -104,9 +104,10 @@ export function useLoginFlow(): LoginFlowState {
   const [otpInput,       setOtpInput]       = useState('')
   const [otpPercobaan,   setOtpPercobaan]   = useState(0)
   const [maxOtpPercobaan,setMaxOtpPercobaan]= useState(3)
+  // PRE-FIX T-059b S#178: gps_mode default = 'required' (SALAH — seharusnya 'true')
+  // dan pastikanGPS() compare !== 'required' (SALAH — seharusnya !== 'true')
   const [configLogin,    setConfigLogin]    = useState<Record<string, string>>({
-    // FIX T-059b S#178: default 'required' (English) → 'true' (boolean) sesuai konsep GPS toggle
-    gps_timeout_seconds: '10', gps_cache_ttl_minutes: '30', gps_mode: 'true',
+    gps_timeout_seconds: '10', gps_cache_ttl_minutes: '30', gps_mode: 'required',
     password_min_length: '8', session_timeout_minutes: String(SESSION_DEFAULT_TIMEOUT_MINUTES), require_otp: 'true',
   })
   const [dbPesan, setDbPesan] = useState<Record<string, string>>({})
@@ -122,10 +123,6 @@ export function useLoginFlow(): LoginFlowState {
     return teks.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? `{${k}}`)
   }, [dbPesan])
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // EFFECTS
-  // ═══════════════════════════════════════════════════════════════════════════
-
   useEffect(() => {
     fetch('/api/message-library?kategori=login_ui,otp_ui')
       .then(r => r.json())
@@ -139,10 +136,6 @@ export function useLoginFlow(): LoginFlowState {
     initConfigDanGPS()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // INTERNAL FUNCTIONS
-  // ═══════════════════════════════════════════════════════════════════════════
 
   async function initConfigDanGPS() {
     let gpsTimeoutMs = 10_000, gpsCacheTtlMs = 30 * 60_000
@@ -175,7 +168,6 @@ export function useLoginFlow(): LoginFlowState {
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setErrorEmail(m('login_validasi_email_format')); valid = false
     } else setErrorEmail('')
-
     const minPanjang = Number(configLogin['password_min_length'] || '8')
     if (!password) { setErrorPassword(m('login_validasi_password_kosong')); valid = false }
     else if (password.length < minPanjang) {
@@ -185,12 +177,10 @@ export function useLoginFlow(): LoginFlowState {
     return valid
   }
 
-  // FIX T-059b S#178: compare ke boolean string 'true'/'false' (bukan English 'required')
-  // 'true'  = GPS wajib diaktifkan saat login
-  // 'false' = GPS opsional, user bebas memilih — system tidak memaksa
+  // PRE-FIX: gpsMode compare ke 'required' (English) — SALAH
   async function pastikanGPS(): Promise<boolean> {
-    const gpsMode = configLogin['gps_mode'] ?? 'true'
-    if (gpsRef.current || gpsMode !== 'true') return true
+    const gpsMode = configLogin['gps_mode'] ?? 'required'
+    if (gpsRef.current || gpsMode !== 'required') return true
     try {
       const timeoutMs  = Number(configLogin['gps_timeout_seconds']   || '10') * 1000
       const cacheTtlMs = Number(configLogin['gps_cache_ttl_minutes'] || '30') * 60_000
@@ -231,7 +221,6 @@ export function useLoginFlow(): LoginFlowState {
         return true
       }
     } catch (err) { console.error('[login] lock-account gagal:', err) }
-
     const pesanKey = Object.entries(SUPABASE_ERROR_KEYS).find(
       ([key]) => msg.toLowerCase().includes(key.toLowerCase())
     )?.[1] ?? 'login_error_umum'
@@ -240,7 +229,6 @@ export function useLoginFlow(): LoginFlowState {
     return false
   }
 
-  // Dipertahankan untuk fallback flow lama (AdminTenant, Customer)
   async function handleSuperadminLogin(
     authData:    { user: { id: string; email?: string | null }; session: { access_token: string } },
     hadAttempts: boolean,
@@ -258,24 +246,19 @@ export function useLoginFlow(): LoginFlowState {
     try {
       const profile = await fetchLoadUserProfile(uidUser, tid)
       if (!profile.success) { setError(m('login_error_gagal_muat_data')); setTahap('KREDENSIAL'); setIsLoading(false); return }
-
       const vendorStatus    = (profile.status || '').toUpperCase()
       const blockedStatuses = (configLogin['vendor_blocked_statuses'] || 'PENDING,REVIEW')
         .split(',').map((s: string) => s.trim().toUpperCase())
-
       if (claimRole === ROLES.VENDOR && blockedStatuses.includes(vendorStatus)) {
         const supabase = createBrowserSupabaseClient()
         await supabase.auth.signOut()
         setError(m('login_error_akun_belum_aktif')); setTahap('KREDENSIAL'); setIsLoading(false); return
       }
-
       const namaUser    = profile.nama     || ''
       const nomorWAUser = profile.nomor_wa || ''
       let   roles       = profile.role ? [profile.role].filter(Boolean) : []
       if (roles.length === 0 && claimRole) roles = [claimRole]
-
       setNama(namaUser); setNomorWA(nomorWAUser); setDaftarRole(roles)
-
       if (roles.length === 1) {
         setRoleDipilih(roles[0])
         await lanjutSetelahRole(roles[0], tid, uidUser, namaUser, nomorWAUser)
@@ -291,17 +274,8 @@ export function useLoginFlow(): LoginFlowState {
 
   async function lanjutSetelahRole(role: string, tid: string, uidUser: string, namaUser: string, waNumber: string) {
     try {
-      // PERUBAHAN Sesi #168 — T-040: ganti boolean check dengan parseRequireOtpForRole()
-      // Gate client-side: hanya untuk skip API call sepenuhnya jika mode 'disabled'.
-      // Mode 'optional' dan 'required' tetap memanggil API — server gate yang tentukan.
       const otpMode = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', role)
-      if (otpMode === 'disabled') {
-        // SA set role ini 'disabled' → langsung selesaiLogin tanpa panggil API
-        await selesaiLogin()
-      } else {
-        // 'required' atau 'optional' → panggil API; server gate yang cek preferensi optional
-        await kirimOTP(uidUser, tid, role, waNumber, namaUser)
-      }
+      if (otpMode === 'disabled') { await selesaiLogin() } else { await kirimOTP(uidUser, tid, role, waNumber, namaUser) }
     } catch {
       setError(m('login_error_gagal_config')); setTahap('KREDENSIAL'); setIsLoading(false)
     }
@@ -310,58 +284,28 @@ export function useLoginFlow(): LoginFlowState {
   async function kirimOTP(uidUser: string, tid: string, role: string, waNumber: string, namaUser: string) {
     setIsLoading(true); setError('')
     try {
-      // PERUBAHAN Sesi #167 — T-039: pass email (dari state closure) untuk channel email
       const resData = await fetchSendOTP({ uid: uidUser, tenantId: tid, role, nomorWa: waNumber, email, nama: namaUser })
-
-      // PERUBAHAN Sesi #168 — T-040: handle otp_skipped dari server gate
-      // Server gate return {success:true, otp_skipped:true} jika mode='disabled' atau optional+no-pref
       if (resData.otp_skipped) {
         fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'OTP dilewati (mode config SA)', result: 'SUCCESS', gpsKota: gpsRef.current?.kota || '' })
-        await selesaiLogin()
-        return
+        await selesaiLogin(); return
       }
-
       fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: resData.success ? 'OTP berhasil dikirim' : 'OTP gagal dikirim', result: resData.success ? 'SUCCESS' : 'FAILED', gpsKota: gpsRef.current?.kota || '' })
       setMaxOtpPercobaan(resData.otp_max_attempts ?? 3)
       otpTimer.mulaiTimer(resData.resend_cooldown_seconds ?? 60)
       setOtpInput(''); setOtpPercobaan(0); setTahap('OTP')
-    } catch (err) {
-      console.error('[kirimOTP] error:', err)
-      setError(m('otp_error_verifikasi_gagal'))
-    } finally { setIsLoading(false) }
+    } catch (err) { console.error('[kirimOTP] error:', err); setError(m('otp_error_verifikasi_gagal')) }
+    finally { setIsLoading(false) }
   }
 
   async function selesaiLogin() {
     setIsLoading(true); setTahap('SELESAI')
     try {
       const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || String(SESSION_DEFAULT_TIMEOUT_MINUTES))
-
-      // OPTIMASI Sesi #076 — Temuan 1: eliminasi blocking ~172ms sebelum redirect
-      // Sebelumnya: await Promise.all([fetchSessionLog, fetchUserPresence]) → blocking round-trip
-      // Sekarang:
-      //   1. Generate sessionId di client (crypto.randomUUID — tidak perlu tunggu server)
-      //   2. aturCookieSession dulu — cookie harus set sebelum redirect
-      //   3. fetchSessionLog + fetchUserPresence fire-and-forget — tidak blocking
-      //   4. kirimActivityLoginBerhasil dengan sessionId yang sama
-      //   5. router.push LANGSUNG tanpa tunggu apapun
-      // Saving: ~172ms per login Vendor (post-OTP), ~172ms untuk role lain
       const sessionId = crypto.randomUUID()
-
       aturCookieSession({ roleDipilih, tenantId, gpsKota: gpsRef.current?.kota ?? null, sessionTimeoutMinutes })
-
-      // Fire-and-forget — tidak blocking redirect
-      fetchSessionLog({
-        uid, tenantId: tenantId || null, role: roleDipilih,
-        gpsKota: gpsRef.current?.kota ?? '', sessionId,
-      }).catch(err => console.error('[selesaiLogin] session-log gagal:', err))
-
-      fetchUserPresence({
-        uid, tenantId: tenantId || null, nama, role: roleDipilih,
-        currentPage: '/login', currentPageLabel: 'Halaman Login',
-      }).catch(err => console.error('[selesaiLogin] user-presence gagal:', err))
-
+      fetchSessionLog({ uid, tenantId: tenantId || null, role: roleDipilih, gpsKota: gpsRef.current?.kota ?? '', sessionId }).catch(err => console.error('[selesaiLogin] session-log gagal:', err))
+      fetchUserPresence({ uid, tenantId: tenantId || null, nama, role: roleDipilih, currentPage: '/login', currentPageLabel: 'Halaman Login' }).catch(err => console.error('[selesaiLogin] user-presence gagal:', err))
       kirimActivityLoginBerhasil(uid, tenantId, nama, roleDipilih, sessionId, gpsRef.current?.kota ?? null)
-
       router.push(hitungTujuanRedirect(roleDipilih, redirectTo))
     } catch {
       setError(m('login_error_gagal_selesaikan')); setTahap('KREDENSIAL'); setIsLoading(false)
@@ -375,25 +319,13 @@ export function useLoginFlow(): LoginFlowState {
     const claims        = decodeJwtPayload(authData.session.access_token)
     const claimRole     = claims['app_role']  as string || ''
     const claimTenantId = claims['tenant_id'] as string || ''
-
-    if (claimRole === ROLES.SUPERADMIN) {
-      await handleSuperadminLogin(authData, hadAttempts); return
-    }
-
-    if (!claimTenantId) {
-      setError(m('login_error_config_belum_lengkap')); setIsLoading(false); return
-    }
-
+    if (claimRole === ROLES.SUPERADMIN) { await handleSuperadminLogin(authData, hadAttempts); return }
+    if (!claimTenantId) { setError(m('login_error_config_belum_lengkap')); setIsLoading(false); return }
     setUid(authData.user.id); setUserEmail(authData.user.email || email); setTenantId(claimTenantId)
     if (hadAttempts) fetchUnlockAccount({ uid: authData.user.id, tenantId: claimTenantId, method: 'auto' })
-
     setTahap('LOADING')
     const dataSesi = await fetchCheckSession({ uid: authData.user.id, tenantId: claimTenantId, role: claimRole })
-
-    if (dataSesi.blocked) {
-      setSesiParalel(dataSesi.sessionData || null); setTahap('SESI_PARALEL'); setIsLoading(false); return
-    }
-
+    if (dataSesi.blocked) { setSesiParalel(dataSesi.sessionData || null); setTahap('SESI_PARALEL'); setIsLoading(false); return }
     await muatDataUser(authData.user.id, claimTenantId, claimRole)
   }
 
@@ -409,68 +341,28 @@ export function useLoginFlow(): LoginFlowState {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PUBLIC HANDLERS
-  // ═══════════════════════════════════════════════════════════════════════════
-
   async function handleLogin() {
     if (!validasiForm()) return
     setIsLoading(true); setError('')
     if (!(await pastikanGPS())) { setIsLoading(false); return }
-
-    // ─── REFACTOR Sesi #068: 1 unified action — 1x signInWithPassword untuk semua role ──
-    // Sebelumnya: SA action → Vendor action → flow lama (3 sequential, 2-3x signIn)
-    // Sekarang: 1 action, 1 signIn, role dibaca dari JWT, parallel DB calls per role
     try {
-      const result = await loginUnifiedAction({
-        email, password,
-        device:  typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
-        gpsKota: gpsRef.current?.kota ?? '',
-        redirectTo,
-      })
-
-      // SA, AdminTenant, Vendor, Customer: handle per skenario
+      const result = await loginUnifiedAction({ email, password, device: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown', gpsKota: gpsRef.current?.kota ?? '', redirectTo })
       if (result.ok && result.redirectTo && result.uid) {
-        const roleFromResult = result.tenantId === undefined ? ROLES.SUPERADMIN
-          : result.nomorWa !== undefined ? ROLES.VENDOR : ROLES.ADMIN_TENANT
-
-        // Vendor: perlu OTP sebelum redirect
+        const roleFromResult = result.tenantId === undefined ? ROLES.SUPERADMIN : result.nomorWa !== undefined ? ROLES.VENDOR : ROLES.ADMIN_TENANT
         if (roleFromResult === ROLES.VENDOR && result.nama) {
-          const tid = result.tenantId ?? ''
-          const wa  = result.nomorWa  ?? ''
-          setUid(result.uid); setNama(result.nama)
-          setTenantId(tid); setNomorWA(wa)
-          setRoleDipilih(ROLES.VENDOR); setUserEmail(email)
-          // PERUBAHAN Sesi #168 — T-040: ganti boolean check dengan parseRequireOtpForRole()
-          // Gate client-side untuk Vendor di unified action flow.
+          const tid = result.tenantId ?? ''; const wa = result.nomorWa ?? ''
+          setUid(result.uid); setNama(result.nama); setTenantId(tid); setNomorWA(wa); setRoleDipilih(ROLES.VENDOR); setUserEmail(email)
           const otpMode = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', ROLES.VENDOR)
-          if (otpMode === 'disabled') {
-            await selesaiLogin()
-          } else {
-            await kirimOTP(result.uid, tid, ROLES.VENDOR, wa, result.nama)
-          }
+          if (otpMode === 'disabled') { await selesaiLogin() } else { await kirimOTP(result.uid, tid, ROLES.VENDOR, wa, result.nama) }
           return
         }
-
-        // SA + AdminTenant + Customer: redirect langsung
         router.push(result.redirectTo); return
       }
-
-      // Error dari unified action
-      if (!result.ok && result.errorKey) {
-        setError(m(result.errorKey, result.errorVars)); setIsLoading(false); return
-      }
+      if (!result.ok && result.errorKey) { setError(m(result.errorKey, result.errorVars)); setIsLoading(false); return }
     } catch (err) {
       console.error('[handleLogin] unified action error — koneksi gagal:', err)
-      // PERBAIKAN Sesi #076 — Temuan 2: cegah double signInWithPassword
-      // Sebelumnya: catch jatuh ke runFlowLama() → memanggil signInWithPassword kedua kali dari client
-      // Sekarang: tampilkan error koneksi, tidak fallback ke flow lama
-      setError(m('login_error_koneksi_gagal'))
-      setIsLoading(false)
-      return
+      setError(m('login_error_koneksi_gagal')); setIsLoading(false); return
     }
-
-    // ─── Fallback: flow lama untuk Customer atau role tidak dikenal ──────────
     await runFlowLama()
   }
 
@@ -481,14 +373,11 @@ export function useLoginFlow(): LoginFlowState {
       const data = await fetchVerifyOTP({ uid, tenantId, inputCode: otpInput })
       if (data.success) {
         fetchActivityLog({ uid, tenantId, nama, role: roleDipilih, sessionId: '', actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'Verifikasi OTP berhasil', result: 'SUCCESS', gpsKota: gpsRef.current?.kota || '' })
-        // Sesi #062: Biometric dihapus dari login flow → langsung selesaiLogin()
         await selesaiLogin()
       } else if (data.result === 'EXPIRED') {
         setError(m('otp_error_kadaluarsa')); setIsLoading(false)
       } else {
-        const baru = otpPercobaan + 1
-        const sisa = maxOtpPercobaan - baru
-        setOtpPercobaan(baru)
+        const baru = otpPercobaan + 1; const sisa = maxOtpPercobaan - baru; setOtpPercobaan(baru)
         setError(sisa <= 0 ? m('otp_error_batas_habis') : m('otp_error_salah', { sisa_percobaan: String(sisa) }))
         setIsLoading(false)
       }
@@ -501,18 +390,12 @@ export function useLoginFlow(): LoginFlowState {
   function togglePassword() { setTampilPassword(prev => !prev) }
 
   return {
-    tahap,
-    email, setEmail, password, setPassword, tampilPassword,
+    tahap, email, setEmail, password, setPassword, tampilPassword,
     errorEmail, setErrorEmail, errorPassword, setErrorPassword,
-    isLoading, error, setError,
-    gpsKota,
-    akunDikunci, waktuKunci,
-    sesiParalel,
-    daftarRole, roleDipilih, setRoleDipilih,
-    otpInput, setOtpInput, otpPercobaan, maxOtpPercobaan,
-    hitunganMundur: otpTimer.hitunganMundur,
+    isLoading, error, setError, gpsKota, akunDikunci, waktuKunci, sesiParalel,
+    daftarRole, roleDipilih, setRoleDipilih, otpInput, setOtpInput,
+    otpPercobaan, maxOtpPercobaan, hitunganMundur: otpTimer.hitunganMundur,
     handleLogin, handleVerifikasiOTP, handleKirimUlangOTP,
-    handlePilihRole, handleKembaliDariSesiParalel,
-    togglePassword, m,
+    handlePilihRole, handleKembaliDariSesiParalel, togglePassword, m,
   }
 }
