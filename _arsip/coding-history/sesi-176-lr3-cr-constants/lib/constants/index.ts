@@ -65,8 +65,3 @@ export type { PageMeta } from './page-meta.constant'
 // ─── Routes — peta dashboard per role (satu-satunya sumber kebenaran) ────────
 // Dipakai oleh middleware.ts (Edge Runtime) + lib/auth.ts + login hooks
 export { ROLE_TO_DASHBOARD } from './routes.constant'
-
-// ─── Session — nama-nama cookie session (satu-satunya sumber kebenaran) ──────
-// Dipakai oleh lib/auth.ts (performLogout DEPRECATED) + app/auth/logout-action.ts (AKTIF)
-export { SESSION_COOKIE_NAMES } from './session.constant'
-export type { SessionCookieName } from './session.constant'

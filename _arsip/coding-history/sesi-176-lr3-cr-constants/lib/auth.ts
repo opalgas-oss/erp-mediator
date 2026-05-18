@@ -11,11 +11,8 @@
 //          Ganti magic number 8 * 3600 di setSessionCookies dengan konstanta ini
 // Update: Sesi #174 — SL-D007: hapus ROLE_DASHBOARD lokal → re-export ROLE_TO_DASHBOARD
 //          dari lib/constants/routes.constant (single source of truth)
-// Update: Sesi #176 — LR-3 Opsi B: hapus SESSION_COOKIES lokal → import SESSION_COOKIE_NAMES
-//          dari lib/constants/session.constant (single source of truth, DRY fix)
 
 import { createBrowserSupabaseClient } from '@/lib/supabase-client'
-import { SESSION_COOKIE_NAMES }        from '@/lib/constants/session.constant'
 
 // ─── Re-export ROLE_DASHBOARD (backward compat) ───────────────────────────────
 // loginSessionHelpers.ts masih import ROLE_DASHBOARD dari '@/lib/auth' — tetap bekerja.
@@ -27,6 +24,21 @@ export { ROLE_TO_DASHBOARD as ROLE_DASHBOARD } from '@/lib/constants/routes.cons
 // Nilai aktual SELALU dibaca dari security_login.session_timeout_minutes di DB.
 // WAJIB sinkron dengan nilai default di config_registry (keputusan Sesi #162).
 export const SESSION_DEFAULT_TIMEOUT_MINUTES = 480  // 8 jam — emergency fallback only
+
+// ─── Konstanta sesi ───────────────────────────────────────────────────────────
+
+// Semua cookie yang harus dihapus saat logout
+// Daftar ini satu-satunya sumber kebenaran — tidak boleh ada yang hilang
+const SESSION_COOKIES = [
+  'user_role',
+  'tenant_id',
+  'session_timeout_minutes',
+  'session_last_active',
+  'gps_kota',
+  'session_login_at',
+  'session_role',
+  'session_tenant',
+]
 
 // ─── Simpan cookie sesi setelah login ────────────────────────────────────────
 // maxAgeSeconds dibaca dari config_registry.session_timeout_minutes — tidak hardcode
@@ -67,8 +79,7 @@ export async function performLogout(): Promise<void> {
   await supabase.auth.signOut()
 
   // Langkah 3: hapus semua session cookie
-  // Single source of truth: SESSION_COOKIE_NAMES dari lib/constants/session.constant
-  SESSION_COOKIE_NAMES.forEach(name => {
+  SESSION_COOKIES.forEach(name => {
     document.cookie = `${name}=; path=/; max-age=0; SameSite=Strict`
   })
 

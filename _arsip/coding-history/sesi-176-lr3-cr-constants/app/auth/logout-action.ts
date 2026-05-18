@@ -17,19 +17,28 @@
 //
 // DIPAKAI OLEH: DashboardHeader.tsx (SA), vendor/page.tsx (Vendor)
 //   Semua role pakai 1 fungsi — tidak ada duplikasi (ATURAN 11).
-//
-// Update: Sesi #176 — LR-3 Opsi B: hapus COOKIES_LOGOUT lokal → import SESSION_COOKIE_NAMES
-//          dari lib/constants/session.constant (single source of truth, DRY fix)
 
-import { redirect }              from 'next/navigation'
-import { after }                 from 'next/server'
-import { buatSupabaseSSR }       from '@/app/login/login-action-helpers'
-import { markLogout }            from '@/lib/services/session.service'
-import { SESSION_COOKIE_NAMES }  from '@/lib/constants/session.constant'
+import { redirect }        from 'next/navigation'
+import { after }           from 'next/server'
+import { buatSupabaseSSR } from '@/app/login/login-action-helpers'
+import { markLogout }      from '@/lib/services/session.service'
 import {
   setUserOffline,
   writeActivityLog,
 } from '@/lib/services/activity.service'
+
+// Cookie yang dihapus — sinkron dengan SESSION_COOKIES di lib/auth.ts
+// Jika SESSION_COOKIES di lib/auth.ts berubah, update juga di sini.
+const COOKIES_LOGOUT = [
+  'session_role',
+  'session_tenant',
+  'gps_kota',
+  'session_login_at',
+  'user_role',
+  'tenant_id',
+  'session_timeout_minutes',
+  'session_last_active',
+] as const
 
 export async function logoutAction(): Promise<void> {
   const { supabase, cookieStore } = await buatSupabaseSSR()
@@ -47,8 +56,7 @@ export async function logoutAction(): Promise<void> {
   await supabase.auth.signOut()
 
   // Hapus semua session cookies server-side
-  // Single source of truth: SESSION_COOKIE_NAMES dari lib/constants/session.constant
-  SESSION_COOKIE_NAMES.forEach(name => {
+  COOKIES_LOGOUT.forEach(name => {
     try { cookieStore.delete(name) } catch { /* abaikan jika cookie tidak ada */ }
   })
 
