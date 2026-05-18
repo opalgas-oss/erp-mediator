@@ -8,7 +8,6 @@
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.4
 
 import 'server-only'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
 import {
   findByTenantId,
   findById,
@@ -18,6 +17,8 @@ import {
   aktivasiKembali,
   revokeViaSP,
   initHandoverViaSP,
+  tcaRepo_insertCoverageAreas,
+  tcaRepo_updateOverrideKomisi,
 } from '@/lib/repositories/tenant-category-assignment.repository'
 import type {
   AssignmentTabData,
@@ -70,20 +71,9 @@ export async function TCAService_assign(
     throw new Error(result.error ?? 'Gagal assign kategori')
   }
 
-  // Insert ke junction table assignment_coverage_areas (S#143)
+  // Insert ke junction table assignment_coverage_areas (PV-07 S#179: dipindah ke repo layer)
   if (payload.coverage_area_entries && payload.coverage_area_entries.length > 0) {
-    const supabase = await createServerSupabaseClient()
-    const rows = payload.coverage_area_entries.map(entry => ({
-      assignment_id: result.assignmentId!,
-      province_id:   entry.province_id,
-      city_id:       entry.city_id ?? null,
-    }))
-    const { error: eCov } = await supabase
-      .from('assignment_coverage_areas')
-      .insert(rows)
-    if (eCov) {
-      console.error('[TCAService_assign] coverage insert error:', eCov.message)
-    }
+    await tcaRepo_insertCoverageAreas(result.assignmentId!, payload.coverage_area_entries)
   }
 
   return { assignment_id: result.assignmentId! }
@@ -214,18 +204,6 @@ export async function TCAService_updateOverrideKomisi(
 ): Promise<void> {
   validateCommissionOverride(payload.commission_override)
 
-  const db = createServerSupabaseClient()
-  const { error } = await db
-    .from('tenant_category_assignments')
-    .update({
-      commission_override: payload.commission_override ?? null,
-      coverage_areas:      payload.coverage_areas ?? undefined,
-      sla_minutes:         payload.sla_minutes    ?? undefined,
-      updated_by:          updatedBy,
-      updated_at:          new Date().toISOString(),
-    })
-    .eq('id', assignmentId)
-    .is('deleted_at', null)
-
-  if (error) throw new Error('Gagal mengupdate override komisi')
+  const ok = await tcaRepo_updateOverrideKomisi(assignmentId, payload, updatedBy)  // PV-08 S#179: dipindah ke repo layer
+  if (!ok) throw new Error('Gagal mengupdate override komisi')
 }

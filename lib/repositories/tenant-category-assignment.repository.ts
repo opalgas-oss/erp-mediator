@@ -272,7 +272,66 @@ export async function initHandoverViaSP(
   return { ok: true }
 }
 
-// ─── FUNGSI: categoryAssignmentRepo_countActiveByCategory ─────────────────────
+// --- FUNGSI: tcaRepo_insertCoverageAreas -----------------------------------
+/**
+ * Insert baris coverage area untuk satu assignment.
+ * Dibuat: Sesi #179 - PV-07: pindah dari TCAService_assign ke repository layer.
+ * Dipanggil oleh: TCAService_assign (tenant-category-assignment.service.ts)
+ * @param assignmentId - UUID assignment yang baru dibuat
+ * @param entries      - Array province+city yang di-cover
+ */
+export async function tcaRepo_insertCoverageAreas(
+  assignmentId: string,
+  entries: Array<{ province_id: string; city_id?: string | null }>
+): Promise<void> {
+  if (!entries.length) return
+  const db  = createServerSupabaseClient()
+  const rows = entries.map(entry => ({
+    assignment_id: assignmentId,
+    province_id:   entry.province_id,
+    city_id:       entry.city_id ?? null,
+  }))
+  const { error } = await db
+    .from('assignment_coverage_areas')
+    .insert(rows)
+  if (error) {
+    console.error('[tcaRepo_insertCoverageAreas] insert error:', error.message)
+  }
+}
+
+// --- FUNGSI: tcaRepo_updateOverrideKomisi ----------------------------------
+/**
+ * Update override komisi, coverage areas, dan SLA untuk satu assignment.
+ * Dibuat: Sesi #179 - PV-08: pindah dari TCAService_updateOverrideKomisi ke repository layer.
+ * Dipanggil oleh: TCAService_updateOverrideKomisi (tenant-category-assignment.service.ts)
+ * @returns true jika berhasil, false jika error
+ */
+export async function tcaRepo_updateOverrideKomisi(
+  assignmentId: string,
+  payload: {
+    commission_override?: number | null
+    coverage_areas?:      string[] | null
+    sla_minutes?:         number | null
+  },
+  updatedBy: string
+): Promise<boolean> {
+  const db = createServerSupabaseClient()
+  const { error } = await db
+    .from('tenant_category_assignments')
+    .update({
+      commission_override: payload.commission_override ?? null,
+      coverage_areas:      payload.coverage_areas      ?? undefined,
+      sla_minutes:         payload.sla_minutes         ?? undefined,
+      updated_by:          updatedBy,
+      updated_at:          new Date().toISOString(),
+    })
+    .eq('id', assignmentId)
+    .is('deleted_at', null)
+
+  return !error
+}
+
+// --- FUNGSI: categoryAssignmentRepo_countActiveByCategory ------------------────
 /**
  * Hitung jumlah assignment aktif untuk satu kategori.
  * Status yang dihitung: active, suspended, pending_handover.
