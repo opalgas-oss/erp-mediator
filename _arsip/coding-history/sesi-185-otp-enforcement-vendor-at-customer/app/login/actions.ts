@@ -1,3 +1,9 @@
+// ARSIP S#185 — sebelum fix OTP enforcement Vendor/AdminTenant/Customer
+// Bug: setCookiesLoginServer dipanggil SEBELUM OTP diverifikasi untuk Vendor/AT/Customer
+// Bug tambahan Vendor sub-path 2: setCookies dalam Promise.all → sebelum cek vendor status
+// File asli: app/login/actions.ts
+// Dibuat: 19 Mei 2026
+// ─────────────────────────────────────────────────────────────────────────────
 // app/login/actions.ts
 // Server Actions login — Unified action untuk semua role.
 //
@@ -10,10 +16,6 @@
 //   Tanpa ini: Supabase JWT masih valid → middleware izinkan masuk via getClaims()/getUser()
 //   Dengan ini: middleware cek otp_pending dulu → redirect /login jika cookie ada
 //   selesaiLogin() menghapus otp_pending setelah OTP diverifikasi
-// FIX S#185 — Vendor/AdminTenant/Customer OTP enforcement server-side
-//   Sebelumnya: setCookiesLoginServer dipanggil SEBELUM OTP diverifikasi (security gap)
-//   Sesudah: cek otpMode dulu → jika required, set otp_pending + return {uid,role,nomorWa} tanpa cookies
-//   Vendor sub-path 2 juga difix: setCookies tidak lagi dalam Promise.all (bug security tersembunyi)
 // PENTING: buatSupabaseSSR() → 1x cookies() → tidak ada regresi double-cookies +700ms
 
 'use server'
@@ -117,21 +119,15 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     const otpModeSA     = parseRequireOtpForRole(requireOtpRaw, 'super_admin')
 
     if (otpModeSA === 'required') {
-      // FIX S#183d+183e — SA OTP=required:
-      // TIDAK set session cookie (agar selesaiLogin menjadi satu-satunya yang set cookie)
-      // Set otp_pending=1 → middleware Guard 5 akan redirect ke /login saat refresh
-      // Supabase JWT masih valid (diperlukan untuk send-otp + verify-otp API)
-      // selesaiLogin() akan hapus otp_pending + set session cookie setelah OTP diverifikasi
       cookieStore.set('otp_pending', '1', {
-        httpOnly: false,  // harus bisa dihapus oleh document.cookie di selesaiLogin client
+        httpOnly: false,
         path: '/',
-        maxAge: 600,     // 10 menit — cukup untuk seluruh OTP flow
+        maxAge: 600,
         sameSite: 'strict',
       })
       return { ok: true, nama, uid, role: ROLES.SUPERADMIN }
     }
 
-    // OTP disabled → behavior lama: set session cookie + fire tasks + redirect langsung
     await setCookiesLoginServer({ role: ROLES.SUPERADMIN, tenantId: '', gpsKota, sessionTimeoutMinutes }, cookieStore)
     jalankanAfterTasksLogin(
       { uid, tenantId: null, nama, role: ROLES.SUPERADMIN, device, gpsKota, hadAttempts: lock.hadAttempts, email },
@@ -155,18 +151,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
         try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
         return { ok: false, errorKey: 'login_error_akun_belum_aktif' }
       }
-      // FIX S#185 — Vendor OTP enforcement server-side (sama dengan pola SA S#183d+183e)
-      // Sebelumnya: setCookies dulu → cookie terset sebelum OTP diverifikasi
-      // Sesudah: cek otpMode dulu → jika required, set otp_pending + return tanpa cookies
-      const otpModeVendor1 = parseRequireOtpForRole(
-        sessionCfg[getRequireOtpConfigKey(ROLES.VENDOR)] ?? 'required', ROLES.VENDOR
-      )
-      if (otpModeVendor1 === 'required') {
-        cookieStore.set('otp_pending', '1', {
-          httpOnly: false, path: '/', maxAge: 600, sameSite: 'strict',
-        })
-        return { ok: true, nama, uid, tenantId: claimTenantId, nomorWa: claims.nomorWa, role: ROLES.VENDOR }
-      }
       await setCookiesLoginServer({ role: ROLES.VENDOR, tenantId: claimTenantId, gpsKota, sessionTimeoutMinutes }, cookieStore)
       jalankanAfterTasksLogin(
         { uid, tenantId: claimTenantId, nama, role: ROLES.VENDOR, device, gpsKota, hadAttempts: lock.hadAttempts, email },
@@ -176,28 +160,18 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     }
 
     const adminDb = createServerSupabaseClient()
-    // FIX S#185 — Bug security: sebelumnya setCookiesLoginServer dipanggil dalam Promise.all
-    // bersamaan fetch profile → cookie terset SEBELUM vendor status di-cek.
-    // Fix: fetch dulu, cek status, baru setCookies jika diizinkan.
-    const { data: profileRow } = await adminDb.from('user_profiles')
-      .select('status, nomor_wa')
-      .eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle()
+    const [profileResult] = await Promise.all([
+      adminDb.from('user_profiles')
+        .select('status, nomor_wa')
+        .eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle(),
+      setCookiesLoginServer({ role: ROLES.VENDOR, tenantId: claimTenantId, gpsKota, sessionTimeoutMinutes }, cookieStore),
+    ])
+    const profileRow = profileResult.data
     if ((profileRow?.status ?? '').toUpperCase() !== 'APPROVED') {
       try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
       return { ok: false, errorKey: 'login_error_akun_belum_aktif' }
     }
     const nomorWa = profileRow?.nomor_wa ?? ''
-    // FIX S#185 — Vendor OTP enforcement server-side
-    const otpModeVendor2 = parseRequireOtpForRole(
-      sessionCfg[getRequireOtpConfigKey(ROLES.VENDOR)] ?? 'required', ROLES.VENDOR
-    )
-    if (otpModeVendor2 === 'required') {
-      cookieStore.set('otp_pending', '1', {
-        httpOnly: false, path: '/', maxAge: 600, sameSite: 'strict',
-      })
-      return { ok: true, nama, uid, tenantId: claimTenantId, nomorWa, role: ROLES.VENDOR }
-    }
-    await setCookiesLoginServer({ role: ROLES.VENDOR, tenantId: claimTenantId, gpsKota, sessionTimeoutMinutes }, cookieStore)
     jalankanAfterTasksLogin(
       { uid, tenantId: claimTenantId, nama, role: ROLES.VENDOR, device, gpsKota, hadAttempts: lock.hadAttempts, email },
       sessionId
@@ -208,20 +182,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
   // ── ADMIN TENANT ──────────────────────────────────────────────────────────
   if (role === ROLES.ADMIN_TENANT) {
     const nama = claims.nama
-    // FIX S#185 — AdminTenant OTP enforcement server-side
-    // Fetch nomor_wa untuk dikirim ke client jika OTP=required (lazy: hanya jika OTP diperlukan)
-    const otpModeAT = parseRequireOtpForRole(
-      sessionCfg[getRequireOtpConfigKey(ROLES.ADMIN_TENANT)] ?? 'required', ROLES.ADMIN_TENANT
-    )
-    if (otpModeAT === 'required') {
-      const adminDbAT = createServerSupabaseClient()
-      const { data: atProfile } = await adminDbAT.from('user_profiles')
-        .select('nomor_wa').eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle()
-      cookieStore.set('otp_pending', '1', {
-        httpOnly: false, path: '/', maxAge: 600, sameSite: 'strict',
-      })
-      return { ok: true, nama, uid, tenantId: claimTenantId, nomorWa: atProfile?.nomor_wa ?? '', role: ROLES.ADMIN_TENANT }
-    }
     await setCookiesLoginServer({ role: ROLES.ADMIN_TENANT, tenantId: claimTenantId, gpsKota, sessionTimeoutMinutes }, cookieStore)
     jalankanAfterTasksLogin(
       { uid, tenantId: claimTenantId, nama, role: ROLES.ADMIN_TENANT, device, gpsKota, hadAttempts: lock.hadAttempts, email },
@@ -233,19 +193,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
   // ── CUSTOMER ──────────────────────────────────────────────────────────────
   if (role === ROLES.CUSTOMER) {
     const nama = claims.nama
-    // FIX S#185 — Customer OTP enforcement server-side
-    const otpModeCust = parseRequireOtpForRole(
-      sessionCfg[getRequireOtpConfigKey(ROLES.CUSTOMER)] ?? 'required', ROLES.CUSTOMER
-    )
-    if (otpModeCust === 'required') {
-      const adminDbCust = createServerSupabaseClient()
-      const { data: custProfile } = await adminDbCust.from('user_profiles')
-        .select('nomor_wa').eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle()
-      cookieStore.set('otp_pending', '1', {
-        httpOnly: false, path: '/', maxAge: 600, sameSite: 'strict',
-      })
-      return { ok: true, nama, uid, tenantId: claimTenantId, nomorWa: custProfile?.nomor_wa ?? '', role: ROLES.CUSTOMER }
-    }
     await setCookiesLoginServer({ role: ROLES.CUSTOMER, tenantId: claimTenantId, gpsKota, sessionTimeoutMinutes }, cookieStore)
     jalankanAfterTasksLogin(
       { uid, tenantId: claimTenantId, nama, role: ROLES.CUSTOMER, device, gpsKota, hadAttempts: lock.hadAttempts, email },
