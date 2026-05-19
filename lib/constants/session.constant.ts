@@ -25,6 +25,7 @@
  * Cookie ini di-set oleh:
  *   - setCookiesLoginServer()  → lib/app/login/login-action-helpers.ts (server-side)
  *   - setSessionCookies()      → lib/auth.ts (client-side, DEPRECATED)
+ *   - loginUnifiedAction()     → app/login/actions.ts (otp_pending untuk OTP=required flow)
  */
 export const SESSION_COOKIE_NAMES = [
   'user_role',
@@ -35,6 +36,7 @@ export const SESSION_COOKIE_NAMES = [
   'session_login_at',
   'session_role',
   'session_tenant',
+  'otp_pending',  // FIX S#185: hapus saat logout agar tidak block login berikutnya
 ] as const
 
 export type SessionCookieName = typeof SESSION_COOKIE_NAMES[number]
