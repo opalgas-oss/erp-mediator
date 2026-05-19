@@ -1,27 +1,16 @@
 // middleware.ts — letaknya di ROOT folder, sejajar dengan folder app/
 // Berjalan di Edge Runtime — tidak boleh import library Node.js
 //
-// OPTIMASI Sesi #075 — getClaims() fast path:
-//   Guard 5 sekarang pakai getClaims() DULU sebelum getUser().
-//   getClaims() memverifikasi JWT lokal via cached JWKS (tidak ada network call ke Supabase Auth).
-//   Jika JWT valid: ~1ms vs getUser() ~150-300ms — hemat ~150-300ms per setiap request dashboard.
-//   Jika JWT expired/invalid: fallback otomatis ke getUser() untuk refresh.
-//   SYARAT aktif: Supabase Dashboard → Authentication → JWT Signing Key → RS256
-//   Sebelum RS256 diaktifkan: getClaims() return error → fallback ke getUser() (backward compat).
-//
-// PERUBAHAN Sesi #064 (fix double getUser):
-//   Guard 5: setelah verify berhasil, set x-user-* di request headers
-//   verifyJWT() di layout membaca header → skip getUser() ke-2
-//
-// PERUBAHAN dari versi Firebase:
-//   - Ganti decode base64 JWT → full crypto verify via Supabase SSR
-//   - Role dibaca dari user.app_metadata.app_role (diisi custom_access_token_hook)
-//
-// FIX Sesi #157 — B1-04 (T-038): tambah vendor blocked status guard.
-//   vendorStatus diekstrak dari JWT tapi tidak pernah dicek terhadap VENDOR_LOGIN_ALLOWED.
-//   Vendor PENDING/REVIEW bisa akses /dashboard/vendor jika JWT masih valid.
-//   Guard ditambahkan setelah userRole+userId ditetapkan, sebelum header propagation.
-//   Gunakan VENDOR_LOGIN_ALLOWED dari lib/constants (DRY — sudah ada sejak S#049).
+// OPTIMASI Sesi #075 — getClaims() fast path
+// PERUBAHAN Sesi #064 — fix double getUser
+// FIX Sesi #157 — B1-04 (T-038): vendor blocked status guard
+// FIX S#183e — otp_pending guard (2 tempat):
+//   1. Guard 1B (/login): jika otp_pending ada → stay di /login (bukan redirect dashboard)
+//      Mencegah redirect loop: /login→dashboard→/login→...
+//   2. Guard 5 (/dashboard): jika otp_pending ada → redirect /login
+//      Mencegah SA bypass OTP via Supabase JWT yang masih valid (set oleh signInWithPassword)
+//   loginUnifiedAction set otp_pending=1 untuk SA OTP=required
+//   selesaiLogin() hapus otp_pending (document.cookie) setelah OTP diverifikasi
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse }        from 'next/server'
@@ -51,9 +40,6 @@ const DASHBOARD_ROLE_MAP: Record<string, string> = {
   '/dashboard/superadmin': ROLES.SUPERADMIN,
 }
 
-// ROLE_TO_DASHBOARD: diimport dari @/lib/constants/routes.constant via @/lib/constants
-// (SL-D007 Sesi #174 — single source of truth, menggantikan ROLE_REDIRECT lokal)
-
 // Tipe membership dari JWT baru (Edge Function v7)
 interface JwtMembership {
   tenant_id: string | null
@@ -74,17 +60,9 @@ function extractMembershipsFromPayload(payload: Record<string, unknown>): {
   memberships:  JwtMembership[]
   isSuperAdmin: boolean
 } {
-  // memberships: array [{tenant_id, role, status}] — diinject Edge Function v7
   const raw = payload['memberships']
-  // JUSTIFIKASI: Array.isArray(raw) sudah memverifikasi raw adalah array sebelum cast.
-  // Edge Function v7 selalu inject memberships sebagai array of JwtMembership — shape terjamin.
-  const memberships: JwtMembership[] = Array.isArray(raw)
-    ? (raw as JwtMembership[])
-    : []
-
-  // is_super_admin: boolean flag langsung dari JWT — diinject Edge Function v7
+  const memberships: JwtMembership[] = Array.isArray(raw) ? (raw as JwtMembership[]) : []
   const isSuperAdmin = payload['is_super_admin'] === true
-
   return { memberships, isSuperAdmin }
 }
 
@@ -98,6 +76,13 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
     // Guard 1B -- /login khusus: cek apakah user sudah authenticated
     if (pathname === '/login') {
+      // FIX S#183e: jika otp_pending ada, user SA sedang dalam flow OTP
+      // Jangan redirect ke dashboard — biarkan /login render OTP screen
+      // Tanpa ini: authenticated user di /login → redirect dashboard → otp_pending guard → loop
+      if (request.cookies.get('otp_pending')?.value === '1') {
+        return NextResponse.next()
+      }
+
       let loginResponse = NextResponse.next({ request })
       const supabaseLogin = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -151,6 +136,14 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
     // Guard 5 -- Proteksi route /dashboard
     if (pathname.startsWith('/dashboard')) {
+      // FIX S#183e: otp_pending guard — SA dalam proses OTP belum selesai
+      // loginUnifiedAction set cookie ini untuk SA OTP=required setelah auth berhasil
+      // Supabase JWT masih valid tapi OTP belum diverifikasi → blokir akses dashboard
+      // selesaiLogin() (setelah OTP verified) hapus cookie ini via document.cookie
+      if (request.cookies.get('otp_pending')?.value === '1') {
+        return NextResponse.redirect(new URL('/login', request.url))
+      }
+
       let response = NextResponse.next({ request })
 
       const supabase = createServerClient(
@@ -170,16 +163,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
         }
       )
 
-      // OPTIMASI #075: getClaims() fast path (tidak ada network call)
-      // getClaims() aktif setelah RS256 diaktifkan di Supabase Dashboard.
-      // Sebelum RS256: getClaims() return error fallback ke getUser() (backward compat).
-      //
-      // OPTIMASI #077 (Vendor RSC fix): tambah ekstrak vendor_status dari claims.
-      // Edge Function v5 inject vendor_status sebagai top-level claim.
-      //
-      // UPDATE S#096 (PL-AUTH-26): tambah ekstrak memberships[] + is_super_admin dari JWT baru.
-      // Edge Function v7 inject memberships array + is_super_admin flag.
-      // Flat claims (app_role, tenant_id) tetap dibaca sebagai backward compat fallback.
       let userRole: string | undefined
       let tenantId: string | undefined
       let userId:   string | undefined
@@ -187,7 +170,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       let vendorStatus: string | undefined
       let tokenRefreshNeeded = false
 
-      // Variabel baru S#096 -- memberships array + SuperAdmin flag dari JWT v7
       let memberships:  JwtMembership[] = []
       let isSuperAdmin: boolean         = false
 
@@ -211,22 +193,16 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
           displayName = typeof appMeta['nama']  === 'string' ? appMeta['nama']
                       : typeof umeta['nama']    === 'string' ? umeta['nama']
                       : typeof c['email']       === 'string' ? c['email'] : userId
-          // vendor_status: top-level claim dulu (Edge Function v5+), fallback ke app_metadata
           vendorStatus = typeof c['vendor_status']      === 'string' ? c['vendor_status']
                        : typeof appMeta['vendor_status'] === 'string' ? appMeta['vendor_status'] : undefined
 
-          // JWT baru S#096: memberships array + is_super_admin
           const extracted2 = extractMembershipsFromPayload(c)
           memberships  = extracted2.memberships
           isSuperAdmin = extracted2.isSuperAdmin
 
-          // SuperAdmin override: is_super_admin=true paksa role SUPERADMIN (backward compat routing)
           if (isSuperAdmin) {
             userRole = ROLES.SUPERADMIN
-          }
-          // Jika flat app_role kosong tapi memberships ada pakai memberships[0] sebagai primary
-          // Catatan: akan digantikan Redis Active Context di PL-AUTH-44
-          else if (!userRole && memberships.length > 0) {
+          } else if (!userRole && memberships.length > 0) {
             userRole = memberships[0].role
             if (!tenantId && memberships[0].tenant_id) {
               tenantId = memberships[0].tenant_id
@@ -253,7 +229,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
                      ? user.app_metadata['vendor_status'] : undefined
         tokenRefreshNeeded = true
 
-        // Fallback decode JWT jika app_metadata kosong
         if (!userRole || !vendorStatus) {
           const { data: { session } } = await supabase.auth.getSession()
           if (session?.access_token) {
@@ -262,22 +237,17 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
               if (parts.length === 3) {
                 const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
 
-                // Flat claims lama
                 if (!userRole     && typeof payload['app_role']      === 'string') userRole     = payload['app_role']
                 if (!tenantId     && typeof payload['tenant_id']     === 'string') tenantId     = payload['tenant_id']
                 if (!vendorStatus && typeof payload['vendor_status'] === 'string') vendorStatus = payload['vendor_status']
 
-                // JWT baru S#096: memberships + is_super_admin dari decode fallback
                 const extracted2 = extractMembershipsFromPayload(payload)
                 memberships  = extracted2.memberships
                 isSuperAdmin = extracted2.isSuperAdmin
 
-                // SuperAdmin override dari fallback JWT decode
                 if (isSuperAdmin) {
                   userRole = ROLES.SUPERADMIN
-                }
-                // Fallback role dari memberships[0] jika flat app_role masih kosong
-                else if (!userRole && memberships.length > 0) {
+                } else if (!userRole && memberships.length > 0) {
                   userRole = memberships[0].role
                   if (!tenantId && memberships[0].tenant_id) {
                     tenantId = memberships[0].tenant_id
@@ -293,13 +263,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
         return NextResponse.redirect(new URL('/login', request.url))
       }
 
-      // Guard B1-04: Vendor blocked status check (FIX S#157 T-038)
-      // vendorStatus diekstrak dari JWT di atas (getClaims() fast path atau fallback JWT decode).
-      // Edge Runtime tidak support unstable_cache -- tidak bisa baca vendor_blocked_statuses
-      // dari config_registry dengan caching. Gunakan VENDOR_LOGIN_ALLOWED dari konstanta (DRY).
-      // Konsisten dengan loginUnifiedAction: satu-satunya status yang boleh akses = APPROVED.
-      // Jika vendorStatus tidak ada di JWT (JWT lama, pre-Edge-Fn-v5) -- skip check (izinkan:
-      // vendor sudah APPROVED saat login action dijalankan, JWT belum diperbarui oleh hook).
+      // Guard B1-04: Vendor blocked status check
       if (userRole === ROLES.VENDOR && pathname.startsWith('/dashboard/vendor')) {
         if (vendorStatus && !(VENDOR_LOGIN_ALLOWED as string[]).includes(vendorStatus.toUpperCase())) {
           return NextResponse.redirect(new URL('/pending-approval', request.url))
@@ -313,7 +277,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       requestHeaders.delete('x-tenant-id')
       requestHeaders.delete('x-user-display-name')
       requestHeaders.delete('x-vendor-status')
-      // Header baru S#096
       requestHeaders.delete('x-user-memberships')
       requestHeaders.delete('x-is-super-admin')
 
@@ -321,13 +284,10 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       requestHeaders.set('x-user-role',          userRole)
       requestHeaders.set('x-tenant-id',          tenantId ?? '')
       requestHeaders.set('x-user-display-name',  displayName ?? userId)
-      // x-vendor-status: hanya di-set jika ada di JWT (skip header kalau undefined vendor layout fallback DB)
       if (vendorStatus) {
         requestHeaders.set('x-vendor-status', vendorStatus)
       }
-      // x-user-memberships: JSON string array memberships ('' jika tidak ada) -- S#096
       requestHeaders.set('x-user-memberships', memberships.length > 0 ? JSON.stringify(memberships) : '')
-      // x-is-super-admin: 'true' atau 'false' -- S#096
       requestHeaders.set('x-is-super-admin', String(isSuperAdmin))
 
       const enrichedResponse = NextResponse.next({ request: { headers: requestHeaders } })

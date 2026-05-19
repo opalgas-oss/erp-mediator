@@ -5,10 +5,11 @@
 // OPTIMASI Sesi #076 — Cold start improvement + FIX T-048
 // SPLIT Sesi #074 — actions.ts + actions-legacy.ts + login-session-check.ts
 // FIX S#183a — tambah field `role` ke LoginActionResult
-// FIX S#183d — SA OTP=required: TIDAK set cookie + TIDAK fire tasks di sini
-//   Cookie hanya di-set setelah OTP diverifikasi (selesaiLogin di client)
-//   Mencegah bypass: refresh saat OTP screen → middleware tidak baca cookie → redirect login
-//   Sebelumnya: setCookiesLoginServer dipanggil sebelum OTP → refresh = langsung dashboard (BAHAYA)
+// FIX S#183d — SA OTP=required: TIDAK set session cookie + TIDAK fire tasks
+// FIX S#183e — SA OTP=required: set `otp_pending` cookie → middleware Guard 5 blokir akses dashboard
+//   Tanpa ini: Supabase JWT masih valid → middleware izinkan masuk via getClaims()/getUser()
+//   Dengan ini: middleware cek otp_pending dulu → redirect /login jika cookie ada
+//   selesaiLogin() menghapus otp_pending setelah OTP diverifikasi
 // PENTING: buatSupabaseSSR() → 1x cookies() → tidak ada regresi double-cookies +700ms
 
 'use server'
@@ -39,12 +40,12 @@ export interface LoginActionResult {
   ok:           boolean
   errorKey?:    string
   errorVars?:   Record<string, string>
-  redirectTo?:  string  // undefined = OTP pending (cookie belum di-set)
+  redirectTo?:  string
   nama?:        string
   uid?:         string
   tenantId?:    string
   nomorWa?:     string
-  role?:        string  // FIX S#183a: eksplisit role
+  role?:        string
 }
 
 // ─── Helper: cek lock sebelum proses ─────────────────────────────────────────
@@ -112,15 +113,21 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     const otpModeSA     = parseRequireOtpForRole(requireOtpRaw, 'super_admin')
 
     if (otpModeSA === 'required') {
-      // FIX S#183d — OTP wajib untuk SA:
-      // JANGAN set cookie dan JANGAN fire tasks sekarang.
-      // Cookie hanya di-set SETELAH OTP diverifikasi di client (selesaiLogin).
-      // Tanpa cookie → middleware tidak izinkan akses → refresh = kembali ke login.
-      // redirectTo tidak di-return → client tahu ini pending OTP, bukan redirect langsung.
+      // FIX S#183d+183e — SA OTP=required:
+      // TIDAK set session cookie (agar selesaiLogin menjadi satu-satunya yang set cookie)
+      // Set otp_pending=1 → middleware Guard 5 akan redirect ke /login saat refresh
+      // Supabase JWT masih valid (diperlukan untuk send-otp + verify-otp API)
+      // selesaiLogin() akan hapus otp_pending + set session cookie setelah OTP diverifikasi
+      cookieStore.set('otp_pending', '1', {
+        httpOnly: false,  // harus bisa dihapus oleh document.cookie di selesaiLogin client
+        path: '/',
+        maxAge: 600,     // 10 menit — cukup untuk seluruh OTP flow
+        sameSite: 'strict',
+      })
       return { ok: true, nama, uid, role: ROLES.SUPERADMIN }
     }
 
-    // OTP disabled → behavior lama: set cookie + fire tasks + redirect langsung
+    // OTP disabled → behavior lama: set session cookie + fire tasks + redirect langsung
     await setCookiesLoginServer({ role: ROLES.SUPERADMIN, tenantId: '', gpsKota, sessionTimeoutMinutes }, cookieStore)
     jalankanAfterTasksLogin(
       { uid, tenantId: null, nama, role: ROLES.SUPERADMIN, device, gpsKota, hadAttempts: lock.hadAttempts, email },
