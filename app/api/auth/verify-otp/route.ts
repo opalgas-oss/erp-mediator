@@ -5,6 +5,12 @@
 //
 // ARSITEKTUR:
 //   Browser (useLoginFlow) → POST /api/auth/verify-otp → OTPService → Repository → SP
+//
+// FIX S#183: tenant_id schema diubah dari z.string().min(1) → z.string()
+//   Alasan: SA tidak punya tenantId → tenantId = '' (empty string).
+//   min(1) menolak '' → validasi gagal → return 400 { success: false }
+//   → client tampilkan "Kode OTP salah" meski kode benar.
+//   Konsisten dengan send-otp route yang sudah pakai z.string() (tanpa min).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z }                         from 'zod'
@@ -15,7 +21,7 @@ import { verifyAndConsume }          from '@/lib/services/otp.service'
 
 const RequestSchema = z.object({
   uid:        z.string().min(1, 'uid wajib diisi'),
-  tenant_id:  z.string().min(1, 'tenant_id wajib diisi'),
+  tenant_id:  z.string(),  // FIX S#183: hapus min(1) — SA pakai tenantId='' (empty), konsisten dengan send-otp
   input_code: z.string().length(6, 'Kode OTP harus 6 digit'),
 })
 

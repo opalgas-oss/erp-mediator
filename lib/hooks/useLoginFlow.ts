@@ -2,22 +2,16 @@
 // Hook utama state machine login — state + orchestration.
 // UI components di app/login/components/ hanya render — tidak ada logic bisnis.
 //
-// REFACTOR Sesi #055:
-//   API calls    → lib/hooks/login/loginApiCalls.ts
-//   Session helpers → lib/hooks/login/loginSessionHelpers.ts
-//   Hook ini = state declarations + orchestration saja.
-//
-// REFACTOR Sesi #062 — Hapus Biometric dari login flow.
-// REFACTOR Sesi #068 — loginUnifiedAction: 1 signInWithPassword semua role.
-// FIX Sesi #074 — handle sesiParalelAda dari loginUnifiedAction:
-//   Vendor + AdminTenant yang punya sesi paralel → setTahap('SESI_PARALEL').
-// FIX S#183 — OTP enforcement semua role:
-//   MASALAH: SA bypass OTP via 2 path — handleLogin (unified action) + prosesSetelahAuthBerhasil (fallback)
-//   FIX PATH 1 (handleLogin): pakai result.role eksplisit; SA/AdminTenant/Customer cek OTP config
-//     → jika required, fetch profil → lanjutSetelahRole (sama dengan Vendor/Customer lain)
-//   FIX PATH 2 (prosesSetelahAuthBerhasil): SA block cek OTP config sebelum handleSuperadminLogin
-//   REFACTOR: Vendor block di handleLogin → lanjutSetelahRole (eliminasi duplikasi ATURAN 11)
-//   lanjutSetelahRole = single source of truth OTP enforcement untuk semua role
+// REFACTOR Sesi #055: API calls → loginApiCalls.ts; Session helpers → loginSessionHelpers.ts
+// REFACTOR Sesi #062: Hapus Biometric dari login flow
+// REFACTOR Sesi #068: loginUnifiedAction — 1 signInWithPassword semua role
+// FIX Sesi #074: handle sesiParalelAda dari loginUnifiedAction
+// FIX S#183a: tambah role eksplisit di result; fix 2 bypass path SA; refactor Vendor → lanjutSetelahRole
+// FIX S#183d: handleLogin kondisi: result.ok && result.uid (hapus && result.redirectTo)
+//   SA OTP=required: unified action tidak return redirectTo (cookie belum di-set)
+//   → sebelumnya: fall ke runFlowLama() = double signIn
+//   → sekarang: block if(result.ok && result.uid) menangkap semua case termasuk SA pending OTP
+//   lanjutSetelahRole = single source of truth OTP enforcement semua role
 
 'use client'
 
@@ -34,10 +28,8 @@ import {
 } from '@/app/login/login-types'
 import type { Tahap, DataSesiParalel } from '@/app/login/login-types'
 
-// Server actions — Sesi #058 (SA) + Sesi #060 (Vendor) + Sesi #068 (Unified)
 import { loginUnifiedAction } from '@/app/login/actions'
 
-// API calls helpers
 import {
   fetchCheckLock, fetchLockAccount, fetchUnlockAccount,
   fetchCheckSession, fetchSendOTP, fetchVerifyOTP,
@@ -88,7 +80,6 @@ export function useLoginFlow(): LoginFlowState {
   const searchParams = useSearchParams()
   const redirectTo   = searchParams.get('redirect') || ''
 
-  // ── State ─────────────────────────────────────────────────────────────────
   const [tahap,          setTahap]          = useState<Tahap>('KREDENSIAL')
   const [gpsKota,        setGpsKota]        = useState<string | null>(null)
   const [email,          setEmail]          = useState('')
@@ -112,7 +103,6 @@ export function useLoginFlow(): LoginFlowState {
   const [otpPercobaan,   setOtpPercobaan]   = useState(0)
   const [maxOtpPercobaan,setMaxOtpPercobaan]= useState(3)
   const [configLogin,    setConfigLogin]    = useState<Record<string, string>>({
-    // FIX T-059b S#178: default 'required' (English) → 'true' (boolean) sesuai konsep GPS toggle
     gps_timeout_seconds: '10', gps_cache_ttl_minutes: '30', gps_mode: 'true',
     password_min_length: '8', session_timeout_minutes: String(SESSION_DEFAULT_TIMEOUT_MINUTES), require_otp: 'true',
   })
@@ -122,7 +112,6 @@ export function useLoginFlow(): LoginFlowState {
   const gpsUdahDiminta = useRef(false)
   const otpTimer       = useOTPTimer(60)
 
-  // ── Helper: baca pesan ────────────────────────────────────────────────────
   const m = useCallback((key: string, vars?: Record<string, string>): string => {
     const teks = dbPesan[key] ?? DEFAULT_PESAN[key] ?? key
     if (!vars) return teks
@@ -192,9 +181,6 @@ export function useLoginFlow(): LoginFlowState {
     return valid
   }
 
-  // FIX T-059b S#178: compare ke boolean string 'true'/'false' (bukan English 'required')
-  // 'true'  = GPS wajib diaktifkan saat login
-  // 'false' = GPS opsional, user bebas memilih — system tidak memaksa
   async function pastikanGPS(): Promise<boolean> {
     const gpsMode = configLogin['gps_mode'] ?? 'true'
     if (gpsRef.current || gpsMode !== 'true') return true
@@ -247,7 +233,7 @@ export function useLoginFlow(): LoginFlowState {
     return false
   }
 
-  // Dipertahankan untuk SA OTP=disabled path (tidak ada OTP wajib)
+  // Dipakai untuk SA OTP=disabled — langsung redirect tanpa OTP
   async function handleSuperadminLogin(
     authData:    { user: { id: string; email?: string | null }; session: { access_token: string } },
     hadAttempts: boolean,
@@ -297,20 +283,14 @@ export function useLoginFlow(): LoginFlowState {
   }
 
   // ─── lanjutSetelahRole — SINGLE SOURCE OF TRUTH OTP enforcement ──────────
-  // Dipakai oleh: handleLogin (semua role via unified action), muatDataUser (fallback flow),
-  //   handlePilihRole (pilih role dari daftar), prosesSetelahAuthBerhasil (SA OTP=required)
-  // FIX S#183: sebelumnya Vendor di handleLogin punya logika OTP sendiri (duplikasi ATURAN 11)
-  //   → sekarang semua route melalui fungsi ini
+  // Semua role (SA/Vendor/AdminTenant/Customer) route melalui sini.
+  // FIX S#183: cr_functions func_id 531beb0a, is_shared=true, AUTH/login
   async function lanjutSetelahRole(role: string, tid: string, uidUser: string, namaUser: string, waNumber: string) {
     try {
-      // FIX S#182 + FIX-2: hanya 'required' dan 'disabled' — hapus 'optional'
       const otpMode = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', role)
       if (otpMode === 'disabled') {
-        // SA set role ini 'disabled' → langsung selesaiLogin tanpa panggil API
-        // FIX S#182: pass uidUser/tid/role — dipanggil dari muatDataUser (state belum tentu di-render)
         await selesaiLogin(uidUser, tid, role)
       } else {
-        // hanya 'required' → panggil API; server gate yang konfirmasi
         await kirimOTP(uidUser, tid, role, waNumber, namaUser)
       }
     } catch {
@@ -321,10 +301,8 @@ export function useLoginFlow(): LoginFlowState {
   async function kirimOTP(uidUser: string, tid: string, role: string, waNumber: string, namaUser: string) {
     setIsLoading(true); setError('')
     try {
-      // PERUBAHAN Sesi #167 — T-039: pass email (dari state closure) untuk channel email
       const resData = await fetchSendOTP({ uid: uidUser, tenantId: tid, role, nomorWa: waNumber, email, nama: namaUser })
 
-      // FIX S#182: pass uidUser/tid/role langsung — React state belum re-render saat ini
       if (resData.otp_skipped) {
         fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'OTP dilewati (mode config SA)', result: 'SUCCESS', gpsKota: gpsRef.current?.kota || '' })
         await selesaiLogin(uidUser, tid, role)
@@ -346,11 +324,7 @@ export function useLoginFlow(): LoginFlowState {
     overrideTenantId?: string,
     overrideRole?: string,
   ) {
-    // FIX S#182 — stale React state saat OTP di-skip via loginUnifiedAction:
-    // setUid()/setTenantId()/setRoleDipilih() dipanggil lalu langsung await selesaiLogin()
-    // tapi React belum re-render — state masih nilai lama (kosong).
-    // Solusi: caller pass nilai aktual sebagai override; fallback ke state untuk flow lama
-    // (handleVerifikasiOTP, handleKirimUlangOTP) di mana state sudah valid.
+    // FIX S#182: override untuk cegah stale React state saat dipanggil langsung setelah set state
     const aktualUid      = overrideUid      !== undefined ? overrideUid      : uid
     const aktualTenantId = overrideTenantId !== undefined ? overrideTenantId : tenantId
     const aktualRole     = overrideRole     !== undefined ? overrideRole     : roleDipilih
@@ -358,9 +332,10 @@ export function useLoginFlow(): LoginFlowState {
     setIsLoading(true); setTahap('SELESAI')
     try {
       const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || String(SESSION_DEFAULT_TIMEOUT_MINUTES))
-
       const sessionId = crypto.randomUUID()
 
+      // FIX S#183d: untuk SA OTP=required, ini adalah PERTAMA KALI cookie di-set
+      // (loginUnifiedAction tidak set cookie → tidak bisa bypass via refresh)
       aturCookieSession({ roleDipilih: aktualRole, tenantId: aktualTenantId, gpsKota: gpsRef.current?.kota ?? null, sessionTimeoutMinutes })
 
       fetchSessionLog({
@@ -389,12 +364,10 @@ export function useLoginFlow(): LoginFlowState {
     const claimRole     = claims['app_role']  as string || ''
     const claimTenantId = claims['tenant_id'] as string || ''
 
-    // FIX S#183 PATH 2 — fallback flow SA bypass OTP
-    // Sebelumnya: langsung handleSuperadminLogin() tanpa cek config
+    // FIX S#183: SA fallback path — cek OTP config sebelum redirect
     if (claimRole === ROLES.SUPERADMIN) {
       const otpModeSA = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', 'super_admin')
       if (otpModeSA === 'disabled') {
-        // OTP tidak wajib → jalur lama, langsung redirect
         await handleSuperadminLogin(authData, hadAttempts)
         return
       }
@@ -449,9 +422,6 @@ export function useLoginFlow(): LoginFlowState {
     setIsLoading(true); setError('')
     if (!(await pastikanGPS())) { setIsLoading(false); return }
 
-    // ─── REFACTOR Sesi #068: 1 unified action — 1x signInWithPassword untuk semua role ──
-    // Sebelumnya: SA action → Vendor action → flow lama (3 sequential, 2-3x signIn)
-    // Sekarang: 1 action, 1 signIn, role dibaca dari JWT, parallel DB calls per role
     try {
       const result = await loginUnifiedAction({
         email, password,
@@ -460,20 +430,19 @@ export function useLoginFlow(): LoginFlowState {
         redirectTo,
       })
 
-      // SA, AdminTenant, Vendor, Customer: handle per skenario
-      if (result.ok && result.redirectTo && result.uid) {
-        // FIX S#183 PATH 1: pakai result.role eksplisit (sebelumnya di-infer dari field lain)
-        // Fallback ke inference lama untuk backward compat jika result.role tidak ada
+      // FIX S#183d: kondisi cukup result.ok && result.uid
+      // SA OTP=required: tidak ada redirectTo (cookie belum di-set oleh unified action)
+      // Sebelumnya: result.ok && result.redirectTo && result.uid → SA OTP=required tidak masuk → double signIn
+      if (result.ok && result.uid) {
+        // Pakai result.role eksplisit; fallback ke inference lama untuk backward compat
         const roleFromResult = result.role
           ?? (result.tenantId === undefined ? ROLES.SUPERADMIN
               : result.nomorWa !== undefined ? ROLES.VENDOR : ROLES.ADMIN_TENANT)
         const tid = result.tenantId ?? ''
         const wa  = result.nomorWa  ?? ''
 
-        // ── VENDOR: nomorWa sudah di result → langsung lanjutSetelahRole ──────
-        // FIX S#183 REFACTOR: eliminasi duplikasi OTP decision logic (ATURAN 11)
-        // Sebelumnya: cek OTP config + kirimOTP/selesaiLogin inline di sini
-        // Sekarang: lanjutSetelahRole = single source of truth (sama untuk semua role)
+        // ── VENDOR: nomorWa sudah ada di result — lanjutSetelahRole ──────────
+        // REFACTOR S#183: eliminasi duplikasi OTP decision (ATURAN 11)
         if (roleFromResult === ROLES.VENDOR) {
           setUid(result.uid); setNama(result.nama ?? ''); setTenantId(tid)
           setNomorWA(wa); setRoleDipilih(ROLES.VENDOR); setUserEmail(email)
@@ -481,15 +450,20 @@ export function useLoginFlow(): LoginFlowState {
           return
         }
 
-        // ── SA, ADMINTENANT, CUSTOMER: cek OTP config dulu ───────────────────
-        // FIX S#183: sebelumnya langsung router.push — bypass OTP untuk SA (require_otp=required)
+        // ── SA, ADMINTENANT, CUSTOMER: cek OTP config ────────────────────────
         const otpMode = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', roleFromResult)
+
         if (otpMode === 'disabled') {
-          // OTP tidak wajib → redirect langsung (unified action sudah set cookie + log server-side)
-          router.push(result.redirectTo); return
+          // OTP tidak wajib → redirect langsung (cookie sudah di-set server-side)
+          if (result.redirectTo) { router.push(result.redirectTo); return }
+          // Fallback jika redirectTo tidak ada (tidak seharusnya terjadi untuk disabled)
+          setError(m('login_error_umum')); setIsLoading(false); return
         }
 
-        // OTP required → fetch profil (untuk nomorWa) → lanjutSetelahRole
+        // OTP required:
+        // - SA: tidak ada redirectTo — cookie belum di-set (AMAN: refresh = login screen)
+        // - AdminTenant/Customer (jika required): ada redirectTo tapi cookie sudah di-set (HUTANG arsitektur)
+        //   Saat ini AdminTenant/Customer = disabled, jadi tidak ada masalah praktis
         setTahap('LOADING')
         const profile     = await fetchLoadUserProfile(result.uid, tid || null)
         const nomorWaUser = profile.success ? (profile.nomor_wa ?? '') : ''
@@ -506,15 +480,13 @@ export function useLoginFlow(): LoginFlowState {
       }
     } catch (err) {
       console.error('[handleLogin] unified action error — koneksi gagal:', err)
-      // PERBAIKAN Sesi #076 — Temuan 2: cegah double signInWithPassword
-      // Sebelumnya: catch jatuh ke runFlowLama() → memanggil signInWithPassword kedua kali dari client
-      // Sekarang: tampilkan error koneksi, tidak fallback ke flow lama
+      // Cegah double signInWithPassword (PERBAIKAN Sesi #076)
       setError(m('login_error_koneksi_gagal'))
       setIsLoading(false)
       return
     }
 
-    // ─── Fallback: flow lama untuk Customer atau role tidak dikenal ──────────
+    // Fallback: Customer atau role tidak dikenal yang tidak ditangani unified action
     await runFlowLama()
   }
 
@@ -525,7 +497,6 @@ export function useLoginFlow(): LoginFlowState {
       const data = await fetchVerifyOTP({ uid, tenantId, inputCode: otpInput })
       if (data.success) {
         fetchActivityLog({ uid, tenantId, nama, role: roleDipilih, sessionId: '', actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'Verifikasi OTP berhasil', result: 'SUCCESS', gpsKota: gpsRef.current?.kota || '' })
-        // Sesi #062: Biometric dihapus dari login flow → langsung selesaiLogin()
         await selesaiLogin()
       } else if (data.result === 'EXPIRED') {
         setError(m('otp_error_kadaluarsa')); setIsLoading(false)
