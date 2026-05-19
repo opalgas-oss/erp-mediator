@@ -12,6 +12,9 @@
 //   loginUnifiedAction set otp_pending=1 untuk SA OTP=required
 //   middleware Guard 5 baca cookie ini → redirect /login jika ada
 //   selesaiLogin hapus cookie → dashboard bisa diakses setelah OTP verified
+// FIX S#185: handleLogin — percaya result.redirectTo dari server sebagai indikator OTP=disabled
+//   Bukan re-check configLogin['require_otp_superadmin'] yang undefined di login publik (RLS)
+//   Regresi dari S#184 HUTANG-SA-CONFIG-SEPARATION
 
 'use client'
 
@@ -435,17 +438,25 @@ export function useLoginFlow(): LoginFlowState {
           return
         }
 
-        // SA, AdminTenant, Customer: cek OTP config
-        const otpMode = parseRequireOtpForRole(configLogin[getRequireOtpConfigKey(roleFromResult)] ?? 'required', roleFromResult)
-
-        if (otpMode === 'disabled') {
-          // OTP tidak wajib → redirect langsung (cookie sudah di-set server-side oleh unified action)
-          if (result.redirectTo) { router.push(result.redirectTo); return }
-          setError(m('login_error_umum')); setIsLoading(false); return
+        // Percaya keputusan server untuk OTP enforcement (bukan re-check configLogin di client).
+        // Kontrak server→client yang sudah ada di actions.ts:
+        //   OTP=disabled → setCookiesLoginServer() sudah dipanggil → return { redirectTo, ... }
+        //   OTP=required → setCookiesLoginServer() TIDAK dipanggil → return { uid, role } tanpa redirectTo
+        //
+        // FIX S#185 — Regresi dari S#184 HUTANG-SA-CONFIG-SEPARATION:
+        //   S#184 pisah SA ke key 'require_otp_superadmin'. Key ini tidak ada di default
+        //   state configLogin dan tidak ter-fetch di halaman login publik (RLS akses_baca=["superadmin"]).
+        //   Akibat: configLogin['require_otp_superadmin'] = undefined → fallback 'required'
+        //   → SA OTP=disabled tetap masuk OTP flow di client.
+        if (result.redirectTo) {
+          // Server sudah set cookie + putuskan OTP=disabled → redirect langsung
+          router.push(result.redirectTo)
+          return
         }
 
-        // OTP required → fetch profil (untuk nomorWa) → lanjutSetelahRole
-        // SA: tidak ada redirectTo, cookie belum di-set, otp_pending sudah di-set
+        // Tidak ada redirectTo → server putuskan OTP=required
+        // SA: otp_pending sudah di-set server, session cookie belum di-set
+        // Lanjut fetch profil → lanjutSetelahRole → kirimOTP
         setTahap('LOADING')
         const profile     = await fetchLoadUserProfile(result.uid, tid || null)
         const nomorWaUser = profile.success ? (profile.nomor_wa ?? '') : ''
