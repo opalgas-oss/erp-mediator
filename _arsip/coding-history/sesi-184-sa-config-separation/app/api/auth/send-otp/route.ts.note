@@ -1,0 +1,8 @@
+// ARSIP PRE-FIX sesi-184-sa-config-separation
+// File asli: app/api/auth/send-otp/route.ts — commit 3b4e704
+// Baris kritis yang diubah:
+//   const requireOtpRaw = cfg['require_otp'] ?? 'required'
+//   const otpMode       = parseRequireOtpForRole(requireOtpRaw, role)
+// ─────────────────────────────────────────────────────────────────────────────
+// [ISI PENUH ADA DI GIT — catatan perubahan minimal saja]
+// Perubahan: ganti cfg['require_otp'] → cfg[getRequireOtpConfigKey(role)]

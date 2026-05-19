@@ -111,19 +111,6 @@ export function parseRequireOtpForRole(configValue: string, role: string): OtpMo
 }
 
 // ─── Helper format waktu login ───────────────────────────────────────────────
-// ─── Helper: pilih config key require_otp yang tepat per role ────────────────────────
-//
-// SA menggunakan config key TERPISAH agar tidak bercampur dengan config tenant.
-// Keamanan: toggle 'tenant_can_override' pada require_otp (non-SA) tidak akan
-// pernah mengekspos setting SA karena SA pakai key berbeda.
-//
-// Dipakai di: actions.ts + send-otp/route.ts + useLoginFlow.ts
-// Diimplementasi: S#184 HUTANG-SA-CONFIG-SEPARATION
-
-export function getRequireOtpConfigKey(role: string): 'require_otp_superadmin' | 'require_otp' {
-  return role.toLowerCase() === 'super_admin' ? 'require_otp_superadmin' : 'require_otp'
-}
-
 export function formatWaktuLogin(ts: unknown): string {
   if (!ts) return 'waktu tidak diketahui'
   try {

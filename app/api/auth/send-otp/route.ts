@@ -21,7 +21,7 @@ import { z }                            from 'zod'
 import { verifyJWT }                    from '@/lib/auth-server'
 import { sendOTP }                      from '@/lib/services/otp.service'
 import { getConfigValues }              from '@/lib/config-registry'
-import { parseRequireOtpForRole }       from '@/app/login/login-types'
+import { parseRequireOtpForRole, getRequireOtpConfigKey } from '@/app/login/login-types'
 
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
 
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     // Membaca require_otp JSON per-role dari config_registry, bukan dari client state.
     // Hanya 2 mode yang valid: 'required' (OTP wajib) dan 'disabled' (OTP tidak pernah dikirim).
     const cfg           = await getConfigValues('security_login')
-    const requireOtpRaw = cfg['require_otp'] ?? 'required'
+    const requireOtpRaw = cfg[getRequireOtpConfigKey(role)] ?? 'required'
     const otpMode       = parseRequireOtpForRole(requireOtpRaw, role)
 
     if (otpMode === 'disabled') {

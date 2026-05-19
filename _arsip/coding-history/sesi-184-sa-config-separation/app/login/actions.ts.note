@@ -1,0 +1,11 @@
+// ARSIP PRE-FIX sesi-184-sa-config-separation
+// File asli: app/login/actions.ts
+// Isi sama persis seperti commit 3b4e704 sebelum perubahan HUTANG-SA-CONFIG-SEPARATION
+// ─────────────────────────────────────────────────────────────────────────────
+// [ISI FILE PENUH ADA DI GIT — file ini sebagai penanda bahwa arsip dibuat]
+// Baris kritis yang diubah:
+//   const requireOtpRaw = sessionCfg['require_otp'] ?? 'required'
+//   const otpModeSA     = parseRequireOtpForRole(requireOtpRaw, 'super_admin')
+// ─────────────────────────────────────────────────────────────────────────────
+// CATATAN: File actions.ts (10.950 bytes) MELEBIHI limit 10KB (ATURAN 9).
+// Flagged sebagai HUTANG split terpisah — tidak diblokir karena perubahan minimal.

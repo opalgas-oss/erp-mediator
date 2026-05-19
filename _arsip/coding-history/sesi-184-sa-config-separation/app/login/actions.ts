@@ -19,7 +19,7 @@ import { getAccountLock }                       from '@/lib/services/account-loc
 import { getConfigValues, parseConfigNumber }   from '@/lib/config-registry'
 import { ROLES, ACCOUNT_LOCK_STATUS }           from '@/lib/constants'
 import { SESSION_DEFAULT_TIMEOUT_MINUTES }       from '@/lib/auth'
-import { parseRequireOtpForRole, getRequireOtpConfigKey } from '@/app/login/login-types'
+import { parseRequireOtpForRole }               from '@/app/login/login-types'
 import {
   decodeAppClaims, formatLockUntilWIB, hitungTujuanRedirectServer,
   setCookiesLoginServer, jalankanAfterTasksLogin,
@@ -109,25 +109,19 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
   // ── SUPERADMIN ────────────────────────────────────────────────────────────
   if (role === ROLES.SUPERADMIN) {
     const nama          = claims.nama
-    const requireOtpRaw = sessionCfg[getRequireOtpConfigKey('super_admin')] ?? 'required'
+    const requireOtpRaw = sessionCfg['require_otp'] ?? 'required'
     const otpModeSA     = parseRequireOtpForRole(requireOtpRaw, 'super_admin')
 
     if (otpModeSA === 'required') {
-      // FIX S#183d+183e — SA OTP=required:
-      // TIDAK set session cookie (agar selesaiLogin menjadi satu-satunya yang set cookie)
-      // Set otp_pending=1 → middleware Guard 5 akan redirect ke /login saat refresh
-      // Supabase JWT masih valid (diperlukan untuk send-otp + verify-otp API)
-      // selesaiLogin() akan hapus otp_pending + set session cookie setelah OTP diverifikasi
       cookieStore.set('otp_pending', '1', {
-        httpOnly: false,  // harus bisa dihapus oleh document.cookie di selesaiLogin client
+        httpOnly: false,
         path: '/',
-        maxAge: 600,     // 10 menit — cukup untuk seluruh OTP flow
+        maxAge: 600,
         sameSite: 'strict',
       })
       return { ok: true, nama, uid, role: ROLES.SUPERADMIN }
     }
 
-    // OTP disabled → behavior lama: set session cookie + fire tasks + redirect langsung
     await setCookiesLoginServer({ role: ROLES.SUPERADMIN, tenantId: '', gpsKota, sessionTimeoutMinutes }, cookieStore)
     jalankanAfterTasksLogin(
       { uid, tenantId: null, nama, role: ROLES.SUPERADMIN, device, gpsKota, hadAttempts: lock.hadAttempts, email },
@@ -136,16 +130,13 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.SUPERADMIN, redirectTo), nama, uid, role: ROLES.SUPERADMIN }
   }
 
-  // ── Semua role non-SA wajib punya tenantId di JWT ─────────────────────────
   if (!claimTenantId) {
     try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
     return { ok: false, errorKey: 'login_error_config_belum_lengkap' }
   }
 
-  // ── VENDOR ────────────────────────────────────────────────────────────────
   if (role === ROLES.VENDOR) {
     const nama = claims.nama
-
     if (claims.vendorStatus !== undefined && claims.nomorWa !== undefined) {
       if (claims.vendorStatus.toUpperCase() !== 'APPROVED') {
         try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
@@ -158,12 +149,9 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
       )
       return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo), nama, uid, tenantId: claimTenantId, nomorWa: claims.nomorWa, role: ROLES.VENDOR }
     }
-
     const adminDb = createServerSupabaseClient()
     const [profileResult] = await Promise.all([
-      adminDb.from('user_profiles')
-        .select('status, nomor_wa')
-        .eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle(),
+      adminDb.from('user_profiles').select('status, nomor_wa').eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle(),
       setCookiesLoginServer({ role: ROLES.VENDOR, tenantId: claimTenantId, gpsKota, sessionTimeoutMinutes }, cookieStore),
     ])
     const profileRow = profileResult.data
@@ -179,7 +167,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo), nama, uid, tenantId: claimTenantId, nomorWa, role: ROLES.VENDOR }
   }
 
-  // ── ADMIN TENANT ──────────────────────────────────────────────────────────
   if (role === ROLES.ADMIN_TENANT) {
     const nama = claims.nama
     await setCookiesLoginServer({ role: ROLES.ADMIN_TENANT, tenantId: claimTenantId, gpsKota, sessionTimeoutMinutes }, cookieStore)
@@ -190,7 +177,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.ADMIN_TENANT, redirectTo), nama, uid, tenantId: claimTenantId, role: ROLES.ADMIN_TENANT }
   }
 
-  // ── CUSTOMER ──────────────────────────────────────────────────────────────
   if (role === ROLES.CUSTOMER) {
     const nama = claims.nama
     await setCookiesLoginServer({ role: ROLES.CUSTOMER, tenantId: claimTenantId, gpsKota, sessionTimeoutMinutes }, cookieStore)
@@ -201,7 +187,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.CUSTOMER, redirectTo), nama, uid, tenantId: claimTenantId, role: ROLES.CUSTOMER }
   }
 
-  // ── Role tidak dikenal ────────────────────────────────────────────────────
   try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
   return { ok: false, errorKey: 'login_error_role_tidak_ditemukan' }
 }

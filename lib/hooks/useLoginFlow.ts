@@ -24,7 +24,7 @@ import { ROLES }                                    from '@/lib/constants'
 import {
   DEFAULT_PESAN, SUPABASE_ERROR_KEYS,
   decodeJwtPayload, extractConfigItems, findConfigValue,
-  parseRequireOtpForRole,
+  parseRequireOtpForRole, getRequireOtpConfigKey,
 } from '@/app/login/login-types'
 import type { Tahap, DataSesiParalel } from '@/app/login/login-types'
 
@@ -275,7 +275,7 @@ export function useLoginFlow(): LoginFlowState {
   // ─── lanjutSetelahRole — SINGLE SOURCE OF TRUTH OTP enforcement ──────────
   async function lanjutSetelahRole(role: string, tid: string, uidUser: string, namaUser: string, waNumber: string) {
     try {
-      const otpMode = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', role)
+      const otpMode = parseRequireOtpForRole(configLogin[getRequireOtpConfigKey(role)] ?? 'required', role)
       if (otpMode === 'disabled') {
         await selesaiLogin(uidUser, tid, role)
       } else {
@@ -356,7 +356,7 @@ export function useLoginFlow(): LoginFlowState {
     const claimTenantId = claims['tenant_id'] as string || ''
 
     if (claimRole === ROLES.SUPERADMIN) {
-      const otpModeSA = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', 'super_admin')
+      const otpModeSA = parseRequireOtpForRole(configLogin[getRequireOtpConfigKey('super_admin')] ?? 'required', 'super_admin')
       if (otpModeSA === 'disabled') {
         await handleSuperadminLogin(authData, hadAttempts)
         return
@@ -436,7 +436,7 @@ export function useLoginFlow(): LoginFlowState {
         }
 
         // SA, AdminTenant, Customer: cek OTP config
-        const otpMode = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', roleFromResult)
+        const otpMode = parseRequireOtpForRole(configLogin[getRequireOtpConfigKey(roleFromResult)] ?? 'required', roleFromResult)
 
         if (otpMode === 'disabled') {
           // OTP tidak wajib → redirect langsung (cookie sudah di-set server-side oleh unified action)

@@ -1,0 +1,72 @@
+// app/api/auth/send-otp/route.ts
+// POST — Generate OTP, simpan ke otp_codes, kirim via channel yang dikonfigurasi SA.
+// REFACTOR Sesi #052 — BLOK E-04 TODO_ARSITEKTUR_LAYER_v1
+// PERUBAHAN Sesi #167 — T-039: tambah field email opsional
+// PERUBAHAN S#182 — FIX-2: hapus mode 'optional'
+
+import { NextRequest, NextResponse }    from 'next/server'
+import { z }                            from 'zod'
+import { verifyJWT }                    from '@/lib/auth-server'
+import { sendOTP }                      from '@/lib/services/otp.service'
+import { getConfigValues }              from '@/lib/config-registry'
+import { parseRequireOtpForRole }       from '@/app/login/login-types'
+
+const RequestSchema = z.object({
+  uid:       z.string().min(1, 'uid wajib diisi'),
+  tenant_id: z.string(),
+  role:      z.string().min(1, 'role wajib diisi'),
+  nomor_wa:  z.string().min(1, 'nomor_wa wajib diisi'),
+  email:     z.string().email().optional().or(z.literal('')),
+  nama:      z.string().default(''),
+})
+
+export async function POST(request: NextRequest) {
+  try {
+    const decoded = await verifyJWT()
+    if (!decoded) {
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body   = await request.json()
+    const parsed = RequestSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, message: parsed.error.issues[0].message },
+        { status: 400 }
+      )
+    }
+
+    const { uid, tenant_id, role, nomor_wa, email, nama } = parsed.data
+
+    // BARIS KRITIS YANG DIUBAH di S#184 HUTANG-SA-CONFIG-SEPARATION:
+    // SEBELUM: const requireOtpRaw = cfg['require_otp'] ?? 'required'
+    // SESUDAH: const requireOtpRaw = cfg[getRequireOtpConfigKey(role)] ?? 'required'
+    const cfg           = await getConfigValues('security_login')
+    const requireOtpRaw = cfg['require_otp'] ?? 'required'
+    const otpMode       = parseRequireOtpForRole(requireOtpRaw, role)
+
+    if (otpMode === 'disabled') {
+      return NextResponse.json({ success: true, otp_skipped: true })
+    }
+
+    const result = await sendOTP({
+      uid, tenantId: tenant_id, role, nomorWa: nomor_wa,
+      email: email || undefined, nama: nama || undefined,
+    })
+
+    if (!result.success) {
+      return NextResponse.json({ success: false, message: result.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      otp_expiry_minutes:      result.otp_expiry_minutes,
+      otp_max_attempts:        result.otp_max_attempts,
+      resend_cooldown_seconds: result.resend_cooldown_seconds,
+    })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Terjadi kesalahan server'
+    console.error('[send-otp] Error:', error)
+    return NextResponse.json({ success: false, message }, { status: 500 })
+  }
+}

@@ -28,7 +28,9 @@ import type { ConfigItemData }                     from '@/components/ConfigItem
 
 const JSON_FIELD_CONFIG: Record<string, JsonFieldConfig> = {
   require_otp:                      { valueType: 'select', options: ['required', 'disabled'] },
+  require_otp_superadmin:           { valueType: 'select', options: ['required', 'disabled'] },
   biometric_mode:                   { valueType: 'select', options: ['required', 'disabled'] },
+  biometric_mode_superadmin:        { valueType: 'select', options: ['required', 'disabled'] },
   max_concurrent_sessions_per_role: { valueType: 'number' },
   notify_multi_device_login:        { valueType: 'boolean' },
 }
