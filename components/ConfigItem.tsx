@@ -13,6 +13,12 @@
 //   - Tambah type 'text-field' → render <Input type="text" /> untuk tipe_data='text'
 //   - Contoh: vendor_blocked_statuses (comma-separated string seperti 'PENDING,REVIEW')
 //   - Sebelum fix: tipe_data='text' fallthrough ke 'number-unit' → render input number (salah)
+//
+// PERUBAHAN Sesi #184 — Fix HUTANG-SA-CONFIG-SEPARATION:
+//   - Tambah allowedRoles ke ConfigItemData (filter role yang tampil di PerRoleJsonEditor)
+//   - Tambah hideTenantOverrideToggle ke ConfigItemData
+//     Jika true → sembunyikan "Tenant Admin boleh ubah" toggle
+//     Dipakai untuk config SA-only yang tidak pernah bisa didelegasikan ke Tenant Admin
 
 import type { JSX }          from 'react'
 import { Input }             from '@/components/ui/input'
@@ -35,6 +41,7 @@ export interface ConfigItemData {
   valueType?:      'boolean' | 'number' | 'select' // untuk type 'json-per-role'
   perRoleOptions?: string[] // opsi select per role jika valueType='select'
   allowedRoles?:   ReadonlyArray<'customer' | 'vendor' | 'admin_tenant' | 'super_admin'> // filter role yang ditampilkan
+  hideTenantOverrideToggle?: boolean  // true → sembunyikan "Tenant Admin boleh ubah" (untuk config SA-only)
   option_group_id?: string | null
   adminCanChange:  boolean
   enabled:         boolean
@@ -79,6 +86,9 @@ export function ConfigItem({
   onEnabledToggle,
 }: ConfigItemProps): JSX.Element | null {
 
+  // Toggle "Tenant Admin boleh ubah" disembunyikan untuk config SA-only
+  const showAdminToggle = !item.hideTenantOverrideToggle
+
   // ── toggle ────────────────────────────────────────────────────────────────
   if (item.type === 'toggle') {
     return (
@@ -101,7 +111,7 @@ export function ConfigItem({
             />
           </div>
         </div>
-        <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />
+        {showAdminToggle && <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />}
       </div>
     )
   }
@@ -149,7 +159,7 @@ export function ConfigItem({
             )}
           </div>
         </div>
-        <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />
+        {showAdminToggle && <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />}
       </div>
     )
   }
@@ -183,14 +193,13 @@ export function ConfigItem({
             </Select>
           </div>
         </div>
-        <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />
+        {showAdminToggle && <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />}
       </div>
     )
   }
 
   // ── timing — input angka + dropdown unit dengan auto-convert ──────────────
   if (item.type === 'timing') {
-    // fieldName wajib untuk timing — fallback ke id agar tidak crash
     const fieldName = item.fieldName ?? item.id
     return (
       <div className="space-y-0.5">
@@ -205,12 +214,12 @@ export function ConfigItem({
             disabled={!item.enabled}
           />
         </div>
-        <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />
+        {showAdminToggle && <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />}
       </div>
     )
   }
 
-  // ── json-per-role — editor nilai per role (customer/vendor/admin_tenant/super_admin) ──
+  // ── json-per-role — editor nilai per role ─────────────────────────────────
   if (item.type === 'json-per-role') {
     return (
       <div className="space-y-0.5 py-1">
@@ -226,14 +235,12 @@ export function ConfigItem({
           onChange={(jsonStr) => onValueChange(jsonStr)}
           disabled={!item.enabled}
         />
-        <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />
+        {showAdminToggle && <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />}
       </div>
     )
   }
 
   // ── text-field — input teks bebas untuk tipe_data='text' ─────────────────
-  // Contoh: vendor_blocked_statuses menyimpan comma-separated string 'PENDING,REVIEW'
-  // T-027 Fix S#163: sebelumnya tipe 'text' fallthrough ke 'number-unit' (salah)
   if (item.type === 'text-field') {
     return (
       <div className="space-y-0.5">
@@ -260,7 +267,7 @@ export function ConfigItem({
             />
           </div>
         </div>
-        <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />
+        {showAdminToggle && <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />}
       </div>
     )
   }
