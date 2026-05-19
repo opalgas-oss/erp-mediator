@@ -11,6 +11,9 @@
 // Dibuat Sesi #056 — fix TC-D03 (Vendor lambat)
 // Update Sesi #056 — tambah support SuperAdmin (tenant_id null)
 // Update Sesi #057 — relax Zod UUID validation ke regex format
+// FIX S#183 — SA path: tambah nomor_wa ke SELECT (sebelumnya hardcode '').
+//   users.nomor_wa bertipe ARRAY — ambil elemen pertama [0].
+//   Diperlukan agar OTP bisa dikirim ke WA SA saat require_otp=required.
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { z }                          from 'zod'
@@ -46,23 +49,28 @@ export async function POST(request: NextRequest) {
     const db = createServerSupabaseClient()
 
     // ── SUPERADMIN: tenant_id null → query tabel users ────────────────────────
-    // SUPERADMIN tidak punya tenant_id dan datanya di tabel users, bukan user_profiles
+    // SUPERADMIN tidak punya tenant_id dan datanya di tabel users, bukan user_profiles.
+    // FIX S#183: tambah nomor_wa ke SELECT (users.nomor_wa adalah ARRAY — ambil [0]).
+    // Sebelumnya: SELECT 'nama' saja → nomor_wa hardcode '' → OTP tidak bisa dikirim ke WA SA.
     if (!tenant_id) {
       const { data: userRow, error } = await db
         .from('users')
-        .select('nama')
+        .select('nama, nomor_wa')
         .eq('id', uid)
         .single()
 
       if (error || !userRow) {
-        // SUPERADMIN tetap bisa login meski nama tidak ditemukan — non-critical
+        // SUPERADMIN tetap bisa login meski profil tidak ditemukan — non-critical
         return NextResponse.json({ success: true, nama: '', nomor_wa: '', role: 'SUPERADMIN', status: '' })
       }
+
+      // nomor_wa di tabel users adalah ARRAY — ambil elemen pertama
+      const nomorWaSA = Array.isArray(userRow.nomor_wa) ? (userRow.nomor_wa[0] ?? '') : ''
 
       return NextResponse.json({
         success:  true,
         nama:     userRow.nama || '',
-        nomor_wa: '',
+        nomor_wa: nomorWaSA,
         role:     'SUPERADMIN',
         status:   '',
       })
