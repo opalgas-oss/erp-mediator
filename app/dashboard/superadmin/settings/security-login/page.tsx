@@ -27,10 +27,10 @@ import type { ConfigItemData }                     from '@/components/ConfigItem
 // ─── Konfigurasi tipe per field JSON per-role ─────────────────────────────────
 
 const JSON_FIELD_CONFIG: Record<string, JsonFieldConfig> = {
-  require_otp:                      { valueType: 'select', options: ['required', 'disabled'] },
-  require_otp_superadmin:           { valueType: 'select', options: ['required', 'disabled'] },
-  biometric_mode:                   { valueType: 'select', options: ['required', 'disabled'] },
-  biometric_mode_superadmin:        { valueType: 'select', options: ['required', 'disabled'] },
+  require_otp:                      { valueType: 'select', options: ['required', 'disabled'], allowedRoles: ['customer', 'vendor', 'admin_tenant'] },
+  require_otp_superadmin:           { valueType: 'select', options: ['required', 'disabled'], allowedRoles: ['super_admin'] },
+  biometric_mode:                   { valueType: 'select', options: ['required', 'disabled'], allowedRoles: ['customer', 'vendor', 'admin_tenant'] },
+  biometric_mode_superadmin:        { valueType: 'select', options: ['required', 'disabled'], allowedRoles: ['super_admin'] },
   max_concurrent_sessions_per_role: { valueType: 'number' },
   notify_multi_device_login:        { valueType: 'boolean' },
 }
@@ -69,6 +69,7 @@ export default async function LoginSettingsPage() {
       options:         row.nilai_enum ?? undefined,
       valueType:       jsonCfg?.valueType,
       perRoleOptions:  jsonCfg?.options,
+      allowedRoles:    jsonCfg?.allowedRoles,
       option_group_id: null,
       adminCanChange:  row.tenant_can_override ?? false,
       enabled:         row.is_active ?? true,

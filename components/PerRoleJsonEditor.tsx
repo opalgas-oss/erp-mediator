@@ -6,6 +6,12 @@
 // Contoh: require_otp, biometric_mode, max_concurrent_sessions_per_role, notify_multi_device_login.
 //
 // Dibuat: Sesi #097 — PL-S08 M1 Config & Policy Management
+//
+// FIX Sesi #184 — HUTANG-SA-CONFIG-SEPARATION:
+//   Tambah prop `allowedRoles` untuk filter role yang ditampilkan.
+//   Sebelumnya: selalu render 4 role hardcoded → blank dropdown untuk role tidak ada di JSON.
+//   Sesudah: hanya render role yang ada di allowedRoles (jika diberikan).
+//   Output JSON juga hanya berisi allowedRoles → tidak ada data corruption.
 
 import type { JSX } from 'react'
 import { Switch }  from '@/components/ui/switch'
@@ -14,9 +20,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 // ─── Tipe ────────────────────────────────────────────────────────────────────
 
-// Role yang selalu ada — urutan ini yang ditampilkan di tabel
-const ROLES = ['customer', 'vendor', 'admin_tenant', 'super_admin'] as const
-type RoleKey = typeof ROLES[number]
+// Urutan standar tampilan — allowedRoles akan difilter dari urutan ini
+const ALL_ROLES = ['customer', 'vendor', 'admin_tenant', 'super_admin'] as const
+type RoleKey = typeof ALL_ROLES[number]
 
 // Label tampil per role
 const ROLE_LABEL: Record<RoleKey, string> = {
@@ -29,39 +35,38 @@ const ROLE_LABEL: Record<RoleKey, string> = {
 // Tipe nilai yang didukung per baris
 type ValueType = 'boolean' | 'number' | 'select'
 
-// Nilai JSON per role — tiap value bisa boolean, number, atau string (select)
-type PerRoleValue = Record<RoleKey, boolean | number | string>
+// Nilai JSON per role
+type PerRoleValue = Partial<Record<RoleKey, boolean | number | string>>
 
 export interface PerRoleJsonEditorProps {
-  fieldName:  string        // nama field DB, untuk keperluan debugging/label
-  value:      string        // nilai JSON dari DB (selalu string di config_registry)
-  valueType:  ValueType     // tipe input untuk setiap role
-  options?:   string[]      // daftar pilihan valid jika valueType='select'
-  onChange:   (jsonString: string) => void  // callback — kembalikan JSON string
-  disabled?:  boolean
+  fieldName:    string
+  value:        string
+  valueType:    ValueType
+  options?:     string[]
+  allowedRoles?: ReadonlyArray<RoleKey>  // filter role yang ditampilkan + disimpan
+  onChange:     (jsonString: string) => void
+  disabled?:    boolean
 }
 
-// ─── Helper: parse nilai JSON ─────────────────────────────────────────────────
+// ─── Helper: parse nilai JSON — hanya untuk allowedRoles ─────────────────────
 
-function parseJsonValue(rawValue: string): PerRoleValue {
+function parseJsonValue(rawValue: string, rolesToRender: readonly RoleKey[]): PerRoleValue {
   try {
     const parsed = JSON.parse(rawValue) as Record<string, unknown>
-    // Pastikan semua role ada — isi dengan nilai default jika tidak ada
-    const result: Record<string, boolean | number | string> = {}
-    for (const role of ROLES) {
+    const result: PerRoleValue = {}
+    for (const role of rolesToRender) {
       const v = parsed[role]
       if (typeof v === 'boolean' || typeof v === 'number' || typeof v === 'string') {
         result[role] = v
       } else {
-        result[role] = false // default fallback
+        result[role] = false // default fallback hanya untuk role yang diizinkan
       }
     }
-    return result as PerRoleValue
+    return result
   } catch {
-    // Jika bukan JSON valid — return default kosong
-    const fallback: Record<string, boolean | number | string> = {}
-    for (const role of ROLES) fallback[role] = false
-    return fallback as PerRoleValue
+    const fallback: PerRoleValue = {}
+    for (const role of rolesToRender) fallback[role] = false
+    return fallback
   }
 }
 
@@ -72,22 +77,34 @@ export function PerRoleJsonEditor({
   value,
   valueType,
   options = [],
+  allowedRoles,
   onChange,
   disabled = false,
 }: PerRoleJsonEditorProps): JSX.Element {
-  const parsed = parseJsonValue(value)
 
-  // Update nilai satu role → emit JSON string baru
+  // Tentukan role yang dirender: pakai allowedRoles jika ada, fallback ke semua (backward compat)
+  const rolesToRender: readonly RoleKey[] = allowedRoles
+    ? ALL_ROLES.filter((r) => allowedRoles.includes(r))
+    : ALL_ROLES
+
+  const parsed = parseJsonValue(value, rolesToRender)
+
+  // Update nilai satu role → emit JSON string HANYA untuk rolesToRender
   const handleRoleChange = (role: RoleKey, newVal: boolean | number | string): void => {
-    const updated = { ...parsed, [role]: newVal }
-    onChange(JSON.stringify(updated))
+    const updated: PerRoleValue = { ...parsed, [role]: newVal }
+    // JSON output hanya berisi role yang diizinkan — tidak ada kontaminasi role lain
+    const output: Record<string, boolean | number | string> = {}
+    for (const r of rolesToRender) {
+      if (updated[r] !== undefined) output[r] = updated[r]!
+    }
+    onChange(JSON.stringify(output))
   }
 
   return (
     <div className="flex flex-col gap-0.5 w-full">
       {/* Tabel per role */}
       <div className="border border-slate-200 rounded-md overflow-hidden">
-        {ROLES.map((role, idx) => {
+        {rolesToRender.map((role, idx) => {
           const roleValue = parsed[role]
 
           return (
@@ -127,7 +144,7 @@ export function PerRoleJsonEditor({
 
               {valueType === 'select' && (
                 <Select
-                  value={String(roleValue)}
+                  value={String(roleValue ?? '')}
                   onValueChange={(v) => handleRoleChange(role, v)}
                   disabled={disabled}
                 >

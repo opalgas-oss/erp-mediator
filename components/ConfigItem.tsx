@@ -34,6 +34,7 @@ export interface ConfigItemData {
   options?:        string[] // untuk type 'select-only'
   valueType?:      'boolean' | 'number' | 'select' // untuk type 'json-per-role'
   perRoleOptions?: string[] // opsi select per role jika valueType='select'
+  allowedRoles?:   ReadonlyArray<'customer' | 'vendor' | 'admin_tenant' | 'super_admin'> // filter role yang ditampilkan
   option_group_id?: string | null
   adminCanChange:  boolean
   enabled:         boolean
@@ -221,6 +222,7 @@ export function ConfigItem({
           value={String(item.value)}
           valueType={item.valueType ?? 'boolean'}
           options={item.perRoleOptions}
+          allowedRoles={item.allowedRoles}
           onChange={(jsonStr) => onValueChange(jsonStr)}
           disabled={!item.enabled}
         />

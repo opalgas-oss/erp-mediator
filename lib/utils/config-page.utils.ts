@@ -32,8 +32,9 @@ import type { ConfigItemData } from '@/components/ConfigItem'
  * Menentukan valueType dan opsi yang tersedia di PerRoleJsonEditor.
  */
 export type JsonFieldConfig = {
-  valueType: 'boolean' | 'number' | 'select'
-  options?:  string[]
+  valueType:    'boolean' | 'number' | 'select'
+  options?:     string[]
+  allowedRoles?: ReadonlyArray<'customer' | 'vendor' | 'admin_tenant' | 'super_admin'>
 }
 
 /** Alias tipe untuk ConfigItemData['type'] — dipakai di return type mapTipe(). */
