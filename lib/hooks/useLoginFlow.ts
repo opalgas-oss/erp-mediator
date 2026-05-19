@@ -291,15 +291,14 @@ export function useLoginFlow(): LoginFlowState {
 
   async function lanjutSetelahRole(role: string, tid: string, uidUser: string, namaUser: string, waNumber: string) {
     try {
-      // PERUBAHAN Sesi #168 — T-040: ganti boolean check dengan parseRequireOtpForRole()
-      // Gate client-side: hanya untuk skip API call sepenuhnya jika mode 'disabled'.
-      // Mode 'optional' dan 'required' tetap memanggil API — server gate yang tentukan.
+      // FIX S#182 + FIX-2: hanya 'required' dan 'disabled' — hapus 'optional'
       const otpMode = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', role)
       if (otpMode === 'disabled') {
         // SA set role ini 'disabled' → langsung selesaiLogin tanpa panggil API
-        await selesaiLogin()
+        // FIX S#182: pass uidUser/tid/role — dipanggil dari muatDataUser (state belum tentu di-render)
+        await selesaiLogin(uidUser, tid, role)
       } else {
-        // 'required' atau 'optional' → panggil API; server gate yang cek preferensi optional
+        // hanya 'required' → panggil API; server gate yang konfirmasi
         await kirimOTP(uidUser, tid, role, waNumber, namaUser)
       }
     } catch {
@@ -313,11 +312,10 @@ export function useLoginFlow(): LoginFlowState {
       // PERUBAHAN Sesi #167 — T-039: pass email (dari state closure) untuk channel email
       const resData = await fetchSendOTP({ uid: uidUser, tenantId: tid, role, nomorWa: waNumber, email, nama: namaUser })
 
-      // PERUBAHAN Sesi #168 — T-040: handle otp_skipped dari server gate
-      // Server gate return {success:true, otp_skipped:true} jika mode='disabled' atau optional+no-pref
+      // FIX S#182: pass uidUser/tid/role langsung — React state belum re-render saat ini
       if (resData.otp_skipped) {
         fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'OTP dilewati (mode config SA)', result: 'SUCCESS', gpsKota: gpsRef.current?.kota || '' })
-        await selesaiLogin()
+        await selesaiLogin(uidUser, tid, role)
         return
       }
 
@@ -331,38 +329,41 @@ export function useLoginFlow(): LoginFlowState {
     } finally { setIsLoading(false) }
   }
 
-  async function selesaiLogin() {
+  async function selesaiLogin(
+    overrideUid?: string,
+    overrideTenantId?: string,
+    overrideRole?: string,
+  ) {
+    // FIX S#182 — stale React state saat OTP di-skip via loginUnifiedAction:
+    // setUid()/setTenantId()/setRoleDipilih() dipanggil lalu langsung await selesaiLogin()
+    // tapi React belum re-render — state masih nilai lama (kosong).
+    // Solusi: caller pass nilai aktual sebagai override; fallback ke state untuk flow lama
+    // (handleVerifikasiOTP, handleKirimUlangOTP) di mana state sudah valid.
+    const aktualUid      = overrideUid      !== undefined ? overrideUid      : uid
+    const aktualTenantId = overrideTenantId !== undefined ? overrideTenantId : tenantId
+    const aktualRole     = overrideRole     !== undefined ? overrideRole     : roleDipilih
+
     setIsLoading(true); setTahap('SELESAI')
     try {
       const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || String(SESSION_DEFAULT_TIMEOUT_MINUTES))
 
-      // OPTIMASI Sesi #076 — Temuan 1: eliminasi blocking ~172ms sebelum redirect
-      // Sebelumnya: await Promise.all([fetchSessionLog, fetchUserPresence]) → blocking round-trip
-      // Sekarang:
-      //   1. Generate sessionId di client (crypto.randomUUID — tidak perlu tunggu server)
-      //   2. aturCookieSession dulu — cookie harus set sebelum redirect
-      //   3. fetchSessionLog + fetchUserPresence fire-and-forget — tidak blocking
-      //   4. kirimActivityLoginBerhasil dengan sessionId yang sama
-      //   5. router.push LANGSUNG tanpa tunggu apapun
-      // Saving: ~172ms per login Vendor (post-OTP), ~172ms untuk role lain
       const sessionId = crypto.randomUUID()
 
-      aturCookieSession({ roleDipilih, tenantId, gpsKota: gpsRef.current?.kota ?? null, sessionTimeoutMinutes })
+      aturCookieSession({ roleDipilih: aktualRole, tenantId: aktualTenantId, gpsKota: gpsRef.current?.kota ?? null, sessionTimeoutMinutes })
 
-      // Fire-and-forget — tidak blocking redirect
       fetchSessionLog({
-        uid, tenantId: tenantId || null, role: roleDipilih,
+        uid: aktualUid, tenantId: aktualTenantId || null, role: aktualRole,
         gpsKota: gpsRef.current?.kota ?? '', sessionId,
       }).catch(err => console.error('[selesaiLogin] session-log gagal:', err))
 
       fetchUserPresence({
-        uid, tenantId: tenantId || null, nama, role: roleDipilih,
+        uid: aktualUid, tenantId: aktualTenantId || null, nama, role: aktualRole,
         currentPage: '/login', currentPageLabel: 'Halaman Login',
       }).catch(err => console.error('[selesaiLogin] user-presence gagal:', err))
 
-      kirimActivityLoginBerhasil(uid, tenantId, nama, roleDipilih, sessionId, gpsRef.current?.kota ?? null)
+      kirimActivityLoginBerhasil(aktualUid, aktualTenantId, nama, aktualRole, sessionId, gpsRef.current?.kota ?? null)
 
-      router.push(hitungTujuanRedirect(roleDipilih, redirectTo))
+      router.push(hitungTujuanRedirect(aktualRole, redirectTo))
     } catch {
       setError(m('login_error_gagal_selesaikan')); setTahap('KREDENSIAL'); setIsLoading(false)
     }
@@ -441,11 +442,11 @@ export function useLoginFlow(): LoginFlowState {
           setUid(result.uid); setNama(result.nama)
           setTenantId(tid); setNomorWA(wa)
           setRoleDipilih(ROLES.VENDOR); setUserEmail(email)
-          // PERUBAHAN Sesi #168 — T-040: ganti boolean check dengan parseRequireOtpForRole()
-          // Gate client-side untuk Vendor di unified action flow.
+          // FIX S#182 + FIX-2: hanya 'required' dan 'disabled'
+          // FIX S#182: pass nilai aktual — state belum re-render (React batching)
           const otpMode = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', ROLES.VENDOR)
           if (otpMode === 'disabled') {
-            await selesaiLogin()
+            await selesaiLogin(result.uid, tid, ROLES.VENDOR)
           } else {
             await kirimOTP(result.uid, tid, ROLES.VENDOR, wa, result.nama)
           }

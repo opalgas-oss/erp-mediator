@@ -85,17 +85,16 @@ export function findConfigValue(items: ConfigItem[], policyKey: string): string 
 // ─── OTP Mode per role — helper untuk parse require_otp JSON dari config_registry ──
 //
 // Mendukung 2 format nilai `require_otp` di config_registry:
-//   Format JSON per-role: {"customer":"disabled","vendor":"optional","super_admin":"required"}
+//   Format JSON per-role: {"customer":"disabled","vendor":"required","super_admin":"required"}
 //   Format lama (boolean string): "true" / "false"
 //
-// Nilai per mode (per WORKFLOW_LOGIN_FITUR_LANJUTAN BAB 3):
+// Nilai per mode (hanya 2 pilihan — FIX S#182: hapus 'optional'):
 //   "required"  → OTP selalu dikirim ke role ini
-//   "optional"  → cek user_profiles.app_metadata.use_otp (null/false → skip)
 //   "disabled"  → OTP tidak pernah dikirim ke role ini
 //
 // Dipakai di: send-otp/route.ts (server gate) + useLoginFlow.ts (client gate)
 
-export type OtpMode = 'required' | 'optional' | 'disabled'
+export type OtpMode = 'required' | 'disabled'
 
 export function parseRequireOtpForRole(configValue: string, role: string): OtpMode {
   try {
@@ -103,7 +102,7 @@ export function parseRequireOtpForRole(configValue: string, role: string): OtpMo
     if (parsed !== null && typeof parsed === 'object') {
       const roleKey = role.toLowerCase()
       const mode    = String((parsed as Record<string, unknown>)[roleKey] ?? 'required')
-      if (mode === 'optional' || mode === 'disabled') return mode
+      if (mode === 'disabled') return 'disabled'
       return 'required' // default aman: wajib OTP
     }
   } catch { /* bukan JSON — fallback ke format lama */ }
