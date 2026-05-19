@@ -11,6 +11,13 @@
 // REFACTOR Sesi #068 — loginUnifiedAction: 1 signInWithPassword semua role.
 // FIX Sesi #074 — handle sesiParalelAda dari loginUnifiedAction:
 //   Vendor + AdminTenant yang punya sesi paralel → setTahap('SESI_PARALEL').
+// FIX S#183 — OTP enforcement semua role:
+//   MASALAH: SA bypass OTP via 2 path — handleLogin (unified action) + prosesSetelahAuthBerhasil (fallback)
+//   FIX PATH 1 (handleLogin): pakai result.role eksplisit; SA/AdminTenant/Customer cek OTP config
+//     → jika required, fetch profil → lanjutSetelahRole (sama dengan Vendor/Customer lain)
+//   FIX PATH 2 (prosesSetelahAuthBerhasil): SA block cek OTP config sebelum handleSuperadminLogin
+//   REFACTOR: Vendor block di handleLogin → lanjutSetelahRole (eliminasi duplikasi ATURAN 11)
+//   lanjutSetelahRole = single source of truth OTP enforcement untuk semua role
 
 'use client'
 
@@ -240,7 +247,7 @@ export function useLoginFlow(): LoginFlowState {
     return false
   }
 
-  // Dipertahankan untuk fallback flow lama (AdminTenant, Customer)
+  // Dipertahankan untuk SA OTP=disabled path (tidak ada OTP wajib)
   async function handleSuperadminLogin(
     authData:    { user: { id: string; email?: string | null }; session: { access_token: string } },
     hadAttempts: boolean,
@@ -289,6 +296,11 @@ export function useLoginFlow(): LoginFlowState {
     }
   }
 
+  // ─── lanjutSetelahRole — SINGLE SOURCE OF TRUTH OTP enforcement ──────────
+  // Dipakai oleh: handleLogin (semua role via unified action), muatDataUser (fallback flow),
+  //   handlePilihRole (pilih role dari daftar), prosesSetelahAuthBerhasil (SA OTP=required)
+  // FIX S#183: sebelumnya Vendor di handleLogin punya logika OTP sendiri (duplikasi ATURAN 11)
+  //   → sekarang semua route melalui fungsi ini
   async function lanjutSetelahRole(role: string, tid: string, uidUser: string, namaUser: string, waNumber: string) {
     try {
       // FIX S#182 + FIX-2: hanya 'required' dan 'disabled' — hapus 'optional'
@@ -377,8 +389,26 @@ export function useLoginFlow(): LoginFlowState {
     const claimRole     = claims['app_role']  as string || ''
     const claimTenantId = claims['tenant_id'] as string || ''
 
+    // FIX S#183 PATH 2 — fallback flow SA bypass OTP
+    // Sebelumnya: langsung handleSuperadminLogin() tanpa cek config
     if (claimRole === ROLES.SUPERADMIN) {
-      await handleSuperadminLogin(authData, hadAttempts); return
+      const otpModeSA = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', 'super_admin')
+      if (otpModeSA === 'disabled') {
+        // OTP tidak wajib → jalur lama, langsung redirect
+        await handleSuperadminLogin(authData, hadAttempts)
+        return
+      }
+      // OTP required → fetch profil SA (untuk nomorWa) → kirim OTP
+      setUid(authData.user.id); setUserEmail(authData.user.email || email)
+      setTenantId(''); setRoleDipilih(ROLES.SUPERADMIN); setDaftarRole([ROLES.SUPERADMIN])
+      if (hadAttempts) fetchUnlockAccount({ uid: authData.user.id, tenantId: null, method: 'auto' })
+      setTahap('LOADING')
+      const profile = await fetchLoadUserProfile(authData.user.id, null)
+      const namaSA  = profile.success ? (profile.nama  ?? '') : ''
+      const waSA    = profile.success ? (profile.nomor_wa ?? '') : ''
+      setNama(namaSA); setNomorWA(waSA)
+      await kirimOTP(authData.user.id, '', ROLES.SUPERADMIN, waSA, namaSA)
+      return
     }
 
     if (!claimTenantId) {
@@ -432,29 +462,42 @@ export function useLoginFlow(): LoginFlowState {
 
       // SA, AdminTenant, Vendor, Customer: handle per skenario
       if (result.ok && result.redirectTo && result.uid) {
-        const roleFromResult = result.tenantId === undefined ? ROLES.SUPERADMIN
-          : result.nomorWa !== undefined ? ROLES.VENDOR : ROLES.ADMIN_TENANT
+        // FIX S#183 PATH 1: pakai result.role eksplisit (sebelumnya di-infer dari field lain)
+        // Fallback ke inference lama untuk backward compat jika result.role tidak ada
+        const roleFromResult = result.role
+          ?? (result.tenantId === undefined ? ROLES.SUPERADMIN
+              : result.nomorWa !== undefined ? ROLES.VENDOR : ROLES.ADMIN_TENANT)
+        const tid = result.tenantId ?? ''
+        const wa  = result.nomorWa  ?? ''
 
-        // Vendor: perlu OTP sebelum redirect
-        if (roleFromResult === ROLES.VENDOR && result.nama) {
-          const tid = result.tenantId ?? ''
-          const wa  = result.nomorWa  ?? ''
-          setUid(result.uid); setNama(result.nama)
-          setTenantId(tid); setNomorWA(wa)
-          setRoleDipilih(ROLES.VENDOR); setUserEmail(email)
-          // FIX S#182 + FIX-2: hanya 'required' dan 'disabled'
-          // FIX S#182: pass nilai aktual — state belum re-render (React batching)
-          const otpMode = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', ROLES.VENDOR)
-          if (otpMode === 'disabled') {
-            await selesaiLogin(result.uid, tid, ROLES.VENDOR)
-          } else {
-            await kirimOTP(result.uid, tid, ROLES.VENDOR, wa, result.nama)
-          }
+        // ── VENDOR: nomorWa sudah di result → langsung lanjutSetelahRole ──────
+        // FIX S#183 REFACTOR: eliminasi duplikasi OTP decision logic (ATURAN 11)
+        // Sebelumnya: cek OTP config + kirimOTP/selesaiLogin inline di sini
+        // Sekarang: lanjutSetelahRole = single source of truth (sama untuk semua role)
+        if (roleFromResult === ROLES.VENDOR) {
+          setUid(result.uid); setNama(result.nama ?? ''); setTenantId(tid)
+          setNomorWA(wa); setRoleDipilih(ROLES.VENDOR); setUserEmail(email)
+          await lanjutSetelahRole(ROLES.VENDOR, tid, result.uid, result.nama ?? '', wa)
           return
         }
 
-        // SA + AdminTenant + Customer: redirect langsung
-        router.push(result.redirectTo); return
+        // ── SA, ADMINTENANT, CUSTOMER: cek OTP config dulu ───────────────────
+        // FIX S#183: sebelumnya langsung router.push — bypass OTP untuk SA (require_otp=required)
+        const otpMode = parseRequireOtpForRole(configLogin['require_otp'] ?? 'required', roleFromResult)
+        if (otpMode === 'disabled') {
+          // OTP tidak wajib → redirect langsung (unified action sudah set cookie + log server-side)
+          router.push(result.redirectTo); return
+        }
+
+        // OTP required → fetch profil (untuk nomorWa) → lanjutSetelahRole
+        setTahap('LOADING')
+        const profile     = await fetchLoadUserProfile(result.uid, tid || null)
+        const nomorWaUser = profile.success ? (profile.nomor_wa ?? '') : ''
+        const namaUser    = result.nama ?? (profile.success ? (profile.nama ?? '') : '')
+        setUid(result.uid); setNama(namaUser); setTenantId(tid)
+        setNomorWA(nomorWaUser); setRoleDipilih(roleFromResult); setUserEmail(email)
+        await lanjutSetelahRole(roleFromResult, tid, result.uid, namaUser, nomorWaUser)
+        return
       }
 
       // Error dari unified action
