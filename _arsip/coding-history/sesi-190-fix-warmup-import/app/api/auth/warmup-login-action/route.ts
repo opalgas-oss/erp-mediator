@@ -8,12 +8,6 @@
 //
 // TIDAK eksekusi side-effect (tidak panggil signInWithPassword).
 // TIDAK ada akses DB.
-//
-// FIX Sesi #190: tambah import loginUnifiedAction (actions.ts) dan modul yang hilang.
-//   Root cause: warmup endpoint S#188 tidak mengimport loginUnifiedAction sendiri —
-//   hanya helper-helpernya. Server Action chunk loginUnifiedAction belum tentu ter-warm.
-//   Detail: ANALISIS_CODE_REVIEW_SESI189.md Temuan 2 (H5 terkonfirmasi).
-//   Fix: tambah 5 import yang hilang + void reference di GET handler.
 
 import { NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -22,12 +16,7 @@ import { getConfigValues, parseConfigNumber } from '@/lib/config-registry'
 import {
   decodeAppClaims, setCookiesLoginServer, buatSupabaseSSR,
   buildLoginFormSchema, jalankanAfterTasksLogin, prosesGagalLogin,
-  formatLockUntilWIB, hitungTujuanRedirectServer,
 } from '@/app/login/login-action-helpers'
-import { loginUnifiedAction }                             from '@/app/login/actions'
-import { ROLES, ACCOUNT_LOCK_STATUS }                     from '@/lib/constants'
-import { SESSION_DEFAULT_TIMEOUT_MINUTES }                from '@/lib/auth'
-import { parseRequireOtpForRole, getRequireOtpConfigKey } from '@/app/login/login-types'
 
 export async function GET() {
   // Trigger module-level initialization tanpa eksekusi aktual
@@ -41,15 +30,6 @@ export async function GET() {
   void buildLoginFormSchema
   void jalankanAfterTasksLogin
   void prosesGagalLogin
-  // FIX S#190: void reference untuk import yang hilang di S#188
-  void loginUnifiedAction
-  void ROLES
-  void ACCOUNT_LOCK_STATUS
-  void SESSION_DEFAULT_TIMEOUT_MINUTES
-  void parseRequireOtpForRole
-  void getRequireOtpConfigKey
-  void formatLockUntilWIB
-  void hitungTujuanRedirectServer
 
   return NextResponse.json(
     { status: 'warm', bundle: 'login-action', timestamp: new Date().toISOString() },
