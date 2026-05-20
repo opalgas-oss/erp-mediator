@@ -15,14 +15,9 @@
 //   Sesudah: cek otpMode dulu → jika required, set otp_pending + return {uid,role,nomorWa} tanpa cookies
 //   Vendor sub-path 2 juga difix: setCookies tidak lagi dalam Promise.all (bug security tersembunyi)
 // PENTING: buatSupabaseSSR() → 1x cookies() → tidak ada regresi double-cookies +700ms
-// FIX S#191 (Step 6) — redirect() conditional untuk 5 jalur OTP=disabled
-//   Sebelum: return { ok:true, redirectTo:... } → client router.push() → 2 roundtrip
-//   Sesudah: redirect() langsung dari server → 1 roundtrip — estimasi gain -50 to -100ms
-//   HANYA berlaku untuk OTP=disabled. OTP=required TETAP return JSON (perlu uid/role/nomorWa ke client).
 
 'use server'
 
-import { redirect }                            from 'next/navigation'
 import { createServerSupabaseClient }          from '@/lib/supabase-server'
 import { getAccountLock }                       from '@/lib/services/account-lock.service'
 import { getConfigValues, parseConfigNumber }   from '@/lib/config-registry'
@@ -78,14 +73,6 @@ async function cekLockAwal(email: string): Promise<
 
 export async function loginUnifiedAction(params: LoginActionParams): Promise<LoginActionResult> {
   const { email, password, device, gpsKota, redirectTo } = params
-
-  // FIX S#191 (Step 4): quick sanity check — gagal cepat untuk input yang jelas tidak valid
-  //   Tanpa ini: input invalid tetap memicu 3 DB calls (lock + signIn + config) dalam Promise.all
-  //   Default fallback 6 (BUKAN parseConfigNumber — sessionCfg belum tersedia di titik ini)
-  //   Validasi penuh tetap berjalan setelah getConfigValues sukses dengan nilai aktual config
-  if (!email.includes('@') || password.length < 6) {
-    return { ok: false, errorKey: 'login_error_umum' }
-  }
 
   // [S190] TIMING LOG — digunakan untuk audit performa BUG-021 Layer 2 Fase 1
   // AKAN DIHAPUS setelah data timing terkumpul
@@ -161,8 +148,7 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
       sessionId
     )
     console.log(`[S190] total-action: ${(performance.now() - t_start).toFixed(1)}ms`)
-    // FIX S#191 (Step 6): redirect() server-side — client tidak perlu router.push()
-    redirect(hitungTujuanRedirectServer(ROLES.SUPERADMIN, redirectTo))
+    return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.SUPERADMIN, redirectTo), nama, uid, role: ROLES.SUPERADMIN }
   }
 
   // ── Semua role non-SA wajib punya tenantId di JWT ─────────────────────────
@@ -197,8 +183,7 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
         { uid, tenantId: claimTenantId, nama, role: ROLES.VENDOR, device, gpsKota, hadAttempts: lock.hadAttempts, email },
         sessionId
       )
-      // FIX S#191 (Step 6): redirect() server-side
-      redirect(hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo))
+      return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo), nama, uid, tenantId: claimTenantId, nomorWa: claims.nomorWa, role: ROLES.VENDOR }
     }
 
     const adminDb = createServerSupabaseClient()
@@ -228,8 +213,7 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
       { uid, tenantId: claimTenantId, nama, role: ROLES.VENDOR, device, gpsKota, hadAttempts: lock.hadAttempts, email },
       sessionId
     )
-    // FIX S#191 (Step 6): redirect() server-side
-    redirect(hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo))
+    return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo), nama, uid, tenantId: claimTenantId, nomorWa, role: ROLES.VENDOR }
   }
 
   // ── ADMIN TENANT ──────────────────────────────────────────────────────────
@@ -254,8 +238,7 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
       { uid, tenantId: claimTenantId, nama, role: ROLES.ADMIN_TENANT, device, gpsKota, hadAttempts: lock.hadAttempts, email },
       sessionId
     )
-    // FIX S#191 (Step 6): redirect() server-side
-    redirect(hitungTujuanRedirectServer(ROLES.ADMIN_TENANT, redirectTo))
+    return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.ADMIN_TENANT, redirectTo), nama, uid, tenantId: claimTenantId, role: ROLES.ADMIN_TENANT }
   }
 
   // ── CUSTOMER ──────────────────────────────────────────────────────────────
@@ -279,8 +262,7 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
       { uid, tenantId: claimTenantId, nama, role: ROLES.CUSTOMER, device, gpsKota, hadAttempts: lock.hadAttempts, email },
       sessionId
     )
-    // FIX S#191 (Step 6): redirect() server-side
-    redirect(hitungTujuanRedirectServer(ROLES.CUSTOMER, redirectTo))
+    return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.CUSTOMER, redirectTo), nama, uid, tenantId: claimTenantId, role: ROLES.CUSTOMER }
   }
 
   // ── Role tidak dikenal ────────────────────────────────────────────────────

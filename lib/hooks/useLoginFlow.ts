@@ -449,7 +449,10 @@ export function useLoginFlow(): LoginFlowState {
         //   Akibat: configLogin['require_otp_superadmin'] = undefined → fallback 'required'
         //   → SA OTP=disabled tetap masuk OTP flow di client.
         if (result.redirectTo) {
-          // Server sudah set cookie + putuskan OTP=disabled → redirect langsung
+          // FIX S#191 (Step 6): dengan redirect() di server (actions.ts), jalur OTP=disabled
+          // tidak akan mencapai blok ini karena server langsung redirect sebelum return JSON.
+          // Blok ini menjadi FALLBACK SAFETY untuk edge case error — JANGAN DIHAPUS.
+          // Protect jika ada perubahan arsitektur future yang balikkan ke return { redirectTo }.
           router.push(result.redirectTo)
           return
         }
