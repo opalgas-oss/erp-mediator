@@ -99,45 +99,25 @@ export const SUPABASE_ERROR_MAP: Record<string, string> = {
 }
 
 // ─── A. decodeAppClaims ───────────────────────────────────────────────────────
-/**
- * Decode JWT access token → AppClaims.
- *
- * STRUKTUR JWT dari inject-custom-claims Edge Function:
- *   payload['app_role']      — top level claim (dari hook)
- *   payload['tenant_id']     — top level claim (dari hook)
- *   payload['nama']          — top level claim (BARU Sesi #075, dari hook)
- *   payload['vendor_status'] — top level claim (BARU Sesi #075, dari hook)
- *   payload['nomor_wa']      — top level claim (BARU Sesi #075, dari hook)
- *   payload['app_metadata']  — nested object dari raw_app_meta_data (fallback)
- *   payload['user_metadata'] — nested object dari raw_user_meta_data (fallback nama)
- */
 export function decodeAppClaims(token: string): AppClaims {
   try {
     const parts = token.split('.')
     if (parts.length !== 3) return { role: '', tenantId: '', nama: '' }
     const padded   = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     const payload  = JSON.parse(Buffer.from(padded, 'base64').toString('utf-8')) as Record<string, unknown>
-
-    // Nested objects sebagai fallback
     const appMeta  = (typeof payload['app_metadata']  === 'object' && payload['app_metadata']  !== null)
                    ? payload['app_metadata']  as Record<string, unknown> : {}
     const userMeta = (typeof payload['user_metadata'] === 'object' && payload['user_metadata'] !== null)
                    ? payload['user_metadata'] as Record<string, unknown> : {}
-
     return {
-      // app_role: dari top level (hook) atau app_metadata (raw_app_meta_data)
       role:         typeof payload['app_role']         === 'string' ? payload['app_role']
                   : typeof appMeta['app_role']          === 'string' ? appMeta['app_role']         : '',
-      // tenant_id: dari top level (hook) atau app_metadata
       tenantId:     typeof payload['tenant_id']        === 'string' ? payload['tenant_id']
                   : typeof appMeta['tenant_id']         === 'string' ? appMeta['tenant_id']        : '',
-      // nama: dari top level (hook, Sesi #075) atau app_metadata atau user_metadata (selalu ada)
       nama:         typeof payload['nama']              === 'string' ? payload['nama']
                   : typeof appMeta['nama']              === 'string' ? appMeta['nama']
                   : typeof userMeta['nama']             === 'string' ? userMeta['nama']             : '',
-      // vendor_status: dari top level (hook, Sesi #075) — hanya ada setelah Edge Function v5
       vendorStatus: typeof payload['vendor_status']    === 'string' ? payload['vendor_status']     : undefined,
-      // nomor_wa: dari top level (hook, Sesi #075) — hanya ada setelah Edge Function v5
       nomorWa:      typeof payload['nomor_wa']         === 'string' ? payload['nomor_wa']          : undefined,
     }
   } catch {
@@ -179,14 +159,6 @@ export function hitungTujuanRedirectServer(role: string, redirectTo?: string): s
 }
 
 // ─── E. setCookiesLoginServer ─────────────────────────────────────────────────
-/**
- * Set 5 session cookies via cookieStore yang diterima dari buatSupabaseSSR().
- * TIDAK memanggil cookies() sendiri — mencegah double cookies() call per request.
- * FIX T-041 Sesi #165: tambah cookie 'session_timeout_minutes' agar middleware
- *   dapat membaca nilai timeout dan mengeksekusi cek inactive session timeout.
- * @param params      - SetCookiesParams
- * @param cookieStore - Instance dari buatSupabaseSSR().cookieStore
- */
 export async function setCookiesLoginServer(
   params:      SetCookiesParams,
   cookieStore: ReadonlyRequestCookies,
@@ -205,15 +177,11 @@ export async function setCookiesLoginServer(
   cookieStore.set('gps_kota',                params.gpsKota || 'Tidak Diketahui', { path: '/', maxAge })
   cookieStore.set('session_login_at',        loginAt,                              { path: '/', maxAge })
   cookieStore.set('session_timeout_minutes', String(sessionTimeoutMinutes),        { path: '/', maxAge, sameSite: 'strict', httpOnly: true })
-  // Cookie ke-5 'session_timeout_minutes' dibaca oleh middleware.ts untuk
-  // menentukan durasi inactive timeout. Tanpa cookie ini, timeoutMenit = null
-  // dan seluruh blok cek timeout tidak pernah dieksekusi (bug T-041).
 }
 
 // ─── F. jalankanAfterTasksLogin ───────────────────────────────────────────────
 export function jalankanAfterTasksLogin(params: AfterTasksParams, sessionId: string): void {
   after(async () => {
-    const t_after = performance.now() // [S190] timing — ukur apakah after() benar non-blocking
     try {
       await createSessionLog({
         uid: params.uid, tenantId: params.tenantId, role: params.role,
@@ -233,7 +201,6 @@ export function jalankanAfterTasksLogin(params: AfterTasksParams, sessionId: str
         await unlockAccount({ uid: params.uid, email: params.email, method: UNLOCK_METHOD.AUTO })
       } catch (err) { console.error('[afterTasks] unlockAccount gagal:', err) }
     }
-    console.log(`[S190] after-tasks-total: ${(performance.now() - t_after).toFixed(1)}ms`)
   })
 }
 
@@ -248,11 +215,6 @@ export function buildLoginFormSchema(passwordMinLength = 8) {
 }
 
 // ─── H. buatSupabaseSSR ───────────────────────────────────────────────────────
-/**
- * Buat Supabase SSR client + return cookieStore.
- * cookies() hanya dipanggil SEKALI di sini — cookieStore di-share ke setCookiesLoginServer().
- * @returns { supabase, cookieStore }
- */
 export async function buatSupabaseSSR(): Promise<SupabaseSSRResult> {
   const cookieStore = await cookies()
   const supabase = createServerClient(
@@ -273,22 +235,11 @@ export async function buatSupabaseSSR(): Promise<SupabaseSSRResult> {
 }
 
 // ─── I. prosesGagalLogin ──────────────────────────────────────────────────────
-/**
- * Proses login gagal: increment lock counter + kirim WA notif ke user jika terkunci.
- * FIX BUG-011 Sesi #063:
- *   - Pakai findByEmail() yang cek 3 tabel: users → user_profiles → auth
- *   - Pass nomor_wa aktual dari lookup (bukan hardcoded kosong)
- *   - Panggil sendLockNotificationWA() ke nomor_wa USER SENDIRI saat dikunci
- * @param email    - Email yang gagal login
- * @param tenantId - Tenant ID (dari JWT atau dari lookup)
- * @param authMsg  - Pesan error dari Supabase Auth
- */
 export async function prosesGagalLogin(
   email:    string,
   tenantId: string | null,
   authMsg:  string,
 ): Promise<GagalLoginResult> {
-  // Lookup user via 3 tabel: users (SA) → user_profiles (Vendor/AT/Customer) → auth
   const user = await findUserByEmail(email)
 
   if (user) {
@@ -301,7 +252,6 @@ export async function prosesGagalLogin(
         tenantId: tenantId ?? user.tenant_id,
       })
 
-      // Akun baru saja dikunci — kirim WA notif ke nomor user yang bersangkutan
       if (incResult.locked && incResult.lock_until) {
         if (user.nomor_wa) {
           try {
@@ -332,12 +282,6 @@ export async function prosesGagalLogin(
 }
 
 // ─── J. ambilNamaUser ─────────────────────────────────────────────────────────
-/**
- * Ambil nama SuperAdmin dari tabel users berdasarkan uid.
- * Khusus SA — dipanggil setelah loginSuperadminAction berhasil.
- * @param uid - UID SuperAdmin dari JWT
- * @returns Nama SA, string kosong jika tidak ditemukan
- */
 export async function ambilNamaUser(uid: string): Promise<string> {
   try {
     const adminDb = createServerSupabaseClient()

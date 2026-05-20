@@ -74,19 +74,13 @@ async function cekLockAwal(email: string): Promise<
 export async function loginUnifiedAction(params: LoginActionParams): Promise<LoginActionResult> {
   const { email, password, device, gpsKota, redirectTo } = params
 
-  // [S190] TIMING LOG — digunakan untuk audit performa BUG-021 Layer 2 Fase 1
-  // AKAN DIHAPUS setelah data timing terkumpul
-  const t_start = performance.now()
   const { supabase, cookieStore } = await buatSupabaseSSR()
-  console.log(`[S190] buatSupabaseSSR: ${(performance.now() - t_start).toFixed(1)}ms`)
 
-  const t_parallel = performance.now()
   const [lock, authResult, sessionCfg] = await Promise.all([
     cekLockAwal(email),
     supabase.auth.signInWithPassword({ email, password }),
     getConfigValues('security_login'),
   ])
-  console.log(`[S190] Promise.all-block: ${(performance.now() - t_parallel).toFixed(1)}ms`)
 
   const sessionTimeoutMinutes = parseConfigNumber(sessionCfg['session_timeout_minutes'], SESSION_DEFAULT_TIMEOUT_MINUTES)
   const passwordMinLength     = parseConfigNumber(sessionCfg['password_min_length'], 8)
@@ -111,9 +105,7 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     return prosesGagalLogin(email, userRow?.tenant_id ?? null, authError?.message ?? '')
   }
 
-  const t_decode = performance.now()
   const claims    = decodeAppClaims(authData.session.access_token)
-  console.log(`[S190] decodeAppClaims: ${(performance.now() - t_decode).toFixed(1)}ms`)
   const { role, tenantId: claimTenantId } = claims
   const uid       = authData.user.id
   const sessionId = crypto.randomUUID()
@@ -140,14 +132,11 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     }
 
     // OTP disabled → behavior lama: set session cookie + fire tasks + redirect langsung
-    const t_cookie = performance.now()
     await setCookiesLoginServer({ role: ROLES.SUPERADMIN, tenantId: '', gpsKota, sessionTimeoutMinutes }, cookieStore)
-    console.log(`[S190] setCookiesLoginServer: ${(performance.now() - t_cookie).toFixed(1)}ms`)
     jalankanAfterTasksLogin(
       { uid, tenantId: null, nama, role: ROLES.SUPERADMIN, device, gpsKota, hadAttempts: lock.hadAttempts, email },
       sessionId
     )
-    console.log(`[S190] total-action: ${(performance.now() - t_start).toFixed(1)}ms`)
     return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.SUPERADMIN, redirectTo), nama, uid, role: ROLES.SUPERADMIN }
   }
 
