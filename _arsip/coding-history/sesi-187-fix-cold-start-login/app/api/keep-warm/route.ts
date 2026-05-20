@@ -24,13 +24,6 @@
 //   /api/auth/verify-otp, /api/auth/check-session. Respon 401 (no auth) tetap
 //   mengakibatkan lambda ter-warm — yang penting lambda ter-inisialisasi.
 //
-// FIX Sesi #188: warm POST Server Action bundle loginUnifiedAction via endpoint warmup-login-action.
-//   Root cause BUG-021: keep-warm fan-out GET-only tidak menjangkau POST Server Action lambda
-//   loginUnifiedAction. Vercel memisah Page Render bundle (GET /login) dari Server Action
-//   bundle (POST /login → loginUnifiedAction). GET /login tidak warm POST bundle.
-//   Fix: tambah endpoint GET /api/auth/warmup-login-action yang import semua modul
-//   loginUnifiedAction, ping dari fan-out ini, Server Action bundle ter-warm via GET.
-//
 // Dilindungi CRON_SECRET via header Authorization: Bearer <secret>.
 
 import { NextResponse } from 'next/server'
@@ -46,7 +39,6 @@ export async function GET(request: Request) {
   // ── Fan-out: ping semua lambda kritis secara parallel ─────────────────────
   // Strategi:
   //   - /login              → warm server action bundle (loginUnifiedAction)
-  //   - /api/auth/warmup-login-action → warm POST Server Action bundle loginUnifiedAction (S#188 fix BUG-021)
   //   - /api/auth/warmup    → warm auth bundle (legacy, tetap dipertahankan)
   //   - /api/auth/send-otp  → direct warm — 401 OK, lambda tetap ter-inisialisasi
   //   - /api/auth/verify-otp → direct warm — 401 OK, lambda tetap ter-inisialisasi
@@ -63,7 +55,6 @@ export async function GET(request: Request) {
     const targets = [
       // Login flow — server action + API lambdas
       `${baseUrl}/login`,
-      `${baseUrl}/api/auth/warmup-login-action`, // ← BARU S#188 fix BUG-021
       `${baseUrl}/api/auth/warmup`,
       `${baseUrl}/api/auth/send-otp`,
       `${baseUrl}/api/auth/verify-otp`,
@@ -88,7 +79,6 @@ export async function GET(request: Request) {
       service:   'ERP Mediator Hyperlocal',
       warmed: [
         'login-page',
-        'warmup-login-action',
         'auth-bundle',
         'send-otp',
         'verify-otp',
