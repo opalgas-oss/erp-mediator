@@ -23,14 +23,6 @@
 //   - Compliant UU PDP No. 27/2022 (city-level only, bukan koordinat presisi = data minimization)
 //   - Untuk OTP=required path: server set 'gps_kota' cookie eagerly supaya sidebar dashboard
 //     tetap tampil kota setelah OTP verified (sebelumnya client set via aturCookieSession)
-// FIX S#196 REK-A — Paralelisasi getGeoForAudit() di Promise.all
-//   Sebelumnya: getGeoForAudit() sequential SEBELUM buatSupabaseSSR → menambah ~5-30ms overhead
-//   Sesudah: getGeoForAudit() paralel di Promise.all bersama cekLock/signIn/getConfig
-//   Justifikasi: getGeoForAudit hanya wrapper headers() read-only (lib/geo-server.ts) — no I/O,
-//     no exception, no side-effect. Aman diparalelkan tanpa race condition concern.
-//   Estimasi gain: -30 sampai -100ms TTFB warm (range, validasi di 3× test produksi)
-//   Catatan: TIDAK pakai Promise.allSettled — fail-open behavior adalah optimasi terpisah (REK-B,
-//     dijadwalkan S#197 setelah baseline REK-A terukur). Promise.all behavior konsisten dengan S#194.
 // PENTING: buatSupabaseSSR() → 1x cookies() → tidak ada regresi double-cookies +700ms
 
 'use server'
@@ -100,26 +92,26 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     return { ok: false, errorKey: 'login_error_umum' }
   }
 
-  // FIX S#196 REK-A: getGeoForAudit() dipindah ke Promise.all (lihat catatan header).
-  //   gpsKota di-extract setelah Promise.all selesai — tersedia untuk semua cabang downstream
-  //   (5 jalur OTP=required cookieStore.set + 4 jalur OTP=disabled setCookiesLoginServer).
+  // FIX S#194: baca x-vercel-ip-city header server-side (pengganti getGPSLocation+Nominatim 781ms blocking)
+  //   0ms overhead (header ter-inject di Edge Network sin1).
+  //   Akurasi city-level cukup untuk audit log (per OWASP authentication logging).
+  //   Mobile carrier (Telkomsel/Indosat) bisa ter-egress lewat Jakarta — acceptable trade-off untuk audit.
+  const geoFromVercel = await getGeoForAudit()
+  const gpsKota       = geoFromVercel.kota || 'Tidak Diketahui'
 
   // [S190] TIMING LOG — digunakan untuk audit performa BUG-021 Layer 2 Fase 1
-  // AKAN DIHAPUS setelah data timing terkumpul (HUTANG-BUG021-TIMING-CLEANUP-S191)
+  // AKAN DIHAPUS setelah data timing terkumpul
   const t_start = performance.now()
   const { supabase, cookieStore } = await buatSupabaseSSR()
   console.log(`[S190] buatSupabaseSSR: ${(performance.now() - t_start).toFixed(1)}ms`)
 
   const t_parallel = performance.now()
-  const [geoFromVercel, lock, authResult, sessionCfg] = await Promise.all([
-    getGeoForAudit(),
+  const [lock, authResult, sessionCfg] = await Promise.all([
     cekLockAwal(email),
     supabase.auth.signInWithPassword({ email, password }),
     getConfigValues('security_login'),
   ])
   console.log(`[S190] Promise.all-block: ${(performance.now() - t_parallel).toFixed(1)}ms`)
-
-  const gpsKota = geoFromVercel.kota || 'Tidak Diketahui'
 
   const sessionTimeoutMinutes = parseConfigNumber(sessionCfg['session_timeout_minutes'], SESSION_DEFAULT_TIMEOUT_MINUTES)
   const passwordMinLength     = parseConfigNumber(sessionCfg['password_min_length'], 8)

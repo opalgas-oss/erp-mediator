@@ -10,6 +10,7 @@
 
 | Tanggal | Sesi | Deskripsi |
 |---|---|---|
+| **21 Mei 2026** | **#196** | **Snapshot `sesi-196-rek-a-parallel-getgeo` dibuat (1 file pre-fix): app/login/actions.ts. REK-A: pindahkan `getGeoForAudit()` dari sequential SEBELUM `buatSupabaseSSR()` ke dalam `Promise.all` paralel dengan `cekLockAwal` + `signInWithPassword` + `getConfigValues`. Justifikasi: research S#196 — `getGeoForAudit` adalah wrapper `headers()` read-only (no I/O, no exception, no side-effect per lib/geo-server.ts). Estimasi gain: −30 sampai −100ms TTFB warm (range, validasi di 3× test produksi).** |
 | **17 Mei 2026** | **#173** | **Snapshot `sesi-173-sl-d002-k002-fonnte-server` dibuat (4 file pre-fix): otp + account-lock + tenant-pic + alert service. SL-D002: pola fetch Fonnte duplikat → ekstrak ke lib/utils/fonnte.server.ts → sendFonnteWA().** |
 | **17 Mei 2026** | **#170** | **Snapshot `sesi-170-t052-allow-account-sharing` dibuat (2 file pre-fix): membership.service.ts + user-membership.repository.ts.** |
 | **18 Mei 2026** | **#174** | **Snapshot `sesi-174-sl-d003-k003-validation-server` + `sesi-174-sl-d007-routes-constant` dibuat.** |
