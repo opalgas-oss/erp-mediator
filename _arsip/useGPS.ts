@@ -5,6 +5,26 @@
 // Jika ditolak/timeout → form tetap jalan (non-blocking sesuai config gps_mode).
 //
 // Dibuat: Sesi #049 — Step 5 TAHAP A refactor login/page.tsx
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ARSIP S#194 — RESTORE COPY (diletakkan oleh Claude per permintaan Philips)
+// ─────────────────────────────────────────────────────────────────────────────
+// File ini adalah SALINAN ORIGINAL useGPS.ts SEBELUM dihapus dari critical path
+// login di S#194 (FIX HUTANG-GPS-BLOCKING). Disimpan di root _arsip/ atas
+// permintaan eksplisit Philips: "simpan untuk antisipasi kalau rekomendasi
+// kamu yang sekarang salah atau terjadi bottleneck dari solusi kamu".
+//
+// CARA RESTORE JIKA HYBRID APPROACH GAGAL:
+// 1. Copy file ini ke lib/hooks/useGPS.ts
+// 2. Revert lib/hooks/useLoginFlow.ts dari _arsip/coding-history/sesi-194-fix-gps-login-blocking/lib/hooks/useLoginFlow.ts
+// 3. Revert app/login/actions.ts dari _arsip/coding-history/sesi-194-fix-gps-login-blocking/app/login/actions.ts
+// 4. Revert app/login/actions-legacy.ts dari arsip yang sama
+// 5. Revert lib/hooks/login/loginSessionHelpers.ts dari arsip yang sama
+// 6. Hapus lib/geo-server.ts (file baru S#194, tidak ada di Hybrid Approach lama)
+//
+// Tracker: HUTANG-GPS-BLOCKING (FIX S#194 — 21 Mei 2026)
+// Salinan resmi ATURAN 12: _arsip/coding-history/sesi-194-fix-gps-login-blocking/lib/hooks/useGPS.ts
+// ─────────────────────────────────────────────────────────────────────────────
 
 'use client'
 

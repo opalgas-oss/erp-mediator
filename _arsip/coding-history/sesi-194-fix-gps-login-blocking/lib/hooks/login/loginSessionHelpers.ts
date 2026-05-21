@@ -4,12 +4,6 @@
 //
 // Dipecah dari lib/hooks/useLoginFlow.ts (Sesi #055 — H-03 split).
 // Tujuan: memisahkan session/activity helpers dari state management.
-//
-// FIX S#194: aturCookieSession() tidak lagi set 'gps_kota' cookie — server
-//   sekarang single source of truth (via setCookiesLoginServer untuk OTP=disabled
-//   dan cookieStore.set di actions.ts untuk OTP=required).
-//   Param gpsKota di ParamAturCookieSession dipertahankan untuk backward-compat
-//   (semua caller sekarang pass null).
 
 'use client'
 
@@ -79,18 +73,14 @@ export async function tulisSessionLogSuperadmin(
 // ─── FUNGSI: aturCookieSession ───────────────────────────────────────────────
 /**
  * Set cookie session setelah login berhasil.
- * @param params - roleDipilih, tenantId, gpsKota (DEPRECATED S#194, ignored), sessionTimeoutMinutes
- *
- * FIX S#194: cookie 'gps_kota' tidak lagi di-set di sini — server sudah set
- * (lewat setCookiesLoginServer untuk OTP=disabled, atau cookieStore.set di
- * actions.ts untuk OTP=required). Mencegah race condition overwrite.
+ * @param params - roleDipilih, tenantId, gpsKota, sessionTimeoutMinutes
  */
 export function aturCookieSession(params: ParamAturCookieSession): void {
   const maxAgeSec = params.sessionTimeoutMinutes * 60
   const loginAt   = new Date().toISOString()
 
   setSessionCookies(params.roleDipilih, params.tenantId, maxAgeSec)
-  // FIX S#194: HAPUS — document.cookie 'gps_kota=...' (server adalah single source of truth)
+  document.cookie = `gps_kota=${encodeURIComponent(params.gpsKota || 'Tidak Diketahui')}; path=/; max-age=${maxAgeSec}`
   document.cookie = `session_login_at=${encodeURIComponent(loginAt)}; path=/; max-age=${maxAgeSec}`
 }
 

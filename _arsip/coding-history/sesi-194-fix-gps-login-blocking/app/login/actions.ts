@@ -14,15 +14,6 @@
 //   Sebelumnya: setCookiesLoginServer dipanggil SEBELUM OTP diverifikasi (security gap)
 //   Sesudah: cek otpMode dulu → jika required, set otp_pending + return {uid,role,nomorWa} tanpa cookies
 //   Vendor sub-path 2 juga difix: setCookies tidak lagi dalam Promise.all (bug security tersembunyi)
-// FIX S#194 — Eliminasi 781ms GPS+Nominatim blocking di critical path login
-//   Sebelumnya: gpsKota di-pass dari client (getGPSLocation+Nominatim 781ms blocking sebelum submit)
-//   Sesudah: gpsKota dibaca dari Vercel header server-side via getGeoForAudit()
-//   - 0ms overhead (header ter-inject di Vercel Edge Network sin1)
-//   - Tidak perlu permission GPS browser (UX mulus, ~85% user tidak terganggu)
-//   - Tidak melanggar Nominatim Usage Policy (komersial multi-tenant + rate limit)
-//   - Compliant UU PDP No. 27/2022 (city-level only, bukan koordinat presisi = data minimization)
-//   - Untuk OTP=required path: server set 'gps_kota' cookie eagerly supaya sidebar dashboard
-//     tetap tampil kota setelah OTP verified (sebelumnya client set via aturCookieSession)
 // PENTING: buatSupabaseSSR() → 1x cookies() → tidak ada regresi double-cookies +700ms
 
 'use server'
@@ -33,7 +24,6 @@ import { getConfigValues, parseConfigNumber }   from '@/lib/config-registry'
 import { ROLES, ACCOUNT_LOCK_STATUS }           from '@/lib/constants'
 import { SESSION_DEFAULT_TIMEOUT_MINUTES }       from '@/lib/auth'
 import { parseRequireOtpForRole, getRequireOtpConfigKey } from '@/app/login/login-types'
-import { getGeoForAudit }                       from '@/lib/geo-server'
 import {
   decodeAppClaims, formatLockUntilWIB, hitungTujuanRedirectServer,
   setCookiesLoginServer, jalankanAfterTasksLogin,
@@ -46,8 +36,8 @@ export interface LoginActionParams {
   email:       string
   password:    string
   device:      string
+  gpsKota:     string
   redirectTo?: string
-  // FIX S#194: gpsKota dihapus — sekarang dibaca server-side via getGeoForAudit() dari Vercel header
 }
 
 export interface LoginActionResult {
@@ -82,7 +72,7 @@ async function cekLockAwal(email: string): Promise<
 // ═════════════════════════════════════════════════════════════════════════════
 
 export async function loginUnifiedAction(params: LoginActionParams): Promise<LoginActionResult> {
-  const { email, password, device, redirectTo } = params
+  const { email, password, device, gpsKota, redirectTo } = params
 
   // FIX S#191 (Step 4): quick sanity check — gagal cepat untuk input yang jelas tidak valid
   //   Tanpa ini: input invalid tetap memicu 3 DB calls (lock + signIn + config) dalam Promise.all
@@ -91,13 +81,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
   if (!email.includes('@') || password.length < 6) {
     return { ok: false, errorKey: 'login_error_umum' }
   }
-
-  // FIX S#194: baca x-vercel-ip-city header server-side (pengganti getGPSLocation+Nominatim 781ms blocking)
-  //   0ms overhead (header ter-inject di Edge Network sin1).
-  //   Akurasi city-level cukup untuk audit log (per OWASP authentication logging).
-  //   Mobile carrier (Telkomsel/Indosat) bisa ter-egress lewat Jakarta — acceptable trade-off untuk audit.
-  const geoFromVercel = await getGeoForAudit()
-  const gpsKota       = geoFromVercel.kota || 'Tidak Diketahui'
 
   // [S190] TIMING LOG — digunakan untuk audit performa BUG-021 Layer 2 Fase 1
   // AKAN DIHAPUS setelah data timing terkumpul
@@ -150,10 +133,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     const otpModeSA     = parseRequireOtpForRole(requireOtpRaw, 'super_admin')
 
     if (otpModeSA === 'required') {
-      // FIX S#194: server set gps_kota cookie eagerly (pre-OTP-verify) supaya sidebar dashboard
-      // tetap tampil kota setelah OTP verified + redirect. Cookie ini independent dari session —
-      // aman di-set sebelum OTP diverifikasi (tidak memberikan akses dashboard).
-      cookieStore.set('gps_kota', gpsKota, { path: '/', maxAge: sessionTimeoutMinutes * 60 })
       cookieStore.set('otp_pending', '1', {
         httpOnly: false,
         path: '/',
@@ -194,8 +173,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
         sessionCfg[getRequireOtpConfigKey(ROLES.VENDOR)] ?? 'required', ROLES.VENDOR
       )
       if (otpModeVendor1 === 'required') {
-        // FIX S#194: server set gps_kota cookie eagerly (lihat catatan di jalur SA OTP=required)
-        cookieStore.set('gps_kota', gpsKota, { path: '/', maxAge: sessionTimeoutMinutes * 60 })
         cookieStore.set('otp_pending', '1', {
           httpOnly: false, path: '/', maxAge: 600, sameSite: 'strict',
         })
@@ -225,8 +202,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
       sessionCfg[getRequireOtpConfigKey(ROLES.VENDOR)] ?? 'required', ROLES.VENDOR
     )
     if (otpModeVendor2 === 'required') {
-      // FIX S#194: server set gps_kota cookie eagerly (lihat catatan di jalur SA OTP=required)
-      cookieStore.set('gps_kota', gpsKota, { path: '/', maxAge: sessionTimeoutMinutes * 60 })
       cookieStore.set('otp_pending', '1', {
         httpOnly: false, path: '/', maxAge: 600, sameSite: 'strict',
       })
@@ -250,8 +225,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
       const adminDbAT = createServerSupabaseClient()
       const { data: atProfile } = await adminDbAT.from('user_profiles')
         .select('nomor_wa').eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle()
-      // FIX S#194: server set gps_kota cookie eagerly (lihat catatan di jalur SA OTP=required)
-      cookieStore.set('gps_kota', gpsKota, { path: '/', maxAge: sessionTimeoutMinutes * 60 })
       cookieStore.set('otp_pending', '1', {
         httpOnly: false, path: '/', maxAge: 600, sameSite: 'strict',
       })
@@ -275,8 +248,6 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
       const adminDbCust = createServerSupabaseClient()
       const { data: custProfile } = await adminDbCust.from('user_profiles')
         .select('nomor_wa').eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle()
-      // FIX S#194: server set gps_kota cookie eagerly (lihat catatan di jalur SA OTP=required)
-      cookieStore.set('gps_kota', gpsKota, { path: '/', maxAge: sessionTimeoutMinutes * 60 })
       cookieStore.set('otp_pending', '1', {
         httpOnly: false, path: '/', maxAge: 600, sameSite: 'strict',
       })

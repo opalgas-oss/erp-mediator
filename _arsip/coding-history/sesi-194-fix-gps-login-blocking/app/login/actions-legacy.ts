@@ -8,11 +8,6 @@
 // CATATAN: Ketiga fungsi ini tidak lagi dipanggil dari useLoginFlow.ts (Sesi #068).
 // loginUnifiedAction di actions.ts menangani semua role.
 // Fungsi-fungsi ini dipertahankan sebagai referensi dan fallback darurat.
-//
-// FIX S#194 — Konsisten dengan actions.ts: gpsKota dibaca dari Vercel header server-side
-// (eliminasi 781ms GPS+Nominatim blocking). Param gpsKota dihapus dari LoginActionParams,
-// jadi destructure di 3 fungsi diupdate + tambah getGeoForAudit() di awal masing-masing.
-// Ini menjaga kalau fallback darurat dipakai — architecture tetap konsisten.
 
 'use server'
 
@@ -20,7 +15,6 @@ import { createServerSupabaseClient }  from '@/lib/supabase-server'
 import { getAccountLock }              from '@/lib/services/account-lock.service'
 import { getConfigValues, parseConfigNumber } from '@/lib/config-registry'
 import { ROLES, ACCOUNT_LOCK_STATUS }  from '@/lib/constants'
-import { getGeoForAudit }              from '@/lib/geo-server'
 import {
   decodeAppClaims, formatLockUntilWIB, hitungTujuanRedirectServer,
   setCookiesLoginServer, jalankanAfterTasksLogin, ambilNamaUser,
@@ -48,11 +42,7 @@ async function cekLockAwal(email: string): Promise<
 // ═════════════════════════════════════════════════════════════════════════════
 
 export async function loginSuperadminAction(params: LoginActionParams): Promise<LoginActionResult> {
-  const { email, password, device, redirectTo } = params
-
-  // FIX S#194: gpsKota dari Vercel header server-side (konsisten dengan loginUnifiedAction)
-  const geoFromVercel = await getGeoForAudit()
-  const gpsKota       = geoFromVercel.kota || 'Tidak Diketahui'
+  const { email, password, device, gpsKota, redirectTo } = params
 
   // FIX T-048: baca password_min_length dari config_registry (legacy fallback)
   const legacyCfg = await getConfigValues('security_login')
@@ -89,11 +79,7 @@ export async function loginSuperadminAction(params: LoginActionParams): Promise<
 // ═════════════════════════════════════════════════════════════════════════════
 
 export async function loginVendorAction(params: LoginActionParams): Promise<LoginActionResult> {
-  const { email, password, device, redirectTo } = params
-
-  // FIX S#194: gpsKota dari Vercel header server-side (konsisten dengan loginUnifiedAction)
-  const geoFromVercel = await getGeoForAudit()
-  const gpsKota       = geoFromVercel.kota || 'Tidak Diketahui'
+  const { email, password, device, gpsKota, redirectTo } = params
 
   // FIX T-048: baca password_min_length dari config_registry (legacy fallback)
   const legacyCfgV = await getConfigValues('security_login')
@@ -148,11 +134,7 @@ export async function loginVendorAction(params: LoginActionParams): Promise<Logi
 // ═════════════════════════════════════════════════════════════════════════════
 
 export async function loginAdminTenantAction(params: LoginActionParams): Promise<LoginActionResult> {
-  const { email, password, device, redirectTo } = params
-
-  // FIX S#194: gpsKota dari Vercel header server-side (konsisten dengan loginUnifiedAction)
-  const geoFromVercel = await getGeoForAudit()
-  const gpsKota       = geoFromVercel.kota || 'Tidak Diketahui'
+  const { email, password, device, gpsKota, redirectTo } = params
 
   // FIX T-048: baca password_min_length dari config_registry (legacy fallback)
   const legacyCfgAT = await getConfigValues('security_login')

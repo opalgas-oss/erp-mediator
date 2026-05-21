@@ -15,24 +15,18 @@
 // FIX S#185: handleLogin — percaya result.redirectTo dari server sebagai indikator OTP=disabled
 //   Bukan re-check configLogin['require_otp_superadmin'] yang undefined di login publik (RLS)
 //   Regresi dari S#184 HUTANG-SA-CONFIG-SEPARATION
-// FIX S#194: hapus getGPSLocation+Nominatim 781ms blocking dari critical path login
-//   Server membaca x-vercel-ip-city via getGeoForAudit() di loginUnifiedAction.
-//   Client tidak lagi minta permission GPS, tidak call Nominatim, tidak pass gpsKota.
-//   Sidebar dashboard tetap tampil kota karena server set 'gps_kota' cookie:
-//     - OTP=disabled → via setCookiesLoginServer di login-action-helpers.ts
-//     - OTP=required → via cookieStore.set('gps_kota', ...) di actions.ts
-//   Tampilan "📍 kota" di form login HILANG (acceptable — info di sidebar dashboard).
 
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, useSearchParams }               from 'next/navigation'
 import { createBrowserSupabaseClient }              from '@/lib/supabase-client'
+import { getGPSLocation }                           from '@/lib/session-client'
 import { useOTPTimer }                              from '@/lib/hooks/useOTPTimer'
 import { ROLES }                                    from '@/lib/constants'
 import {
   DEFAULT_PESAN, SUPABASE_ERROR_KEYS,
-  decodeJwtPayload, extractConfigItems,
+  decodeJwtPayload, extractConfigItems, findConfigValue,
   parseRequireOtpForRole, getRequireOtpConfigKey,
 } from '@/app/login/login-types'
 import type { Tahap, DataSesiParalel } from '@/app/login/login-types'
@@ -90,6 +84,7 @@ export function useLoginFlow(): LoginFlowState {
   const redirectTo   = searchParams.get('redirect') || ''
 
   const [tahap,          setTahap]          = useState<Tahap>('KREDENSIAL')
+  const [gpsKota,        setGpsKota]        = useState<string | null>(null)
   const [email,          setEmail]          = useState('')
   const [password,       setPassword]       = useState('')
   const [tampilPassword, setTampilPassword] = useState(false)
@@ -111,11 +106,13 @@ export function useLoginFlow(): LoginFlowState {
   const [otpPercobaan,   setOtpPercobaan]   = useState(0)
   const [maxOtpPercobaan,setMaxOtpPercobaan]= useState(3)
   const [configLogin,    setConfigLogin]    = useState<Record<string, string>>({
+    gps_timeout_seconds: '10', gps_cache_ttl_minutes: '30', gps_mode: 'true',
     password_min_length: '8', session_timeout_minutes: String(SESSION_DEFAULT_TIMEOUT_MINUTES), require_otp: 'true',
   })
   const [dbPesan, setDbPesan] = useState<Record<string, string>>({})
 
-  const initSudahJalan = useRef(false)
+  const gpsRef         = useRef<{ lat: number; lng: number; kota: string } | null>(null)
+  const gpsUdahDiminta = useRef(false)
   const otpTimer       = useOTPTimer(60)
 
   const m = useCallback((key: string, vars?: Record<string, string>): string => {
@@ -132,15 +129,14 @@ export function useLoginFlow(): LoginFlowState {
   }, [])
 
   useEffect(() => {
-    if (initSudahJalan.current) return
-    initSudahJalan.current = true
-    initConfig()
+    if (gpsUdahDiminta.current) return
+    gpsUdahDiminta.current = true
+    initConfigDanGPS()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // FIX S#194: rename dari initConfigDanGPS — GPS dipindah ke server (Vercel header via getGeoForAudit).
-  // Fungsi ini sekarang HANYA fetch config security_login untuk session_timeout, password_min_length, dll.
-  async function initConfig() {
+  async function initConfigDanGPS() {
+    let gpsTimeoutMs = 10_000, gpsCacheTtlMs = 30 * 60_000
     try {
       const res  = await fetch('/api/config/security_login')
       const data = await res.json()
@@ -151,8 +147,17 @@ export function useLoginFlow(): LoginFlowState {
           if (item.policy_key && item.nilai !== undefined) map[item.policy_key] = item.nilai
         }
         if (Object.keys(map).length > 0) setConfigLogin(prev => ({ ...prev, ...map }))
+        const t = Number(findConfigValue(items, 'gps_timeout_seconds'))
+        const c = Number(findConfigValue(items, 'gps_cache_ttl_minutes'))
+        if (t) gpsTimeoutMs  = t * 1000
+        if (c) gpsCacheTtlMs = c * 60_000
       }
-    } catch { /* pakai fallback default state */ }
+    } catch { /* pakai fallback */ }
+    try {
+      const hasil = await getGPSLocation({ timeoutMs: gpsTimeoutMs, cacheTtlMs: gpsCacheTtlMs })
+      setGpsKota(hasil?.kota ?? null)
+      gpsRef.current = hasil
+    } catch { /* GPS ditolak — form tetap jalan */ }
   }
 
   function validasiForm(): boolean {
@@ -171,8 +176,18 @@ export function useLoginFlow(): LoginFlowState {
     return valid
   }
 
-  // FIX S#194: pastikanGPS() dihapus — GPS tidak lagi blocking critical path login.
-  // Server membaca x-vercel-ip-city header via getGeoForAudit() di loginUnifiedAction.
+  async function pastikanGPS(): Promise<boolean> {
+    const gpsMode = configLogin['gps_mode'] ?? 'true'
+    if (gpsRef.current || gpsMode !== 'true') return true
+    try {
+      const timeoutMs  = Number(configLogin['gps_timeout_seconds']   || '10') * 1000
+      const cacheTtlMs = Number(configLogin['gps_cache_ttl_minutes'] || '30') * 60_000
+      const hasil = await getGPSLocation({ timeoutMs, cacheTtlMs })
+      setGpsKota(hasil?.kota ?? null)
+      gpsRef.current = hasil
+      return true
+    } catch { setError(m('login_error_gps_diperlukan')); return false }
+  }
 
   async function cekKunciAkun(): Promise<{ dikunci: boolean; hadAttempts: boolean }> {
     try {
@@ -217,9 +232,8 @@ export function useLoginFlow(): LoginFlowState {
     hadAttempts: boolean,
   ) {
     const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || String(SESSION_DEFAULT_TIMEOUT_MINUTES))
-    // FIX S#194: gpsKota null — server sudah set 'gps_kota' cookie di setCookiesLoginServer
-    aturCookieSession({ roleDipilih: ROLES.SUPERADMIN, tenantId: '', gpsKota: null, sessionTimeoutMinutes })
-    await tulisSessionLogSuperadmin(authData.user.id, '')
+    aturCookieSession({ roleDipilih: ROLES.SUPERADMIN, tenantId: '', gpsKota: gpsRef.current?.kota ?? null, sessionTimeoutMinutes })
+    await tulisSessionLogSuperadmin(authData.user.id, gpsRef.current?.kota ?? '')
     const namaSA = await ambilNamaSuperadmin(authData.user.id)
     fetchUserPresence({ uid: authData.user.id, tenantId: null, nama: namaSA, role: ROLES.SUPERADMIN, currentPage: '/login', currentPageLabel: 'Halaman Login' }).catch(() => {})
     if (hadAttempts) fetchUnlockAccount({ uid: authData.user.id, tenantId: null, email, method: 'auto' })
@@ -281,12 +295,12 @@ export function useLoginFlow(): LoginFlowState {
       const resData = await fetchSendOTP({ uid: uidUser, tenantId: tid, role, nomorWa: waNumber, email, nama: namaUser })
 
       if (resData.otp_skipped) {
-        fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'OTP dilewati (mode config SA)', result: 'SUCCESS', gpsKota: '' })
+        fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'OTP dilewati (mode config SA)', result: 'SUCCESS', gpsKota: gpsRef.current?.kota || '' })
         await selesaiLogin(uidUser, tid, role)
         return
       }
 
-      fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: resData.success ? 'OTP berhasil dikirim' : 'OTP gagal dikirim', result: resData.success ? 'SUCCESS' : 'FAILED', gpsKota: '' })
+      fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: resData.success ? 'OTP berhasil dikirim' : 'OTP gagal dikirim', result: resData.success ? 'SUCCESS' : 'FAILED', gpsKota: gpsRef.current?.kota || '' })
       setMaxOtpPercobaan(resData.otp_max_attempts ?? 3)
       otpTimer.mulaiTimer(resData.resend_cooldown_seconds ?? 60)
       setOtpInput(''); setOtpPercobaan(0); setTahap('OTP')
@@ -311,8 +325,7 @@ export function useLoginFlow(): LoginFlowState {
       const sessionId = crypto.randomUUID()
 
       // Set session cookies (untuk SA OTP=required: ini PERTAMA KALI cookie di-set)
-      // FIX S#194: gpsKota null — server sudah set 'gps_kota' cookie di actions.ts (OTP=required path)
-      aturCookieSession({ roleDipilih: aktualRole, tenantId: aktualTenantId, gpsKota: null, sessionTimeoutMinutes })
+      aturCookieSession({ roleDipilih: aktualRole, tenantId: aktualTenantId, gpsKota: gpsRef.current?.kota ?? null, sessionTimeoutMinutes })
 
       // FIX S#183e: hapus otp_pending cookie — middleware tidak akan blokir dashboard lagi
       // loginUnifiedAction set cookie ini untuk SA OTP=required
@@ -321,7 +334,7 @@ export function useLoginFlow(): LoginFlowState {
 
       fetchSessionLog({
         uid: aktualUid, tenantId: aktualTenantId || null, role: aktualRole,
-        gpsKota: '', sessionId,
+        gpsKota: gpsRef.current?.kota ?? '', sessionId,
       }).catch(err => console.error('[selesaiLogin] session-log gagal:', err))
 
       fetchUserPresence({
@@ -329,7 +342,7 @@ export function useLoginFlow(): LoginFlowState {
         currentPage: '/login', currentPageLabel: 'Halaman Login',
       }).catch(err => console.error('[selesaiLogin] user-presence gagal:', err))
 
-      kirimActivityLoginBerhasil(aktualUid, aktualTenantId, nama, aktualRole, sessionId, null)
+      kirimActivityLoginBerhasil(aktualUid, aktualTenantId, nama, aktualRole, sessionId, gpsRef.current?.kota ?? null)
 
       router.push(hitungTujuanRedirect(aktualRole, redirectTo))
     } catch {
@@ -399,12 +412,13 @@ export function useLoginFlow(): LoginFlowState {
   async function handleLogin() {
     if (!validasiForm()) return
     setIsLoading(true); setError('')
-    // FIX S#194: pastikanGPS() dihapus — GPS tidak lagi blocking critical path login
+    if (!(await pastikanGPS())) { setIsLoading(false); return }
 
     try {
       const result = await loginUnifiedAction({
         email, password,
         device:  typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
+        gpsKota: gpsRef.current?.kota ?? '',
         redirectTo,
       })
 
@@ -476,7 +490,7 @@ export function useLoginFlow(): LoginFlowState {
     try {
       const data = await fetchVerifyOTP({ uid, tenantId, inputCode: otpInput })
       if (data.success) {
-        fetchActivityLog({ uid, tenantId, nama, role: roleDipilih, sessionId: '', actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'Verifikasi OTP berhasil', result: 'SUCCESS', gpsKota: '' })
+        fetchActivityLog({ uid, tenantId, nama, role: roleDipilih, sessionId: '', actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'Verifikasi OTP berhasil', result: 'SUCCESS', gpsKota: gpsRef.current?.kota || '' })
         await selesaiLogin()
       } else if (data.result === 'EXPIRED') {
         setError(m('otp_error_kadaluarsa')); setIsLoading(false)
@@ -500,7 +514,7 @@ export function useLoginFlow(): LoginFlowState {
     email, setEmail, password, setPassword, tampilPassword,
     errorEmail, setErrorEmail, errorPassword, setErrorPassword,
     isLoading, error, setError,
-    gpsKota: null,  // FIX S#194: GPS dihapus dari critical path login (display di sidebar via cookie)
+    gpsKota,
     akunDikunci, waktuKunci,
     sesiParalel,
     daftarRole, roleDipilih, setRoleDipilih,
