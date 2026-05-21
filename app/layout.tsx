@@ -30,33 +30,6 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
-        {/* REK-C S#197 — Preconnect Supabase
-            Instruksikan browser mulai negosiasi koneksi TLS ke Supabase lebih awal,
-            sebelum loginUnifiedAction membutuhkan koneksi ke auth endpoint.
-            Source: web.dev/articles/preconnect-and-dns-prefetch (S#196 compass_artifact)
-            + Vercel KB: Next.js tidak auto-add preconnect ke external URL.
-
-            crossOrigin="anonymous" WAJIB untuk cross-origin preconnect:
-            tanpa ini, browser tidak akan reuse koneksi yang di-preconnect.
-
-            dns-prefetch = fallback browser lama yang tidak support preconnect
-            (selalu pasangkan keduanya per web.dev recommendation).
-
-            SKIP Upstash: UPSTASH_REDIS_REST_URL bukan NEXT_PUBLIC_ — private,
-            TIDAK aman di-render ke HTML response yang dikirim ke browser client.
-
-            Estimasi gain: −50 sampai −150ms TTFB pertama hit Supabase auth endpoint.
-            Gain visible HANYA untuk first TLS connection — subsequent reuse connection.
-            Variance Vercel Hobby ±600ms; validasi via 1× test warm produksi (metodologi S#197+). */}
-        <link
-          rel="preconnect"
-          href={process.env.NEXT_PUBLIC_SUPABASE_URL!}
-          crossOrigin="anonymous"
-        />
-        <link
-          rel="dns-prefetch"
-          href={process.env.NEXT_PUBLIC_SUPABASE_URL!}
-        />
         {/* Tabler Icons webfont — React 19 native <link> dengan precedence prop
             membuat React mempertahankan sebagai stylesheet aktif (bukan preload-only).
             CSS untuk class .ti dan .ti-X akan diterapkan ke element <i> di seluruh app. */}
