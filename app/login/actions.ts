@@ -31,6 +31,9 @@
 //   Estimasi gain: -30 sampai -100ms TTFB warm (range, validasi di 3× test produksi)
 //   Catatan: TIDAK pakai Promise.allSettled — fail-open behavior adalah optimasi terpisah (REK-B,
 //     dijadwalkan S#197 setelah baseline REK-A terukur). Promise.all behavior konsisten dengan S#194.
+// REVERT S#201 — Hapus sendMagicLinkAction (OPSI B Magic Link) — keputusan Philips:
+//   Magic Link bukan flow yang common/mature untuk marketplace jasa Indonesia.
+//   Flow 7-langkah tidak user-friendly. Problem TTFB <800ms dicari solusi lain.
 // PENTING: buatSupabaseSSR() → 1x cookies() → tidak ada regresi double-cookies +700ms
 
 'use server'
@@ -85,7 +88,7 @@ async function cekLockAwal(email: string): Promise<
   return { locked: false, hadAttempts: (lockDoc?.count ?? 0) > 0 }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 // loginUnifiedAction
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -301,60 +304,4 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
   // ── Role tidak dikenal ────────────────────────────────────────────────────
   try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
   return { ok: false, errorKey: 'login_error_role_tidak_ditemukan' }
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// sendMagicLinkAction — Magic Link Auth (OPSI B FASE 2, S#200)
-// Flow: user input email → Supabase kirim magic link → user klik link →
-//   /auth/confirm redirect ke /auth/verify → user klik tombol → verifyOtp →
-//   session ter-create → middleware routing ke role-specific dashboard
-//
-// CATATAN:
-// - Paralel dengan loginUnifiedAction — TIDAK replace password login
-// - shouldCreateUser: false — user wajib sudah terdaftar di platform
-// - emailRedirectTo harus match URL yang di-allow di Supabase Dashboard → Authentication → URL Configuration
-// - Anti-scanner: /auth/confirm cegah scanner consume token, /auth/verify butuh klik manual
-// - Email template di Supabase Dashboard WAJIB dikustomisasi untuk pakai {{ .TokenHash }}
-//   bukan default magic link URL (lihat instruksi setup di RESEARCH_S200_FASE_2_OPSI_B.md)
-// ═════════════════════════════════════════════════════════════════════════════
-
-export interface MagicLinkResult {
-  ok:     boolean
-  error?: string
-}
-
-export async function sendMagicLinkAction(email: string): Promise<MagicLinkResult> {
-  if (!email || !email.includes('@')) {
-    return { ok: false, error: 'Email tidak valid' }
-  }
-
-  try {
-    const { supabase } = await buatSupabaseSSR()
-
-    // Derive site URL dari env atau Vercel automatic env var
-    // NEXT_PUBLIC_URL = didefinisikan manual di env (local + Vercel dashboard)
-    // NEXT_PUBLIC_VERCEL_URL = di-inject otomatis Vercel untuk setiap deployment
-    // Fallback: NEXT_PUBLIC_SUPABASE_URL tidak dipakai (beda domain)
-    const siteUrl = (
-      process.env.NEXT_PUBLIC_URL ??
-      (process.env.NEXT_PUBLIC_VERCEL_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` : '')
-    ).replace(/\/$/, '') // hapus trailing slash
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${siteUrl}/auth/confirm?type=magiclink&next=${encodeURIComponent('/dashboard')}`,
-        shouldCreateUser: false,
-      },
-    })
-
-    if (error) {
-      console.error('[sendMagicLinkAction] Supabase error:', error.message)
-    }
-
-    return { ok: true }
-  } catch (err) {
-    console.error('[sendMagicLinkAction] Unexpected error:', err)
-    return { ok: false, error: 'Gagal mengirim link. Coba lagi.' }
-  }
 }

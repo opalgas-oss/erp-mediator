@@ -56,18 +56,31 @@ function VerifyForm() {
     }
   }
 
+  // S#200 Magic Link: conditional text berdasarkan type
+  const isMagicLink = type === 'magiclink' || type === 'email'
+
   return (
     <Wrapper>
       <CardContent className="pt-8 pb-8 text-center space-y-6">
         <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
-          <svg className="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-          </svg>
+          {isMagicLink ? (
+            <svg className="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          ) : (
+            <svg className="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+          )}
         </div>
         <div>
-          <p className="font-semibold text-gray-900 text-base">Reset Password</p>
+          <p className="font-semibold text-gray-900 text-base">
+            {isMagicLink ? 'Masuk ke Akun' : 'Reset Password'}
+          </p>
           <p className="text-sm text-muted-foreground mt-1">
-            Klik tombol di bawah untuk melanjutkan proses reset password Anda.
+            {isMagicLink
+              ? 'Klik tombol di bawah untuk masuk ke akun Anda.'
+              : 'Klik tombol di bawah untuk melanjutkan proses reset password Anda.'}
           </p>
         </div>
         {status === 'ERROR' && (
@@ -75,13 +88,19 @@ function VerifyForm() {
             {errorMsg}
           </div>
         )}
-        <Button className="w-full" disabled={status === 'LOADING'} onClick={handleVerify}>
-          {status === 'LOADING' ? 'Memverifikasi...' : 'Lanjutkan Reset Password'}
+        <Button
+          className="w-full"
+          disabled={status === 'LOADING'}
+          onClick={handleVerify}
+        >
+          {status === 'LOADING'
+            ? 'Memverifikasi...'
+            : isMagicLink ? 'Masuk ke Akun' : 'Lanjutkan Reset Password'}
         </Button>
         <p className="text-sm text-gray-500">
-          Link salah?{' '}
-          <a href="/forgot-password" className="text-blue-600 font-medium hover:text-blue-700">
-            Minta link baru
+          {isMagicLink ? 'Link tidak berlaku?' : 'Link salah?'}{' '}
+          <a href="/login" className="text-blue-600 font-medium hover:text-blue-700">
+            Kembali ke login
           </a>
         </p>
       </CardContent>
