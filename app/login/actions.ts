@@ -302,3 +302,59 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
   try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
   return { ok: false, errorKey: 'login_error_role_tidak_ditemukan' }
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// sendMagicLinkAction — Magic Link Auth (OPSI B FASE 2, S#200)
+// Flow: user input email → Supabase kirim magic link → user klik link →
+//   /auth/confirm redirect ke /auth/verify → user klik tombol → verifyOtp →
+//   session ter-create → middleware routing ke role-specific dashboard
+//
+// CATATAN:
+// - Paralel dengan loginUnifiedAction — TIDAK replace password login
+// - shouldCreateUser: false — user wajib sudah terdaftar di platform
+// - emailRedirectTo harus match URL yang di-allow di Supabase Dashboard → Authentication → URL Configuration
+// - Anti-scanner: /auth/confirm cegah scanner consume token, /auth/verify butuh klik manual
+// - Email template di Supabase Dashboard WAJIB dikustomisasi untuk pakai {{ .TokenHash }}
+//   bukan default magic link URL (lihat instruksi setup di RESEARCH_S200_FASE_2_OPSI_B.md)
+// ═════════════════════════════════════════════════════════════════════════════
+
+export interface MagicLinkResult {
+  ok:     boolean
+  error?: string
+}
+
+export async function sendMagicLinkAction(email: string): Promise<MagicLinkResult> {
+  if (!email || !email.includes('@')) {
+    return { ok: false, error: 'Email tidak valid' }
+  }
+
+  try {
+    const { supabase } = await buatSupabaseSSR()
+
+    // Derive site URL dari env atau Vercel automatic env var
+    // NEXT_PUBLIC_URL = didefinisikan manual di env (local + Vercel dashboard)
+    // NEXT_PUBLIC_VERCEL_URL = di-inject otomatis Vercel untuk setiap deployment
+    // Fallback: NEXT_PUBLIC_SUPABASE_URL tidak dipakai (beda domain)
+    const siteUrl = (
+      process.env.NEXT_PUBLIC_URL ??
+      (process.env.NEXT_PUBLIC_VERCEL_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` : '')
+    ).replace(/\/$/, '') // hapus trailing slash
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${siteUrl}/auth/confirm?type=magiclink&next=${encodeURIComponent('/dashboard')}`,
+        shouldCreateUser: false,
+      },
+    })
+
+    if (error) {
+      console.error('[sendMagicLinkAction] Supabase error:', error.message)
+    }
+
+    return { ok: true }
+  } catch (err) {
+    console.error('[sendMagicLinkAction] Unexpected error:', err)
+    return { ok: false, error: 'Gagal mengirim link. Coba lagi.' }
+  }
+}
