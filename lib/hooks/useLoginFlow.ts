@@ -286,9 +286,31 @@ export function useLoginFlow(): LoginFlowState {
         return
       }
 
-      fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: resData.success ? 'OTP berhasil dikirim' : 'OTP gagal dikirim', result: resData.success ? 'SUCCESS' : 'FAILED', gpsKota: '' })
+      // FIX S#205 — BUG-019 client handling:
+      //   Server return success=false saat resend counter >= max_otp_resend.
+      //   Sebelumnya client tidak check ini — user tetap masuk OTP stage dengan kode lama.
+      //   Sekarang: tampilkan pesan dari server, jangan masuk OTP stage, jangan reset timer.
+      if (!resData.success) {
+        fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: `Send OTP gagal: ${resData.message ?? 'unknown'}`, result: 'FAILED', gpsKota: '' })
+        // Pakai message dari server kalau ada (bisa berisi info lockout/resend limit), fallback ke key lokal.
+        const msg = resData.message?.toLowerCase() ?? ''
+        if (msg.includes('kirim ulang') || msg.includes('resend')) {
+          setError(m('otp_error_resend_limit_server'))
+        } else if (resData.message) {
+          setError(resData.message)
+        } else {
+          setError(m('otp_error_verifikasi_gagal'))
+        }
+        return
+      }
+
+      fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'OTP berhasil dikirim', result: 'SUCCESS', gpsKota: '' })
       setMaxOtpPercobaan(resData.otp_max_attempts ?? 3)
       otpTimer.mulaiTimer(resData.resend_cooldown_seconds ?? 60)
+      // FIX S#205 — BUG-017: setOtpPercobaan(0) DIPERTAHANKAN intentional.
+      //   Server-side: sendOTP() DELETE otp_attempts key — fresh attempt window per OTP baru.
+      //   Client: counter reset ke 0, konsisten dengan server.
+      //   Total security boundary: max_otp_resend (3) × max_otp_attempts (3) = 9 total attempts per sesi 5-menit.
       setOtpInput(''); setOtpPercobaan(0); setTahap('OTP')
     } catch (err) {
       console.error('[kirimOTP] error:', err)
@@ -480,6 +502,17 @@ export function useLoginFlow(): LoginFlowState {
         await selesaiLogin()
       } else if (data.result === 'EXPIRED') {
         setError(m('otp_error_kadaluarsa')); setIsLoading(false)
+      } else if (data.result === 'MAX_ATTEMPTS') {
+        // FIX S#205 — BUG-018 client handling:
+        //   Server tracking via Redis otp_attempts:{uid}:{tenantId} sudah ≥ max_otp_attempts.
+        //   User TIDAK BOLEH coba lagi dengan OTP yang sama.
+        //   Set otpPercobaan = maxOtpPercobaan supaya UI yang depend on sisa juga tahu.
+        //   User BISA klik Kirim ulang — sendOTP() akan reset attempt counter.
+        //   Kalau resend juga sudah max, akan ditolak di kirimOTP() check !resData.success.
+        fetchActivityLog({ uid, tenantId, nama, role: roleDipilih, sessionId: '', actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'OTP MAX_ATTEMPTS server lockout', result: 'FAILED', gpsKota: '' })
+        setOtpPercobaan(maxOtpPercobaan)
+        setError(m('otp_error_lockout_server'))
+        setIsLoading(false)
       } else {
         const baru = otpPercobaan + 1
         const sisa = maxOtpPercobaan - baru

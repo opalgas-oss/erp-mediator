@@ -10,12 +10,7 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 // ─── Tipe Data ──────────────────────────────────────────────────────────────
 
-// PERUBAHAN S#205 — FIX BUG-018:
-//   Tambah 'MAX_ATTEMPTS' ke OTPVerifyResult — dikembalikan verifyAndConsume()
-//   saat attempt counter di Redis sudah >= max_otp_attempts dari config_registry.
-//   Client menampilkan lockout message + disable input OTP.
-
-export type OTPVerifyResult = 'OK' | 'EXPIRED' | 'WRONG' | 'NOT_FOUND' | 'ALREADY_USED' | 'MAX_ATTEMPTS'
+export type OTPVerifyResult = 'OK' | 'EXPIRED' | 'WRONG' | 'NOT_FOUND' | 'ALREADY_USED'
 
 export interface UpsertOTPParams {
   uid:       string

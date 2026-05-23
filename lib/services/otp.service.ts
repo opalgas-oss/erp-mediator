@@ -94,6 +94,16 @@ function makeOTPRedisKey(uid: string, tenantId: string): string {
   return `otp:${uid}:${tenantId || '_'}`
 }
 
+// ─── PRIVATE: buat Redis key untuk attempt counter (BUG-018 fix S#205) ────────
+function makeOTPAttemptsRedisKey(uid: string, tenantId: string): string {
+  return `otp_attempts:${uid}:${tenantId || '_'}`
+}
+
+// ─── PRIVATE: buat Redis key untuk resend counter (BUG-019 fix S#205) ─────────
+function makeOTPResendRedisKey(uid: string, tenantId: string): string {
+  return `otp_resend:${uid}:${tenantId || '_'}`
+}
+
 // ─── PRIVATE: generate kode OTP ──────────────────────────────────────────────
 function generateOTPCode(panjang: number): string {
   const max = Math.pow(10, panjang)
@@ -144,6 +154,26 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
   const otpExpiryDetik    = parseConfigNumber(cfg['otp_expiry_seconds'], 300)
   const otpMaxAttempts    = parseConfigNumber(cfg['max_otp_attempts'], 3)
   const otpResendCooldown = parseConfigNumber(cfg['otp_resend_cooldown_seconds'], 60)
+  const maxResend         = parseConfigNumber(cfg['max_otp_resend'], 3)
+
+  // ── BUG-019 FIX S#205: cek resend counter sebelum generate + kirim OTP ──────────
+  // Jika Redis tersedia, cek counter. Jika Redis down, lanjut (best-effort rate limiting).
+  // TTL resendKey = otpExpiryDetik * (maxResend + 1) untuk cover semua window resend.
+  const resendRedisKey = makeOTPResendRedisKey(params.uid, params.tenantId)
+  const attemptsRedisKey = makeOTPAttemptsRedisKey(params.uid, params.tenantId)
+  const redisForCheck = await getRedisClient()
+  if (redisForCheck) {
+    try {
+      const currentResend = Number((await redisForCheck.get<string>(resendRedisKey)) ?? 0)
+      if (currentResend >= maxResend) {
+        console.warn(`[OTPService] BUG-019: Batas kirim ulang OTP tercapai (${currentResend}/${maxResend}) uid=${params.uid}`)
+        return { success: false, message: 'Batas kirim ulang OTP tercapai. Silakan login ulang dari awal.' }
+      }
+    } catch (err) {
+      // Redis check gagal — lanjut (resend limit best-effort, tidak blokir user)
+      console.warn('[OTPService] Redis resend check gagal, lanjut tanpa limit:', err)
+    }
+  }
 
   const kodeOTP   = generateOTPCode(otpDigits)
   const expiredAt = new Date(Date.now() + otpExpiryDetik * 1000)
@@ -250,6 +280,19 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     }
   }
 
+  // ── BUG-019 + BUG-018 FIX S#205: post-send cleanup ───────────────────────
+  // BUG-019: increment resend counter setelah OTP berhasil dikirim ke user
+  // BUG-018: delete attempt counter — OTP baru = attempt window baru (counter reset)
+  if (redisForCheck) {
+    try {
+      await redisForCheck.del(attemptsRedisKey)
+      await redisForCheck.incr(resendRedisKey)
+      await redisForCheck.expire(resendRedisKey, otpExpiryDetik * (maxResend + 1))
+    } catch (err) {
+      console.warn('[OTPService] Redis post-send counter update gagal (non-critical):', err)
+    }
+  }
+
   return {
     success:                  true,
     otp_expiry_minutes:       Math.round(otpExpiryDetik / 60),
@@ -271,8 +314,15 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
  *   Upstash get<string>() auto-JSON.parse numeric string → number.
  *   Pakai String(storedCode) untuk normalisasi tipe sebelum comparison.
  *
+ * FIX S#205 — BUG-018: tambah server-side attempt counter.
+ *   Sebelum cek OTP: baca otp_attempts:{uid}:{tenantId} dari Redis.
+ *   Jika >= max_otp_attempts (dari config) → return 'MAX_ATTEMPTS' tanpa cek OTP.
+ *   Jika WRONG: INCR counter + refresh TTL (otp_expiry_seconds).
+ *   Jika OK: DEL attempt counter + DEL OTP key.
+ *   Fallback SP tidak tracking attempts (PostgreSQL path tidak berubah).
+ *
  * @param params - uid, tenantId, inputCode
- * @returns OTPVerifyResult: 'OK' | 'EXPIRED' | 'WRONG' | 'NOT_FOUND' | 'ALREADY_USED'
+ * @returns OTPVerifyResult: 'OK' | 'EXPIRED' | 'WRONG' | 'NOT_FOUND' | 'ALREADY_USED' | 'MAX_ATTEMPTS'
  */
 export async function verifyAndConsume(
   params: VerifyOTPParams
@@ -283,10 +333,25 @@ export async function verifyAndConsume(
 
   if (redis) {
     try {
+      // BUG-018 FIX S#205: baca config + cek attempt counter sebelum verifikasi OTP
+      const cfg            = await getConfigValues('security_login')
+      const maxAttempts    = parseConfigNumber(cfg['max_otp_attempts'], 3)
+      const otpExpiryDetik = parseConfigNumber(cfg['otp_expiry_seconds'], 300)
+      const attemptsKey    = makeOTPAttemptsRedisKey(params.uid, params.tenantId)
+
+      // Cek attempt counter — blok SEBELUM cek OTP agar tidak ada side-effect
+      const currentAttempts = Number((await redis.get<string>(attemptsKey)) ?? 0)
+      if (currentAttempts >= maxAttempts) {
+        console.warn(`[OTPService] MAX_ATTEMPTS: ${currentAttempts}/${maxAttempts} uid=${params.uid}`)
+        return 'MAX_ATTEMPTS'
+      }
+
       const storedCode = await redis.get<string>(redisKey)
       if (storedCode !== null) {
         if (String(storedCode) === params.inputCode) {
+          // Sukses: hapus OTP + attempt counter
           await redis.del(redisKey)
+          await redis.del(attemptsKey)
           void spVerifyAndConsume({
             uid:       params.uid,
             tenantId:  params.tenantId,
@@ -294,6 +359,9 @@ export async function verifyAndConsume(
           }).catch(err => console.warn('[OTPService] PostgreSQL consumed update gagal (non-critical):', err))
           return 'OK'
         }
+        // Salah: increment attempt counter + refresh TTL
+        await redis.incr(attemptsKey)
+        await redis.expire(attemptsKey, otpExpiryDetik)
         return 'WRONG'
       }
     } catch (err) {
