@@ -1,3 +1,6 @@
+// ARSIP SESI #206 — sebelum REVERT spec violation BUG-018 (del attemptsRedisKey di post-send)
+// File asli: lib/services/otp.service.ts
+// Kondisi: commit f06a15f — MENGANDUNG spec violation: await redisForCheck.del(attemptsRedisKey)
 // lib/services/otp.service.ts
 // Service layer untuk OTP — generate, simpan, kirim WA/Email, verifikasi.
 // Panggil repository B-03 (otp) + CredentialService (Fonnte/SMTP token).
@@ -111,20 +114,8 @@ function generateOTPCode(panjang: number): string {
 }
 
 // ─── FUNGSI: sendOTP ──────────────────────────────────────────────────────────
-/**
- * Generate OTP, simpan ke Redis (primary) dan PostgreSQL (async audit trail).
- * Kirim via channel yang dikonfigurasi SA: whatsapp (Fonnte) atau email (SMTP).
- *
- * OPTIMASI Sesi #068 — Promise.all untuk call independen (GRUP A).
- * PERUBAHAN Sesi #084 — Redis primary, PostgreSQL async audit (GRUP B).
- * PERUBAHAN Sesi #167 — channel routing: whatsapp / email / error-if-sms.
- *
- * @param params - uid, tenantId, role, nomorWa, email?, nama?
- * @returns SendOTPResult berisi success + config OTP untuk client
- */
 export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
 
-  // ── GRUP A: call paralel — config + credential WA + platform info ─────────
   const WA_FALLBACK =
     '*Kode OTP Anda: {otp_code}*\n\n' +
     'Untuk masuk sebagai *{role}* di {nama_platform}.\n\n' +
@@ -137,7 +128,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     'Berlaku hingga pukul {expired_jam} WIB tanggal {expired_tanggal}.\n\n' +
     'JANGAN berikan kode ini kepada siapapun.'
 
-  // FIX S#205 — ATURAN 8 anti-hardcode: pesan resend limit pakai message_library (SA bisa edit via dashboard)
   const RESEND_LIMIT_FALLBACK = 'Batas kirim ulang OTP tercapai. Silakan login ulang dari awal.'
 
   const [cfg, apiKey, namaPlatform, timezone, waTemplate, emailTemplate, resendLimitMsg] = await Promise.all([
@@ -150,20 +140,16 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     getMessage('otp_error_resend_limit', RESEND_LIMIT_FALLBACK),
   ])
 
-  // ── Baca channel dari config (T-039) — default ke 'whatsapp' ──────────────
   const channel = (cfg['default_otp_channel'] ?? 'whatsapp').toLowerCase().trim()
 
-  // ── Parse config + generate OTP ───────────────────────────────────────────
   const otpDigits         = parseConfigNumber(cfg['otp_digits'], 6)
   const otpExpiryDetik    = parseConfigNumber(cfg['otp_expiry_seconds'], 300)
   const otpMaxAttempts    = parseConfigNumber(cfg['max_otp_attempts'], 3)
   const otpResendCooldown = parseConfigNumber(cfg['otp_resend_cooldown_seconds'], 60)
   const maxResend         = parseConfigNumber(cfg['max_otp_resend'], 3)
 
-  // ── BUG-019 FIX S#205: cek resend counter sebelum generate + kirim OTP ──────────
-  // Jika Redis tersedia, cek counter. Jika Redis down, lanjut (best-effort rate limiting).
-  // TTL resendKey = otpExpiryDetik * (maxResend + 1) untuk cover semua window resend.
   const resendRedisKey = makeOTPResendRedisKey(params.uid, params.tenantId)
+  const attemptsRedisKey = makeOTPAttemptsRedisKey(params.uid, params.tenantId)
   const redisForCheck = await getRedisClient()
   if (redisForCheck) {
     try {
@@ -173,7 +159,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
         return { success: false, message: resendLimitMsg }
       }
     } catch (err) {
-      // Redis check gagal — lanjut (resend limit best-effort, tidak blokir user)
       console.warn('[OTPService] Redis resend check gagal, lanjut tanpa limit:', err)
     }
   }
@@ -181,8 +166,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
   const kodeOTP   = generateOTPCode(otpDigits)
   const expiredAt = new Date(Date.now() + otpExpiryDetik * 1000)
   const redisKey  = makeOTPRedisKey(params.uid, params.tenantId)
-
-  // ── GRUP B: simpan OTP — Redis primary, PostgreSQL async audit ────────────
 
   const redis   = await getRedisClient()
   let   redisOk = false
@@ -217,7 +200,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     }
   }
 
-  // ── Format waktu expired ───────────────────────────────────────────────────
   const expiredJam = expiredAt.toLocaleTimeString('id-ID', {
     hour: '2-digit', minute: '2-digit', timeZone: timezone, hour12: false,
   })
@@ -234,10 +216,7 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     expired_tanggal: expiredTanggal,
   }
 
-  // ── Routing channel (T-039) ────────────────────────────────────────────────
-
   if (channel === 'whatsapp') {
-    // ── Path WA: Fonnte API ───────────────────────────────────────────────────
     if (!apiKey) {
       console.error('[OTPService] Fonnte api_token tidak ditemukan')
       return { success: false, message: 'Konfigurasi WhatsApp belum siap' }
@@ -258,7 +237,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     }
 
   } else if (channel === 'email') {
-    // ── Path Email: SMTP via smtp.server.ts ───────────────────────────────────
     if (!params.email) {
       console.error('[OTPService] Channel email dipilih tapi params.email kosong')
       return { success: false, message: 'Alamat email tidak tersedia untuk pengiriman OTP' }
@@ -275,7 +253,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     if (!smtpResult.success) return smtpResult
 
   } else {
-    // ── Channel tidak dikenal atau SMS (belum ada provider) ───────────────────
     console.error('[OTPService] Channel OTP tidak didukung:', channel)
     return {
       success: false,
@@ -283,12 +260,12 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     }
   }
 
-  // ── BUG-019 FIX S#205: increment resend counter setelah OTP berhasil dikirim ────
-  // Opsi A (keputusan Philips S#206): otp_attempts TIDAK di-reset saat resend.
-  // Sesuai spec asli Bug_Sesi_085.md BUG-018: tidak ada instruksi del(attemptsKey).
-  // Attempt counter persist sampai TTL otp_expiry_seconds expired.
+  // ── BUG-019 + BUG-018 FIX S#205: post-send cleanup ───────────────────────
+  // BUG-019: increment resend counter setelah OTP berhasil dikirim ke user
+  // BUG-018: delete attempt counter — OTP baru = attempt window baru (counter reset)
   if (redisForCheck) {
     try {
+      await redisForCheck.del(attemptsRedisKey)   // ← SPEC VIOLATION: ini yang akan direvert
       await redisForCheck.incr(resendRedisKey)
       await redisForCheck.expire(resendRedisKey, otpExpiryDetik * (maxResend + 1))
     } catch (err) {
@@ -305,28 +282,6 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
 }
 
 // ─── FUNGSI: verifyAndConsume ─────────────────────────────────────────────────
-/**
- * Verifikasi kode OTP — Redis fast path, fallback ke SP PostgreSQL.
- *
- * PERUBAHAN Sesi #084 (E2 Redis OTP Phase 1):
- *   Redis hit + match   → DEL Redis + PostgreSQL consumed async → return 'OK'
- *   Redis hit + mismatch → return 'WRONG' langsung (tanpa DB call)
- *   Redis miss / Redis down → fallback SP PostgreSQL (path lama)
- *
- * FIX Sesi #085 (TC-E04):
- *   Upstash get<string>() auto-JSON.parse numeric string → number.
- *   Pakai String(storedCode) untuk normalisasi tipe sebelum comparison.
- *
- * FIX S#205 — BUG-018: tambah server-side attempt counter.
- *   Sebelum cek OTP: baca otp_attempts:{uid}:{tenantId} dari Redis.
- *   Jika >= max_otp_attempts (dari config) → return 'MAX_ATTEMPTS' tanpa cek OTP.
- *   Jika WRONG: INCR counter + refresh TTL (otp_expiry_seconds).
- *   Jika OK: DEL attempt counter + DEL OTP key.
- *   Fallback SP tidak tracking attempts (PostgreSQL path tidak berubah).
- *
- * @param params - uid, tenantId, inputCode
- * @returns OTPVerifyResult: 'OK' | 'EXPIRED' | 'WRONG' | 'NOT_FOUND' | 'ALREADY_USED' | 'MAX_ATTEMPTS'
- */
 export async function verifyAndConsume(
   params: VerifyOTPParams
 ): Promise<OTPVerifyResult> {
@@ -336,13 +291,11 @@ export async function verifyAndConsume(
 
   if (redis) {
     try {
-      // BUG-018 FIX S#205: baca config + cek attempt counter sebelum verifikasi OTP
       const cfg            = await getConfigValues('security_login')
       const maxAttempts    = parseConfigNumber(cfg['max_otp_attempts'], 3)
       const otpExpiryDetik = parseConfigNumber(cfg['otp_expiry_seconds'], 300)
       const attemptsKey    = makeOTPAttemptsRedisKey(params.uid, params.tenantId)
 
-      // Cek attempt counter — blok SEBELUM cek OTP agar tidak ada side-effect
       const currentAttempts = Number((await redis.get<string>(attemptsKey)) ?? 0)
       if (currentAttempts >= maxAttempts) {
         console.warn(`[OTPService] MAX_ATTEMPTS: ${currentAttempts}/${maxAttempts} uid=${params.uid}`)
@@ -352,7 +305,6 @@ export async function verifyAndConsume(
       const storedCode = await redis.get<string>(redisKey)
       if (storedCode !== null) {
         if (String(storedCode) === params.inputCode) {
-          // Sukses: hapus OTP + attempt counter
           await redis.del(redisKey)
           await redis.del(attemptsKey)
           void spVerifyAndConsume({
@@ -362,7 +314,6 @@ export async function verifyAndConsume(
           }).catch(err => console.warn('[OTPService] PostgreSQL consumed update gagal (non-critical):', err))
           return 'OK'
         }
-        // Salah: increment attempt counter + refresh TTL
         await redis.incr(attemptsKey)
         await redis.expire(attemptsKey, otpExpiryDetik)
         return 'WRONG'
@@ -384,5 +335,4 @@ export async function verifyAndConsume(
   }
 }
 
-// ─── Re-export tipe ───────────────────────────────────────────────────────────
 export type { OTPVerifyResult }

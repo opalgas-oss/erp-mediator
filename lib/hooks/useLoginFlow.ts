@@ -302,11 +302,10 @@ export function useLoginFlow(): LoginFlowState {
       fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'OTP berhasil dikirim', result: 'SUCCESS', gpsKota: '' })
       setMaxOtpPercobaan(resData.otp_max_attempts ?? 3)
       otpTimer.mulaiTimer(resData.resend_cooldown_seconds ?? 60)
-      // FIX S#205 — BUG-017: setOtpPercobaan(0) DIPERTAHANKAN intentional.
-      //   Server-side: sendOTP() DELETE otp_attempts key — fresh attempt window per OTP baru.
-      //   Client: counter reset ke 0, konsisten dengan server.
-      //   Total security boundary: max_otp_resend (3) × max_otp_attempts (3) = 9 total attempts per sesi 5-menit.
-      setOtpInput(''); setOtpPercobaan(0); setTahap('OTP')
+      // Opsi A (keputusan Philips S#206): attempt counter PERSIST saat resend.
+      // Sesuai spec asli Bug_Sesi_085.md BUG-017: "jangan setOtpPercobaan(0)".
+      // Counter client TIDAK di-reset agar sisa percobaan konsisten dengan server.
+      setOtpInput(''); setTahap('OTP')
     } catch (err) {
       console.error('[kirimOTP] error:', err)
       setError(m('otp_error_verifikasi_gagal'))
