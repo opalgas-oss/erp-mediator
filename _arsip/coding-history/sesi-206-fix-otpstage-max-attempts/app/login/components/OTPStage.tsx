@@ -1,3 +1,6 @@
+// ARSIP SESI #206 — sebelum fix MAX_ATTEMPTS hide kirim ulang
+// File asli: app/login/components/OTPStage.tsx
+// Bug: tombol Kirim Ulang tidak disembunyikan saat batasPercobaan=true
 // app/login/components/OTPStage.tsx
 // UI tahap verifikasi OTP
 // Dibuat: Sesi #049 — Step 5 TAHAP D
@@ -67,16 +70,15 @@ export function OTPStage(props: OTPStageProps) {
             </span>
           ) : 'Verifikasi OTP'}
         </Button>
-        {!batasPercobaan && (
-          hitunganMundur > 0
-            ? <p className="text-xs text-center text-muted-foreground">
-                Kirim ulang dalam {hitunganMundur} detik
-              </p>
-            : <Button variant="ghost" className="w-full text-sm"
-                disabled={isLoading} onClick={onKirimUlang}>
-                Kirim Ulang
-              </Button>
-        )}
+        {hitunganMundur > 0
+          ? <p className="text-xs text-center text-muted-foreground">
+              Kirim ulang dalam {hitunganMundur} detik
+            </p>
+          : <Button variant="ghost" className="w-full text-sm"
+              disabled={isLoading} onClick={onKirimUlang}>
+              Kirim Ulang
+            </Button>
+        }
         {gpsKota && gpsKota !== 'Tidak Diketahui' && (
           <div className="flex items-center gap-1 pb-1">
             <span className="text-xs">📍</span>

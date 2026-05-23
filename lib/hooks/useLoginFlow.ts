@@ -110,6 +110,7 @@ export function useLoginFlow(): LoginFlowState {
   const [otpInput,       setOtpInput]       = useState('')
   const [otpPercobaan,   setOtpPercobaan]   = useState(0)
   const [maxOtpPercobaan,setMaxOtpPercobaan]= useState(3)
+  const [otpExpiryMenit, setOtpExpiryMenit] = useState(5)
   const [configLogin,    setConfigLogin]    = useState<Record<string, string>>({
     password_min_length: '8', session_timeout_minutes: String(SESSION_DEFAULT_TIMEOUT_MINUTES), require_otp: 'true',
   })
@@ -301,6 +302,7 @@ export function useLoginFlow(): LoginFlowState {
 
       fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'OTP berhasil dikirim', result: 'SUCCESS', gpsKota: '' })
       setMaxOtpPercobaan(resData.otp_max_attempts ?? 3)
+      setOtpExpiryMenit(resData.otp_expiry_minutes ?? 5)
       otpTimer.mulaiTimer(resData.resend_cooldown_seconds ?? 60)
       // Opsi A (keputusan Philips S#206): attempt counter PERSIST saat resend.
       // Sesuai spec asli Bug_Sesi_085.md BUG-017: "jangan setOtpPercobaan(0)".
@@ -506,7 +508,7 @@ export function useLoginFlow(): LoginFlowState {
         //   Pesan pakai existing key `otp_error_batas_habis` (sudah di message_library DB, SA bisa edit).
         fetchActivityLog({ uid, tenantId, nama, role: roleDipilih, sessionId: '', actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'OTP MAX_ATTEMPTS server lockout', result: 'FAILED', gpsKota: '' })
         setOtpPercobaan(maxOtpPercobaan)
-        setError(m('otp_error_batas_habis'))
+        setError(m('otp_error_batas_habis', { menit: String(otpExpiryMenit) }))
         setIsLoading(false)
       } else {
         const baru = otpPercobaan + 1
