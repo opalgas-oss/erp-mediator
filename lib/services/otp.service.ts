@@ -76,6 +76,7 @@ export interface SendOTPParams {
 export interface SendOTPResult {
   success:                  boolean
   message?:                 string
+  errorCode?:               'MAX_ATTEMPTS' | 'RESEND_LIMIT'
   otp_expiry_minutes?:      number
   otp_max_attempts?:        number
   resend_cooldown_seconds?: number
@@ -139,8 +140,10 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
 
   // FIX S#205 — ATURAN 8 anti-hardcode: pesan resend limit pakai message_library (SA bisa edit via dashboard)
   const RESEND_LIMIT_FALLBACK = 'Batas kirim ulang OTP tercapai. Silakan login ulang dari awal.'
+  // FIX S#206 — pesan MAX_ATTEMPTS saat user MAX state coba minta OTP baru via refresh+login
+  const MAX_ATTEMPTS_FALLBACK = 'Batas percobaan OTP habis. Silahkan tunggu {menit} menit.'
 
-  const [cfg, apiKey, namaPlatform, timezone, waTemplate, emailTemplate, resendLimitMsg] = await Promise.all([
+  const [cfg, apiKey, namaPlatform, timezone, waTemplate, emailTemplate, resendLimitMsg, maxAttemptsTemplate] = await Promise.all([
     getConfigValues('security_login'),
     getCredential('fonnte', 'api_token'),
     getNamaBrandPlatform(params.tenantId),
@@ -148,6 +151,7 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     getMessage('notif_wa_otp_login',    WA_FALLBACK),
     getMessage('notif_email_otp_login', EMAIL_FALLBACK),
     getMessage('otp_error_resend_limit', RESEND_LIMIT_FALLBACK),
+    getMessage('otp_error_batas_habis',  MAX_ATTEMPTS_FALLBACK),
   ])
 
   // ── Baca channel dari config (T-039) — default ke 'whatsapp' ──────────────
@@ -160,21 +164,34 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
   const otpResendCooldown = parseConfigNumber(cfg['otp_resend_cooldown_seconds'], 60)
   const maxResend         = parseConfigNumber(cfg['max_otp_resend'], 3)
 
-  // ── BUG-019 FIX S#205: cek resend counter sebelum generate + kirim OTP ──────────
-  // Jika Redis tersedia, cek counter. Jika Redis down, lanjut (best-effort rate limiting).
-  // TTL resendKey = otpExpiryDetik * (maxResend + 1) untuk cover semua window resend.
+  // ── FIX S#206: cek otp_attempts SEBELUM cek resend ————————————————————————
+  // Bug ditemukan dari test refresh+login: user yang sudah MAX_ATTEMPTS via verify-OTP
+  // bisa request OTP baru via refresh+login karena sendOTP hanya cek resend counter.
+  // Sekarang: cek attempts dulu — kalau ≥ max return error tanpa kirim OTP.
+  // Counter persist sampai TTL otp_expiry_seconds expired.
   const resendRedisKey = makeOTPResendRedisKey(params.uid, params.tenantId)
+  const attemptsRedisKey = makeOTPAttemptsRedisKey(params.uid, params.tenantId)
   const redisForCheck = await getRedisClient()
   if (redisForCheck) {
     try {
+      // Cek attempts counter — user yang sudah MAX_ATTEMPTS tidak boleh dapat OTP baru
+      const currentAttempts = Number((await redisForCheck.get<string>(attemptsRedisKey)) ?? 0)
+      if (currentAttempts >= otpMaxAttempts) {
+        const otpExpiryMenit = Math.round(otpExpiryDetik / 60)
+        const maxAttemptsMsg = interpolate(maxAttemptsTemplate, { menit: String(otpExpiryMenit) })
+        console.warn(`[OTPService] sendOTP blocked — MAX_ATTEMPTS: ${currentAttempts}/${otpMaxAttempts} uid=${params.uid}`)
+        return { success: false, message: maxAttemptsMsg, errorCode: 'MAX_ATTEMPTS' }
+      }
+
+      // Existing: cek resend counter
       const currentResend = Number((await redisForCheck.get<string>(resendRedisKey)) ?? 0)
       if (currentResend >= maxResend) {
         console.warn(`[OTPService] BUG-019: Batas kirim ulang OTP tercapai (${currentResend}/${maxResend}) uid=${params.uid}`)
-        return { success: false, message: resendLimitMsg }
+        return { success: false, message: resendLimitMsg, errorCode: 'RESEND_LIMIT' }
       }
     } catch (err) {
-      // Redis check gagal — lanjut (resend limit best-effort, tidak blokir user)
-      console.warn('[OTPService] Redis resend check gagal, lanjut tanpa limit:', err)
+      // Redis check gagal — lanjut (rate limit best-effort, tidak blokir user)
+      console.warn('[OTPService] Redis pre-send check gagal, lanjut tanpa limit:', err)
     }
   }
 

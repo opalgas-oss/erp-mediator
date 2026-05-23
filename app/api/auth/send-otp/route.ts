@@ -83,9 +83,12 @@ export async function POST(request: NextRequest) {
     })
 
     if (!result.success) {
+      // FIX S#206: pass-through errorCode + pakai 400 untuk client error (MAX_ATTEMPTS / RESEND_LIMIT),
+      // 500 hanya untuk server error (Fonnte/SMTP/Redis down).
+      const isClientError = result.errorCode === 'MAX_ATTEMPTS' || result.errorCode === 'RESEND_LIMIT'
       return NextResponse.json(
-        { success: false, message: result.message },
-        { status: 500 }
+        { success: false, message: result.message, errorCode: result.errorCode },
+        { status: isClientError ? 400 : 500 }
       )
     }
 

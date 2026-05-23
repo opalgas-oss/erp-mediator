@@ -288,15 +288,22 @@ export function useLoginFlow(): LoginFlowState {
       }
 
       // FIX S#205 — BUG-019 client handling:
-      //   Server return success=false saat resend counter >= max_otp_resend.
+      //   Server return success=false saat resend counter ≥ max_otp_resend.
       //   Sebelumnya client tidak check ini — user tetap masuk OTP stage dengan kode lama.
       //   Sekarang: tampilkan pesan dari server (yang sudah di-load dari message_library di otp.service.ts),
       //   jangan masuk OTP stage, jangan reset timer.
+      // FIX S#206 — errorCode handling:
+      //   - 'MAX_ATTEMPTS' → user MAX state → kembali ke form login dengan pesan tunggu
+      //   - 'RESEND_LIMIT' → user di OTP stage saat resend gagal → tetap di stage saat ini
       if (!resData.success) {
-        fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: `Send OTP gagal: ${resData.message ?? 'unknown'}`, result: 'FAILED', gpsKota: '' })
-        // Pesan datang dari server (sudah load dari message_library — SA bisa edit via dashboard).
-        // Fallback ke key UI existing kalau server tidak kirim message.
+        fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: `Send OTP gagal: ${resData.errorCode ?? resData.message ?? 'unknown'}`, result: 'FAILED', gpsKota: '' })
+        // Pesan datang dari server (sudah load dari message_library + interpolated — SA bisa edit via dashboard).
         setError(resData.message ?? m('otp_error_verifikasi_gagal'))
+        // MAX_ATTEMPTS → keluar dari OTP flow, kembali ke form login
+        if (resData.errorCode === 'MAX_ATTEMPTS') {
+          setTahap('KREDENSIAL')
+        }
+        // RESEND_LIMIT atau error lain → tetap di stage saat ini
         return
       }
 
