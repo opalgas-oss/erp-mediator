@@ -350,23 +350,43 @@ export async function verifyAndConsume(
       }
 
       const storedCode = await redis.get<string>(redisKey)
-      if (storedCode !== null) {
-        if (String(storedCode) === params.inputCode) {
-          // Sukses: hapus OTP + attempt counter
-          await redis.del(redisKey)
-          await redis.del(attemptsKey)
-          void spVerifyAndConsume({
-            uid:       params.uid,
-            tenantId:  params.tenantId,
-            inputCode: params.inputCode,
-          }).catch(err => console.warn('[OTPService] PostgreSQL consumed update gagal (non-critical):', err))
-          return 'OK'
-        }
-        // Salah: increment attempt counter + refresh TTL
+
+      // Kasus 1: OTP expired di Redis (storedCode=null) — submit tetap dihitung sebagai attempt.
+      // Fix S#206: sebelumnya fall through ke SP → return EXPIRED tanpa increment counter.
+      // Akibat lama: 3x submit tidak mencapai MAX_ATTEMPTS kalau OTP expired di tengah.
+      // Sekarang: increment counter, kalau mencapai max return MAX_ATTEMPTS, else EXPIRED.
+      if (storedCode === null) {
         await redis.incr(attemptsKey)
         await redis.expire(attemptsKey, otpExpiryDetik)
-        return 'WRONG'
+        const newAttempts = currentAttempts + 1
+        if (newAttempts >= maxAttempts) {
+          console.warn(`[OTPService] MAX_ATTEMPTS via EXPIRED path: ${newAttempts}/${maxAttempts} uid=${params.uid}`)
+          return 'MAX_ATTEMPTS'
+        }
+        return 'EXPIRED'
       }
+
+      // Kasus 2: OTP benar — cleanup + return OK
+      if (String(storedCode) === params.inputCode) {
+        await redis.del(redisKey)
+        await redis.del(attemptsKey)
+        void spVerifyAndConsume({
+          uid:       params.uid,
+          tenantId:  params.tenantId,
+          inputCode: params.inputCode,
+        }).catch(err => console.warn('[OTPService] PostgreSQL consumed update gagal (non-critical):', err))
+        return 'OK'
+      }
+
+      // Kasus 3: OTP salah — increment counter, cek apakah mencapai max
+      await redis.incr(attemptsKey)
+      await redis.expire(attemptsKey, otpExpiryDetik)
+      const newAttemptsWrong = currentAttempts + 1
+      if (newAttemptsWrong >= maxAttempts) {
+        console.warn(`[OTPService] MAX_ATTEMPTS via WRONG path: ${newAttemptsWrong}/${maxAttempts} uid=${params.uid}`)
+        return 'MAX_ATTEMPTS'
+      }
+      return 'WRONG'
     } catch (err) {
       console.warn('[OTPService] Redis GET gagal, fallback ke PostgreSQL SP:', err)
     }
