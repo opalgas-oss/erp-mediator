@@ -46,9 +46,6 @@ export const DEFAULT_PESAN: Record<string, string> = {
   otp_error_salah:                      'Kode OTP salah. Sisa percobaan: {sisa_percobaan}.',
   otp_error_batas_habis:                'Batas percobaan OTP habis. Klik Kirim ulang.',
   otp_error_verifikasi_gagal:           'Gagal memverifikasi OTP. Coba lagi.',
-  // S#205 — BUG-018 + BUG-019 client handling:
-  otp_error_lockout_server:             'Terlalu banyak percobaan salah. Klik Kirim ulang untuk minta kode OTP baru, atau login ulang.',
-  otp_error_resend_limit_server:        'Batas kirim ulang OTP tercapai. Silakan login ulang dari awal.',
 }
 
 // ─── Map error Supabase → message key ────────────────────────────────────────

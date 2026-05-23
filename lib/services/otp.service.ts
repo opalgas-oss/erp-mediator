@@ -137,13 +137,17 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     'Berlaku hingga pukul {expired_jam} WIB tanggal {expired_tanggal}.\n\n' +
     'JANGAN berikan kode ini kepada siapapun.'
 
-  const [cfg, apiKey, namaPlatform, timezone, waTemplate, emailTemplate] = await Promise.all([
+  // FIX S#205 — ATURAN 8 anti-hardcode: pesan resend limit pakai message_library (SA bisa edit via dashboard)
+  const RESEND_LIMIT_FALLBACK = 'Batas kirim ulang OTP tercapai. Silakan login ulang dari awal.'
+
+  const [cfg, apiKey, namaPlatform, timezone, waTemplate, emailTemplate, resendLimitMsg] = await Promise.all([
     getConfigValues('security_login'),
     getCredential('fonnte', 'api_token'),
     getNamaBrandPlatform(params.tenantId),
     getPlatformTimezone(),
     getMessage('notif_wa_otp_login',    WA_FALLBACK),
     getMessage('notif_email_otp_login', EMAIL_FALLBACK),
+    getMessage('otp_error_resend_limit', RESEND_LIMIT_FALLBACK),
   ])
 
   // ── Baca channel dari config (T-039) — default ke 'whatsapp' ──────────────
@@ -167,7 +171,7 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
       const currentResend = Number((await redisForCheck.get<string>(resendRedisKey)) ?? 0)
       if (currentResend >= maxResend) {
         console.warn(`[OTPService] BUG-019: Batas kirim ulang OTP tercapai (${currentResend}/${maxResend}) uid=${params.uid}`)
-        return { success: false, message: 'Batas kirim ulang OTP tercapai. Silakan login ulang dari awal.' }
+        return { success: false, message: resendLimitMsg }
       }
     } catch (err) {
       // Redis check gagal — lanjut (resend limit best-effort, tidak blokir user)

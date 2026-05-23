@@ -289,18 +289,13 @@ export function useLoginFlow(): LoginFlowState {
       // FIX S#205 — BUG-019 client handling:
       //   Server return success=false saat resend counter >= max_otp_resend.
       //   Sebelumnya client tidak check ini — user tetap masuk OTP stage dengan kode lama.
-      //   Sekarang: tampilkan pesan dari server, jangan masuk OTP stage, jangan reset timer.
+      //   Sekarang: tampilkan pesan dari server (yang sudah di-load dari message_library di otp.service.ts),
+      //   jangan masuk OTP stage, jangan reset timer.
       if (!resData.success) {
         fetchActivityLog({ uid: uidUser, tenantId: tid, nama: namaUser, role, sessionId: '', actionType: 'API_CALL', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: `Send OTP gagal: ${resData.message ?? 'unknown'}`, result: 'FAILED', gpsKota: '' })
-        // Pakai message dari server kalau ada (bisa berisi info lockout/resend limit), fallback ke key lokal.
-        const msg = resData.message?.toLowerCase() ?? ''
-        if (msg.includes('kirim ulang') || msg.includes('resend')) {
-          setError(m('otp_error_resend_limit_server'))
-        } else if (resData.message) {
-          setError(resData.message)
-        } else {
-          setError(m('otp_error_verifikasi_gagal'))
-        }
+        // Pesan datang dari server (sudah load dari message_library — SA bisa edit via dashboard).
+        // Fallback ke key UI existing kalau server tidak kirim message.
+        setError(resData.message ?? m('otp_error_verifikasi_gagal'))
         return
       }
 
@@ -509,9 +504,10 @@ export function useLoginFlow(): LoginFlowState {
         //   Set otpPercobaan = maxOtpPercobaan supaya UI yang depend on sisa juga tahu.
         //   User BISA klik Kirim ulang — sendOTP() akan reset attempt counter.
         //   Kalau resend juga sudah max, akan ditolak di kirimOTP() check !resData.success.
+        //   Pesan pakai existing key `otp_error_batas_habis` (sudah di message_library DB, SA bisa edit).
         fetchActivityLog({ uid, tenantId, nama, role: roleDipilih, sessionId: '', actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'OTP MAX_ATTEMPTS server lockout', result: 'FAILED', gpsKota: '' })
         setOtpPercobaan(maxOtpPercobaan)
-        setError(m('otp_error_lockout_server'))
+        setError(m('otp_error_batas_habis'))
         setIsLoading(false)
       } else {
         const baru = otpPercobaan + 1
