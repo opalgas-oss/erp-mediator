@@ -50,10 +50,10 @@ export default async function VendorLayout({ children }: { children: React.React
     const db = createServerSupabaseClient()
     const { data } = await db
       .from('user_profiles')
-      .select('status')
+      .select('register_status')   // STATUS-REDESIGN S#212 (was: 'status')
       .eq('id', payload.uid)
       .single()
-    return data?.status ?? ''
+    return data?.register_status ?? ''   // STATUS-REDESIGN S#212 (was: data?.status)
   }
 
   // Semua query parallel → 0 tambahan latency ke RSC
