@@ -88,14 +88,13 @@ export function findConfigValue(items: ConfigItem[], policyKey: string): string 
 //   Format JSON per-role: {"customer":"disabled","vendor":"required","super_admin":"required"}
 //   Format lama (boolean string): "true" / "false"
 //
-// Nilai per mode (3 pilihan — S#209: tambah otp_only):
-//   "required"  → OTP selalu dikirim ke role ini (2FA: password + OTP)
-//   "disabled"  → OTP tidak pernah dikirim ke role ini (password only)
-//   "otp_only"  → OTP saja tanpa password (Pengganti Password — per BRD S#202)
+// Nilai per mode (hanya 2 pilihan — FIX S#182: hapus 'optional'):
+//   "required"  → OTP selalu dikirim ke role ini
+//   "disabled"  → OTP tidak pernah dikirim ke role ini
 //
 // Dipakai di: send-otp/route.ts (server gate) + useLoginFlow.ts (client gate)
 
-export type OtpMode = 'required' | 'disabled' | 'otp_only'
+export type OtpMode = 'required' | 'disabled'
 
 export function parseRequireOtpForRole(configValue: string, role: string): OtpMode {
   try {
@@ -104,14 +103,11 @@ export function parseRequireOtpForRole(configValue: string, role: string): OtpMo
       const roleKey = role.toLowerCase()
       const mode    = String((parsed as Record<string, unknown>)[roleKey] ?? 'required')
       if (mode === 'disabled') return 'disabled'
-      if (mode === 'otp_only') return 'otp_only'
       return 'required' // default aman: wajib OTP
     }
   } catch { /* bukan JSON — fallback ke format lama */ }
-  // Format lama: string tunggal
-  if (configValue === 'false') return 'disabled'
-  if (configValue === 'otp_only') return 'otp_only'
-  return 'required'
+  // Format lama: boolean string
+  return configValue === 'false' ? 'disabled' : 'required'
 }
 
 // ─── Helper format waktu login ───────────────────────────────────────────────

@@ -21,6 +21,7 @@ import { LoginFormStage }     from './components/LoginFormStage'
 import { SesiParalelStage }   from './components/SesiParalelStage'
 import { RoleSelectorStage }  from './components/RoleSelectorStage'
 import { OTPStage }           from './components/OTPStage'
+import { LoginFormOtpOnly }   from './components/LoginFormOtpOnly'
 
 function LoginOrchestrator() {
   const flow = useLoginFlow()
@@ -52,6 +53,19 @@ function LoginOrchestrator() {
       hitunganMundur={flow.hitunganMundur} isLoading={flow.isLoading} error={flow.error} gpsKota={flow.gpsKota}
       onOtpChange={flow.setOtpInput} onVerifikasi={flow.handleVerifikasiOTP} onKirimUlang={flow.handleKirimUlangOTP}
       m={flow.m} />
+
+  // otp_only mode: tampilkan form nomor HP sebagai pengganti password (S#209)
+  // isOtpOnlyMode di-toggle via setIsOtpOnlyMode dari komponen atau config detection
+  if (flow.isOtpOnlyMode && flow.tahap === 'KREDENSIAL')
+    return <LoginFormOtpOnly
+      nomorHp={flow.nomorHp}
+      isLoading={flow.isLoading}
+      error={flow.error}
+      onNomorHpChange={flow.setNomorHp}
+      onKirimOTP={flow.handleKirimOtpOnly}
+      onMasukPassword={() => { flow.setIsOtpOnlyMode(false); flow.setError('') }}
+      m={flow.m}
+    />
 
   // Default: KREDENSIAL — form email + password
   return <LoginFormStage email={flow.email} password={flow.password} tampilPassword={flow.tampilPassword}

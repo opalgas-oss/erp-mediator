@@ -12,7 +12,6 @@
 //   - Hapus definisi lokal mapTipe, mapValue, JsonFieldConfig, ConfigItemType, isTimingField
 //   - Import semua dari @/lib/utils/config-page.utils (satu sumber kebenaran)
 //   - mapTipe sekarang handle tipe_data='text' → 'text-field' (fix vendor_blocked_statuses)
-// PERUBAHAN Sesi #209 — Tambah otp_only ke options require_otp + require_otp_superadmin (per TDD-Q1)
 // PERUBAHAN Sesi #177 — Fix PV-09 (Repository Pattern):
 //   - Hapus direct db.from('config_registry') di RSC page
 //   - Ganti dengan getConfigPageItems('security_login') dari lib/config-registry
@@ -28,8 +27,8 @@ import type { ConfigItemData }                     from '@/components/ConfigItem
 // ─── Konfigurasi tipe per field JSON per-role ─────────────────────────────────
 
 const JSON_FIELD_CONFIG: Record<string, JsonFieldConfig> = {
-  require_otp:                      { valueType: 'select', options: ['disabled', 'required', 'otp_only'], allowedRoles: ['customer', 'vendor', 'admin_tenant'] },
-  require_otp_superadmin:           { valueType: 'select', options: ['disabled', 'required', 'otp_only'], allowedRoles: ['super_admin'] },
+  require_otp:                      { valueType: 'select', options: ['required', 'disabled'], allowedRoles: ['customer', 'vendor', 'admin_tenant'] },
+  require_otp_superadmin:           { valueType: 'select', options: ['required', 'disabled'], allowedRoles: ['super_admin'] },
   biometric_mode:                   { valueType: 'select', options: ['required', 'disabled'], allowedRoles: ['customer', 'vendor', 'admin_tenant'] },
   biometric_mode_superadmin:        { valueType: 'select', options: ['required', 'disabled'], allowedRoles: ['super_admin'] },
   max_concurrent_sessions_per_role: { valueType: 'number' },

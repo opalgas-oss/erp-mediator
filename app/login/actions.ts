@@ -50,6 +50,9 @@ import {
   setCookiesLoginServer, jalankanAfterTasksLogin,
   buildLoginFormSchema, buatSupabaseSSR, prosesGagalLogin,
 } from './login-action-helpers'
+// OTP Mode otp_only — Fase 3 Coding S#209 (TDD Step 3)
+import { sendOTP }             from '@/lib/services/otp.service'
+import { lookupUserByNomorWa } from '@/lib/utils/otp-only.server'
 
 // ─── Tipe ────────────────────────────────────────────────────────────────────
 
@@ -304,4 +307,191 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
   // ── Role tidak dikenal ────────────────────────────────────────────────────
   try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
   return { ok: false, errorKey: 'login_error_role_tidak_ditemukan' }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// initOtpOnlyAction — S#209 TDD Step 3
+// ══════════════════════════════════════════════════════════════════════════════
+
+export interface InitOtpOnlyParams {
+  nomorHp:        string   // input nomor HP dari user — untuk lookup di DB
+  roleSelected?:  string   // diisi jika multi-role + user sudah pilih role
+  device:         string
+}
+
+export interface InitOtpOnlyResult {
+  ok:              boolean
+  errorKey?:       string
+  // Jika multi-role: client tampilkan role selector dulu
+  needRoleSelect?: boolean
+  roles?:          Array<{ role: string; label: string }>
+  // Jika OTP berhasil dikirim:
+  otpSent?:        boolean
+  uid?:            string
+  nama?:           string
+  email?:          string  // dipakai finishOtpOnlyAction untuk generateLink
+  tenantId?:       string
+  role?:           string
+  nomorWaDb?:      string  // nomor yang tersimpan di DB (ke sini OTP dikirim)
+  resendCooldown?: number
+  maxAttempts?:    number
+}
+
+/**
+ * Server Action untuk mode otp_only: verifikasi nomor HP di DB, kirim OTP ke nomor DB.
+ * Cek user_profiles (non-SA) DAN tabel users (SA) agar SA support otp_only (per BRD BR-01).
+ * OTP dikirim ke nomor yang tersimpan di DB — BUKAN ke nomor input user (keamanan).
+ */
+export async function initOtpOnlyAction(params: InitOtpOnlyParams): Promise<InitOtpOnlyResult> {
+  const { nomorHp, roleSelected, device: _device } = params
+
+  // STEP 0: Validasi format dasar nomor HP
+  const clean = nomorHp.replace(/[\s\-().]/g, '')
+  if (clean.length < 9) {
+    return { ok: false, errorKey: 'login_error_umum' }
+  }
+
+  // STEP 1: Lookup user berdasarkan nomor WA
+  // lookupUserByNomorWa cek user_profiles (Vendor/Customer/AT) + users SA — fix gap TDD-Q4
+  const profiles = await lookupUserByNomorWa(nomorHp)
+
+  if (!profiles || profiles.length === 0) {
+    // Generic error — tidak reveal apakah nomor terdaftar (security per OWASP)
+    return { ok: false, errorKey: 'login_error_credentials_salah' }
+  }
+
+  // STEP 2: Multi-role? Jika ya dan role belum dipilih — minta pilih role dulu
+  const ROLE_LABEL: Record<string, string> = {
+    customer:     'Customer',
+    vendor:       'Vendor',
+    admin_tenant: 'Admin Tenant',
+    super_admin:  'Super Admin',
+  }
+
+  if (profiles.length > 1 && !roleSelected) {
+    return {
+      ok:             true,
+      needRoleSelect: true,
+      roles:          profiles.map(p => ({ role: p.role, label: ROLE_LABEL[p.role] ?? p.role })),
+    }
+  }
+
+  // STEP 3: Ambil profil yang sesuai (single atau sudah dipilih role)
+  const profile = roleSelected
+    ? (profiles.find(p => p.role === roleSelected) ?? profiles[0])
+    : profiles[0]
+
+  // STEP 4: Nomor WA tidak ada di profil — per FSD 5.3 fallback password
+  if (!profile.nomor_wa) {
+    return { ok: false, errorKey: 'login_error_credentials_salah' }
+  }
+
+  // STEP 5: Kirim OTP ke nomor WA YANG TERSIMPAN DI DB (bukan nomor input user)
+  // Pakai sendOTP langsung (bukan HTTP fetch) — DRY + efisien (ATURAN 11)
+  const sendResult = await sendOTP({
+    uid:      profile.id,
+    tenantId: profile.tenant_id ?? '',
+    role:     profile.role,
+    nomorWa:  profile.nomor_wa,
+    email:    profile.email,
+    nama:     profile.nama,
+  })
+
+  if (!sendResult.success) {
+    const errorKey = sendResult.errorCode === 'MAX_ATTEMPTS' || sendResult.errorCode === 'RESEND_LIMIT'
+      ? 'otp_error_batas_habis'
+      : 'login_error_koneksi_gagal'
+    return { ok: false, errorKey }
+  }
+
+  return {
+    ok:             true,
+    otpSent:        true,
+    uid:            profile.id,
+    nama:           profile.nama,
+    email:          profile.email,
+    tenantId:       profile.tenant_id ?? '',
+    role:           profile.role,
+    nomorWaDb:      profile.nomor_wa,
+    resendCooldown: sendResult.resend_cooldown_seconds ?? 60,
+    maxAttempts:    sendResult.otp_max_attempts ?? 3,
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// finishOtpOnlyAction — S#209 TDD Step 3
+// ══════════════════════════════════════════════════════════════════════════════
+
+export interface FinishOtpOnlyParams {
+  uid:      string
+  tenantId: string
+  role:     string
+  device:   string
+  nama:     string
+  email:    string  // dari initOtpOnlyAction result — dipakai generateLink
+}
+
+export interface FinishOtpOnlyResult {
+  ok:          boolean
+  errorKey?:   string
+  redirectTo?: string
+}
+
+/**
+ * Server Action untuk menyelesaikan login otp_only setelah OTP diverifikasi.
+ * Buat Supabase session via admin.generateLink + verifyOtp — MURNI server internal.
+ * User tidak pernah melihat/menerima link apapun. Berbeda 100% dari S#200 Magic Link UX:
+ *   S#200: user terima email → klik link → 7 langkah user-facing (DIREVERT)
+ *   finishOtpOnlyAction: server internal, user hanya input nomor HP + OTP WA (2 langkah)
+ */
+export async function finishOtpOnlyAction(params: FinishOtpOnlyParams): Promise<FinishOtpOnlyResult> {
+  const { uid, tenantId, role, device, nama, email } = params
+
+  const { supabase, cookieStore } = await buatSupabaseSSR()
+  const geoResult = await getGeoForAudit()
+  const gpsKota   = geoResult.kota || 'Tidak Diketahui'
+
+  // STEP 1: Generate token via Admin API (tidak mengirim email ke user)
+  // admin.generateLink mengembalikan hashed_token TANPA auto-send email untuk admin call.
+  // Server langsung consume token ini — token tidak pernah keluar dari server.
+  const adminDb = createServerSupabaseClient()
+  const { data: linkData, error: linkError } = await adminDb.auth.admin.generateLink({
+    type:  'magiclink',
+    email: email,
+  })
+
+  if (linkError || !linkData?.properties?.hashed_token) {
+    console.error('[finishOtpOnlyAction] generateLink gagal:', linkError?.message ?? 'no hashed_token')
+    return { ok: false, errorKey: 'login_error_gagal_selesaikan' }
+  }
+
+  // STEP 2: Exchange token server-side → Supabase auth session + JWT cookies ter-set
+  const { error: verifyError } = await supabase.auth.verifyOtp({
+    token_hash: linkData.properties.hashed_token,
+    type:       'email',
+  })
+
+  if (verifyError) {
+    console.error('[finishOtpOnlyAction] verifyOtp gagal:', verifyError.message)
+    return { ok: false, errorKey: 'login_error_gagal_selesaikan' }
+  }
+
+  // STEP 3: Set app-level session cookies + background tasks
+  const sessionCfg = await getConfigValues('security_login')
+  const sessionTimeoutMinutes = parseConfigNumber(
+    sessionCfg['session_timeout_minutes'], SESSION_DEFAULT_TIMEOUT_MINUTES
+  )
+
+  await setCookiesLoginServer({ role, tenantId, gpsKota, sessionTimeoutMinutes }, cookieStore)
+
+  const sessionId = crypto.randomUUID()
+  jalankanAfterTasksLogin(
+    { uid, tenantId: tenantId || null, nama, role, device, gpsKota, hadAttempts: false, email },
+    sessionId
+  )
+
+  return {
+    ok:         true,
+    redirectTo: hitungTujuanRedirectServer(role, ''),
+  }
 }

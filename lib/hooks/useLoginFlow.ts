@@ -37,7 +37,7 @@ import {
 } from '@/app/login/login-types'
 import type { Tahap, DataSesiParalel } from '@/app/login/login-types'
 
-import { loginUnifiedAction } from '@/app/login/actions'
+import { loginUnifiedAction, initOtpOnlyAction, finishOtpOnlyAction } from '@/app/login/actions'
 
 import {
   fetchCheckLock, fetchLockAccount, fetchUnlockAccount,
@@ -79,6 +79,12 @@ export interface LoginFlowState {
   handleKembaliDariSesiParalel: () => void
   togglePassword: () => void
   m: (key: string, vars?: Record<string, string>) => string
+  // ─── otp_only mode — S#209
+  nomorHp:            string
+  setNomorHp:         (v: string) => void
+  isOtpOnlyMode:      boolean
+  setIsOtpOnlyMode:   (v: boolean) => void
+  handleKirimOtpOnly: () => Promise<void>
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -102,6 +108,11 @@ export function useLoginFlow(): LoginFlowState {
   const [userEmail,      setUserEmail]      = useState('')
   const [nama,           setNama]           = useState('')
   const [nomorWA,        setNomorWA]        = useState('')
+  // ─── State otp_only mode — S#209
+  const [nomorHp,        setNomorHp]        = useState('')
+  const [isOtpOnlyMode,  setIsOtpOnlyMode]  = useState(false)
+  const [otpOnlyEmail,   setOtpOnlyEmail]   = useState('')  // email untuk finishOtpOnlyAction
+  const [isOtpOnlyFlow,  setIsOtpOnlyFlow]  = useState(false) // true saat OTP dari initOtpOnlyAction (bukan 2FA)
   const [akunDikunci,    setAkunDikunci]    = useState(false)
   const [waktuKunci,     setWaktuKunci]     = useState('')
   const [sesiParalel,    setSesiParalel]    = useState<DataSesiParalel | null>(null)
@@ -266,7 +277,8 @@ export function useLoginFlow(): LoginFlowState {
   async function lanjutSetelahRole(role: string, tid: string, uidUser: string, namaUser: string, waNumber: string) {
     try {
       const otpMode = parseRequireOtpForRole(configLogin[getRequireOtpConfigKey(role)] ?? 'required', role)
-      if (otpMode === 'disabled') {
+      if (otpMode === 'disabled' || otpMode === 'otp_only') {
+        // otp_only di path fallback password (RB-05): session sudah ada dari loginUnifiedAction
         await selesaiLogin(uidUser, tid, role)
       } else {
         await kirimOTP(uidUser, tid, role, waNumber, namaUser)
@@ -360,6 +372,74 @@ export function useLoginFlow(): LoginFlowState {
     } catch {
       setError(m('login_error_gagal_selesaikan')); setTahap('KREDENSIAL'); setIsLoading(false)
     }
+  }
+
+  // ─── selesaiLoginOtpOnly — S#209: Supabase session dibuat via finishOtpOnlyAction ────────
+  // Dipanggil dari handleVerifikasiOTP saat isOtpOnlyFlow=true
+  // Berbeda dari selesaiLogin: tidak ada Supabase session dari loginUnifiedAction
+  async function selesaiLoginOtpOnly() {
+    setIsLoading(true); setTahap('SELESAI')
+    try {
+      const result = await finishOtpOnlyAction({
+        uid, tenantId, role: roleDipilih, nama, email: otpOnlyEmail,
+        device: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
+      })
+
+      if (!result.ok) {
+        setError(m(result.errorKey ?? 'login_error_gagal_selesaikan'))
+        setTahap('KREDENSIAL'); setIsLoading(false); return
+      }
+
+      // Set client-side app cookies (server sudah set via setCookiesLoginServer di finishOtpOnlyAction)
+      const sessionTimeoutMinutes = Number(configLogin['session_timeout_minutes'] || String(SESSION_DEFAULT_TIMEOUT_MINUTES))
+      aturCookieSession({ roleDipilih, tenantId, gpsKota: null, sessionTimeoutMinutes })
+      document.cookie = 'otp_pending=; Max-Age=0; path=/; SameSite=Strict'
+
+      router.push(result.redirectTo ?? hitungTujuanRedirect(roleDipilih, redirectTo))
+    } catch {
+      setError(m('login_error_gagal_selesaikan')); setTahap('KREDENSIAL'); setIsLoading(false)
+    }
+  }
+
+  // ─── handleKirimOtpOnly — S#209: handler untuk LoginFormOtpOnly (mode otp_only) ──────
+  // Lookup nomor HP di DB → kirim OTP WA → tampilkan OTPStage
+  async function handleKirimOtpOnly() {
+    setIsLoading(true); setError('')
+    try {
+      const result = await initOtpOnlyAction({
+        nomorHp,
+        device: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
+      })
+
+      if (result.ok && result.needRoleSelect && result.roles) {
+        // Multi-role: tampilkan role selector (RoleSelectorStage existing)
+        setDaftarRole(result.roles.map(r => r.role))
+        setTahap('ROLE'); setIsLoading(false); return
+      }
+
+      if (result.ok && result.otpSent) {
+        // OTP berhasil dikirim via WA → set state + tampilkan OTPStage
+        setUid(result.uid!)
+        setNama(result.nama ?? '')
+        setOtpOnlyEmail(result.email ?? '')  // disimpan untuk finishOtpOnlyAction
+        setTenantId(result.tenantId ?? '')
+        setRoleDipilih(result.role ?? '')
+        setNomorWA(result.nomorWaDb ?? '')
+        setIsOtpOnlyFlow(true)  // flag: handleVerifikasiOTP panggil selesaiLoginOtpOnly
+        setMaxOtpPercobaan(result.maxAttempts ?? 3)
+        otpTimer.mulaiTimer(result.resendCooldown ?? 60)
+        setOtpInput(''); setOtpPercobaan(0)
+        setTahap('OTP'); setIsLoading(false); return
+      }
+
+      if (!result.ok && result.errorKey) {
+        setError(m(result.errorKey))
+      }
+    } catch (err) {
+      console.error('[handleKirimOtpOnly] error:', err)
+      setError(m('login_error_koneksi_gagal'))
+    }
+    setIsLoading(false)
   }
 
   async function prosesSetelahAuthBerhasil(
@@ -502,7 +582,13 @@ export function useLoginFlow(): LoginFlowState {
       const data = await fetchVerifyOTP({ uid, tenantId, inputCode: otpInput })
       if (data.success) {
         fetchActivityLog({ uid, tenantId, nama, role: roleDipilih, sessionId: '', actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'Verifikasi OTP berhasil', result: 'SUCCESS', gpsKota: '' })
-        await selesaiLogin()
+        // S#209: isOtpOnlyFlow → Supabase session belum ada → finishOtpOnlyAction
+        //        !isOtpOnlyFlow → 2FA path → session sudah ada dari loginUnifiedAction
+        if (isOtpOnlyFlow) {
+          await selesaiLoginOtpOnly()
+        } else {
+          await selesaiLogin()
+        }
       } else if (data.result === 'EXPIRED') {
         setError(m('otp_error_kadaluarsa')); setIsLoading(false)
       } else if (data.result === 'MAX_ATTEMPTS') {
@@ -546,5 +632,9 @@ export function useLoginFlow(): LoginFlowState {
     handleLogin, handleVerifikasiOTP, handleKirimUlangOTP,
     handlePilihRole, handleKembaliDariSesiParalel,
     togglePassword, m,
+    // ─── otp_only — S#209
+    nomorHp, setNomorHp,
+    isOtpOnlyMode, setIsOtpOnlyMode,
+    handleKirimOtpOnly,
   }
 }
