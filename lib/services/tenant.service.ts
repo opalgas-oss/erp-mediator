@@ -58,9 +58,9 @@ export async function TenantService_list(
 ): Promise<TenantListResponse> {
   const page   = params?.page  ?? 1
   const limit  = params?.limit ?? 20
-  // 'all' berarti tidak filter status — jangan diteruskan ke repo
-  const status = params?.status === 'all' ? undefined : params?.status
-  const result = await tenantRepo_findAll({ ...params, status })
+  // 'all' berarti tidak filter lifecycle_status — jangan diteruskan ke repo
+  const lifecycleStatus = params?.lifecycle_status === 'all' ? undefined : params?.lifecycle_status   // STATUS-REDESIGN S#212
+  const result = await tenantRepo_findAll({ ...params, status: lifecycleStatus })
   return { ...result, page, limit }
 }
 
@@ -141,9 +141,9 @@ export async function TenantService_updateLifecycleStatus(
     terminated: [],
   }
 
-  if (!validTransitions[tenant.status].includes(newStatus)) {
+  if (!validTransitions[tenant.lifecycle_status].includes(newStatus)) {   // STATUS-REDESIGN S#212
     throw new Error(
-      `Tidak bisa mengubah status dari "${tenant.status}" ke "${newStatus}"`
+      `Tidak bisa mengubah status dari "${tenant.lifecycle_status}" ke "${newStatus}"`   // STATUS-REDESIGN S#212
     )
   }
 

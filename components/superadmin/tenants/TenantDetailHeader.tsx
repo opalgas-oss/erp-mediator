@@ -95,7 +95,7 @@ function Bdg({ bg, text, border, icon, label }: { bg: string; text: string; bord
 // ─── Komponen utama ───────────────────────────────────────────────────────────
 
 export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, onTerminate, quickStats }: Props) {
-  const statusStyle = STATUS_STYLE[tenant.status]
+  const statusStyle = STATUS_STYLE[tenant.lifecycle_status]   // STATUS-REDESIGN S#212 (was: tenant.status)
   const initials    = (tenant.nama_brand ?? 'T').substring(0, 2).toUpperCase()
 
   const userDisplay = tenant.tier === 'enterprise'
@@ -162,17 +162,17 @@ export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, 
 
             {/* Kanan: tombol aksi */}
             <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-              {tenant.status === 'active' && (
+              {tenant.lifecycle_status === 'active' && (   // STATUS-REDESIGN S#212
                 <button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#EF9F27', color: '#854F0B', background: 'transparent' }}>
                   <i className="ti ti-player-pause" /> Nonaktifkan sementara
                 </button>
               )}
-              {tenant.status === 'suspended' && (
+              {tenant.lifecycle_status === 'suspended' && (   // STATUS-REDESIGN S#212
                 <button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#97C459', color: '#3B6D11', background: 'transparent' }}>
                   <i className="ti ti-refresh" /> Aktifkan kembali
                 </button>
               )}
-              {tenant.status !== 'terminated' && (
+              {tenant.lifecycle_status !== 'terminated' && (   // STATUS-REDESIGN S#212
                 <button onClick={onTerminate} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#F09595', color: '#A32D2D', background: 'transparent' }}>
                   <i className="ti ti-circle-x" /> Akhiri tenant
                 </button>

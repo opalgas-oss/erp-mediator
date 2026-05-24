@@ -530,7 +530,7 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
       </Accordion>
 
       {/* ── Status Lifecycle Visualization (G20) ────────────────────────────── */}
-      <LifecycleViz status={tenant.status as LCStatus} onSuspend={handleSuspend} onTerminate={handleTerminate} />
+      <LifecycleViz status={tenant.lifecycle_status as LCStatus} onSuspend={handleSuspend} onTerminate={handleTerminate} />   {/* STATUS-REDESIGN S#212 */}
 
       {/* ── Cluster F: Pengaturan tambahan & catatan internal (G19) ─────────── */}
       <Accordion id="F" icon="ti-settings-2" iconBg="#F1EFE8" iconColor="#5F5E5A"

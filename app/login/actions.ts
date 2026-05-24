@@ -228,9 +228,9 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     // bersamaan fetch profile → cookie terset SEBELUM vendor status di-cek.
     // Fix: fetch dulu, cek status, baru setCookies jika diizinkan.
     const { data: profileRow } = await adminDb.from('user_profiles')
-      .select('status, nomor_wa')
+      .select('register_status, nomor_wa')   // STATUS-REDESIGN S#212 (was: 'status, nomor_wa')
       .eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle()
-    if ((profileRow?.status ?? '').toUpperCase() !== 'APPROVED') {
+    if (profileRow?.register_status !== 'approved') {   // STATUS-REDESIGN S#212
       try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
       return { ok: false, errorKey: 'login_error_akun_belum_aktif' }
     }

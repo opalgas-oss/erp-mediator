@@ -75,7 +75,7 @@ export function TenantTable({ data, loading, onRowClick }: Props) {
         </thead>
         <tbody>
           {data.map(tenant => {
-            const status = STATUS_STYLE[tenant.status] ?? STATUS_STYLE.pending
+            const status = STATUS_STYLE[tenant.lifecycle_status] ?? STATUS_STYLE.pending   // STATUS-REDESIGN S#212
             const isInternal = tenant.tipe === 'internal'
 
             return (
@@ -145,7 +145,7 @@ export function TenantTable({ data, loading, onRowClick }: Props) {
                     background: status.bg, color: status.text, borderColor: status.border,
                   }}>
                     <i className={`ti ${status.icon}`} style={{ fontSize: 11 }} />
-                    {TENANT_LIFECYCLE_LABEL[tenant.status]}
+                    {TENANT_LIFECYCLE_LABEL[tenant.lifecycle_status]}   {/* STATUS-REDESIGN S#212 */}
                   </span>
                 </td>
 
@@ -170,8 +170,8 @@ export function TenantTable({ data, loading, onRowClick }: Props) {
                       {[
                         { icon: 'ti-external-link', label: 'Lihat Detail',           color: '#1a1a1a', disabled: false, action: () => onRowClick(tenant.id) },
                         null,
-                        { icon: 'ti-player-pause',  label: 'Nonaktifkan Sementara', color: '#854F0B', disabled: tenant.status !== 'active', action: () => {} },
-                        { icon: 'ti-circle-x',      label: 'Akhiri Tenant',          color: '#A32D2D', disabled: tenant.status === 'terminated', action: () => {} },
+                        { icon: 'ti-player-pause',  label: 'Nonaktifkan Sementara', color: '#854F0B', disabled: tenant.lifecycle_status !== 'active', action: () => {} },   // STATUS-REDESIGN S#212
+                        { icon: 'ti-circle-x',      label: 'Akhiri Tenant',          color: '#A32D2D', disabled: tenant.lifecycle_status === 'terminated', action: () => {} },   // STATUS-REDESIGN S#212
                       ].map((item, idx) =>
                         item === null ? (
                           <div key={idx} style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '2px 0' }} />

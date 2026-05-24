@@ -57,7 +57,7 @@ export async function findDefaultNamaBrand(): Promise<TenantNamaBrandResult | nu
   const { data, error } = await db
     .from('tenants')
     .select('id, nama_brand')
-    .eq('status', 'active')
+    .eq('lifecycle_status', 'active')   // STATUS-REDESIGN S#212 (was: .eq('status', 'active'))
     .limit(1)
     .single()
 
@@ -84,14 +84,14 @@ export async function tenantRepo_findAll(params?: {
   let query = db
     .from('tenants')
     .select(
-      'id, nama_brand, nama_legal, slug, tenant_display_id, status, tipe, tier, pic_name, created_at',
+      'id, nama_brand, nama_legal, slug, tenant_display_id, lifecycle_status, tipe, tier, pic_name, created_at',   // STATUS-REDESIGN S#212
       { count: 'exact' }
     )
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .range(from, to)
 
-  if (params?.status) query = query.eq('status', params.status)
+  if (params?.status) query = query.eq('lifecycle_status', params.status)   // STATUS-REDESIGN S#212
   if (params?.search) {
     query = query.or(
       `nama_brand.ilike.%${params.search}%,nama_legal.ilike.%${params.search}%,slug.ilike.%${params.search}%`
@@ -203,7 +203,8 @@ export async function tenantRepo_create(
       pic_name:    payload.pic_name,
       pic_email:   payload.pic_email,
       pic_wa:      payload.pic_wa,
-      status:      'pending',
+      lifecycle_status: 'pending',   // STATUS-REDESIGN S#212 (was: status: 'pending')
+      register_status: 'pending',    // STATUS-REDESIGN S#212 (baru — default untuk tenant baru)
       tier:        'starter',
       created_by:  createdBy,
       updated_by:  createdBy,
@@ -246,7 +247,7 @@ export async function tenantRepo_updateStatus(
   const db = createServerSupabaseClient()
   const { error } = await db
     .from('tenants')
-    .update({ status, updated_by: updatedBy, updated_at: new Date().toISOString() })
+    .update({ lifecycle_status: status, updated_by: updatedBy, updated_at: new Date().toISOString() })   // STATUS-REDESIGN S#212
     .eq('id', tenantId)
     .is('deleted_at', null)
 

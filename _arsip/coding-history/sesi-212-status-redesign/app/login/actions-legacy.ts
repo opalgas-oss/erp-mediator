@@ -1,4 +1,4 @@
-// app/login/actions-legacy.ts
+// app/login/actions-legacy.ts — ARSIP SEBELUM EDIT sesi-212-status-redesign
 // Server Actions login — Legacy actions (backward compatibility).
 //
 // DIPECAH dari actions.ts Sesi #074 — ATURAN 10 (file 15.8 KB melebihi batas 10 KB).
@@ -43,37 +43,25 @@ async function cekLockAwal(email: string): Promise<
   return { locked: false, hadAttempts: (lockDoc?.count ?? 0) > 0 }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// loginSuperadminAction — Legacy, dipertahankan untuk backward compatibility
-// ═════════════════════════════════════════════════════════════════════════════
-
 export async function loginSuperadminAction(params: LoginActionParams): Promise<LoginActionResult> {
   const { email, password, device, redirectTo } = params
-
-  // FIX S#194: gpsKota dari Vercel header server-side (konsisten dengan loginUnifiedAction)
   const geoFromVercel = await getGeoForAudit()
   const gpsKota       = geoFromVercel.kota || 'Tidak Diketahui'
-
-  // FIX T-048: baca password_min_length dari config_registry (legacy fallback)
   const legacyCfg = await getConfigValues('security_login')
   const pwMin     = parseConfigNumber(legacyCfg['password_min_length'], 8)
   if (!buildLoginFormSchema(pwMin).safeParse({ email, password }).success)
     return { ok: false, errorKey: 'login_error_umum' }
-
   const lock = await cekLockAwal(email)
   if (lock.locked) return lock.result
-
   const { supabase, cookieStore } = await buatSupabaseSSR()
   const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
   if (authError || !authData?.session || !authData?.user)
     return prosesGagalLogin(email, null, authError?.message ?? '')
-
   const claims = decodeAppClaims(authData.session.access_token)
   if (claims.role !== ROLES.SUPERADMIN) {
     try { await supabase.auth.signOut() } catch { /* abaikan */ }
     return { ok: false, errorKey: 'NOT_SUPERADMIN' }
   }
-
   const uid  = authData.user.id
   const nama = await ambilNamaUser(uid)
   await setCookiesLoginServer({ role: ROLES.SUPERADMIN, tenantId: '', gpsKota }, cookieStore)
@@ -84,26 +72,16 @@ export async function loginSuperadminAction(params: LoginActionParams): Promise<
   return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.SUPERADMIN, redirectTo), nama, uid }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// loginVendorAction — Legacy, dipertahankan untuk backward compatibility
-// ═════════════════════════════════════════════════════════════════════════════
-
 export async function loginVendorAction(params: LoginActionParams): Promise<LoginActionResult> {
   const { email, password, device, redirectTo } = params
-
-  // FIX S#194: gpsKota dari Vercel header server-side (konsisten dengan loginUnifiedAction)
   const geoFromVercel = await getGeoForAudit()
   const gpsKota       = geoFromVercel.kota || 'Tidak Diketahui'
-
-  // FIX T-048: baca password_min_length dari config_registry (legacy fallback)
   const legacyCfgV = await getConfigValues('security_login')
   const pwMinV     = parseConfigNumber(legacyCfgV['password_min_length'], 8)
   if (!buildLoginFormSchema(pwMinV).safeParse({ email, password }).success)
     return { ok: false, errorKey: 'login_error_umum' }
-
   const lock = await cekLockAwal(email)
   if (lock.locked) return lock.result
-
   const { supabase, cookieStore } = await buatSupabaseSSR()
   const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
   if (authError || !authData?.session || !authData?.user) {
@@ -111,7 +89,6 @@ export async function loginVendorAction(params: LoginActionParams): Promise<Logi
     const { data: userRow } = await adminDb.from('users').select('tenant_id').eq('email', email).maybeSingle()
     return prosesGagalLogin(email, userRow?.tenant_id ?? null, authError?.message ?? '')
   }
-
   const claims = decodeAppClaims(authData.session.access_token)
   if (claims.role !== ROLES.VENDOR) {
     try { await supabase.auth.signOut() } catch { /* abaikan */ }
@@ -121,18 +98,15 @@ export async function loginVendorAction(params: LoginActionParams): Promise<Logi
     try { await supabase.auth.signOut() } catch { /* abaikan */ }
     return { ok: false, errorKey: 'login_error_config_belum_lengkap' }
   }
-
   const uid     = authData.user.id
   const adminDb = createServerSupabaseClient()
   const { data: profileRow } = await adminDb
-    .from('user_profiles').select('register_status, nama, nomor_wa')   // STATUS-REDESIGN S#212
+    .from('user_profiles').select('status, nama, nomor_wa')
     .eq('id', uid).eq('tenant_id', claims.tenantId).maybeSingle()
-
-  if (profileRow?.register_status !== 'approved') {   // STATUS-REDESIGN S#212
+  if ((profileRow?.status ?? '').toUpperCase() !== 'APPROVED') {
     try { await supabase.auth.signOut() } catch { /* abaikan */ }
     return { ok: false, errorKey: 'login_error_akun_belum_aktif' }
   }
-
   const nama    = profileRow?.nama    ?? (await ambilNamaUser(uid))
   const nomorWa = profileRow?.nomor_wa ?? ''
   await setCookiesLoginServer({ role: ROLES.VENDOR, tenantId: claims.tenantId, gpsKota }, cookieStore)
@@ -143,26 +117,16 @@ export async function loginVendorAction(params: LoginActionParams): Promise<Logi
   return { ok: true, redirectTo: hitungTujuanRedirectServer(ROLES.VENDOR, redirectTo), nama, uid, tenantId: claims.tenantId, nomorWa }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// loginAdminTenantAction — Legacy, dipertahankan untuk backward compatibility
-// ═════════════════════════════════════════════════════════════════════════════
-
 export async function loginAdminTenantAction(params: LoginActionParams): Promise<LoginActionResult> {
   const { email, password, device, redirectTo } = params
-
-  // FIX S#194: gpsKota dari Vercel header server-side (konsisten dengan loginUnifiedAction)
   const geoFromVercel = await getGeoForAudit()
   const gpsKota       = geoFromVercel.kota || 'Tidak Diketahui'
-
-  // FIX T-048: baca password_min_length dari config_registry (legacy fallback)
   const legacyCfgAT = await getConfigValues('security_login')
   const pwMinAT     = parseConfigNumber(legacyCfgAT['password_min_length'], 8)
   if (!buildLoginFormSchema(pwMinAT).safeParse({ email, password }).success)
     return { ok: false, errorKey: 'login_error_umum' }
-
   const lock = await cekLockAwal(email)
   if (lock.locked) return lock.result
-
   const { supabase, cookieStore } = await buatSupabaseSSR()
   const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
   if (authError || !authData?.session || !authData?.user) {
@@ -170,7 +134,6 @@ export async function loginAdminTenantAction(params: LoginActionParams): Promise
     const { data: userRow } = await adminDb.from('users').select('tenant_id').eq('email', email).maybeSingle()
     return prosesGagalLogin(email, userRow?.tenant_id ?? null, authError?.message ?? '')
   }
-
   const claims = decodeAppClaims(authData.session.access_token)
   if (claims.role !== ROLES.ADMIN_TENANT) {
     try { await supabase.auth.signOut() } catch { /* abaikan */ }
@@ -180,7 +143,6 @@ export async function loginAdminTenantAction(params: LoginActionParams): Promise
     try { await supabase.auth.signOut() } catch { /* abaikan */ }
     return { ok: false, errorKey: 'login_error_config_belum_lengkap' }
   }
-
   const uid  = authData.user.id
   const nama = await ambilNamaUser(uid)
   await setCookiesLoginServer({ role: ROLES.ADMIN_TENANT, tenantId: claims.tenantId, gpsKota }, cookieStore)

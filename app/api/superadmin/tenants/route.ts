@@ -40,7 +40,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const filter: TenantListFilter = {}
 
     const status = searchParams.get('status')
-    if (status) filter.status = status as TenantLifecycleStatus | 'all'
+    if (status) filter.lifecycle_status = status as TenantLifecycleStatus | 'all'   // STATUS-REDESIGN S#212
 
     const tipe = searchParams.get('tipe')
     if (tipe) filter.tipe = tipe as TenantTipe

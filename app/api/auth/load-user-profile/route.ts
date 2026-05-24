@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     // ── Role lain: tenant_id ada → query tabel user_profiles ─────────────────
     const { data: profile, error } = await db
       .from('user_profiles')
-      .select('nama, role, nomor_wa, status')
+      .select('nama, role, nomor_wa, register_status')   // STATUS-REDESIGN S#212
       .eq('id', uid)
       .eq('tenant_id', tenant_id)
       .single()
@@ -92,11 +92,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      success:  true,
-      nama:     profile.nama     || '',
-      nomor_wa: profile.nomor_wa || '',
-      role:     profile.role     || '',
-      status:   profile.status   || '',
+      success:          true,
+      nama:             profile.nama     || '',
+      nomor_wa:         profile.nomor_wa || '',
+      role:             profile.role     || '',
+      register_status:  profile.register_status || '',   // STATUS-REDESIGN S#212 (was: status)
     })
 
   } catch (error: unknown) {

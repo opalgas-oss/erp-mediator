@@ -84,7 +84,7 @@ export async function lookupUserByNomorWa(nomorHpInput: string): Promise<OtpOnly
     .from('user_profiles')
     .select('id, email, nama, role, tenant_id, nomor_wa')
     .or(`nomor_wa.eq.${norm},nomor_wa.eq.${alt}`)
-    .eq('register_status', 'approved')   // STATUS-REDESIGN S#212 (was: .eq('status', 'aktif'))
+    .eq('status', 'aktif')
     .limit(5)
 
   if (profiles && profiles.length > 0) {
@@ -103,8 +103,6 @@ export async function lookupUserByNomorWa(nomorHpInput: string): Promise<OtpOnly
   }
 
   // ── Cek 2: users (SuperAdmin) — nomor_wa di SA adalah text[] ──────────────
-  // Supabase: .contains('nomor_wa', [norm]) = PostgreSQL array @> ARRAY[norm]
-  // Cek norm dulu, kalau tidak ketemu cek alt (format 0xxx)
   let saData = null
   const { data: saByNorm } = await adminDb
     .from('users')

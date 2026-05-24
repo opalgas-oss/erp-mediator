@@ -2,6 +2,7 @@
 // Tipe data untuk M6 Tenant Management — entitas Tenant
 // Dipakai oleh: tenant.repository.ts, tenant.service.ts, API routes M6, UI halaman Tenant
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.2
+// Update: Sesi #212 — STATUS-REDESIGN: tambah TenantRegisterStatus, Tenant.status→lifecycle_status+register_status
 
 // ─── Literal Types ────────────────────────────────────────────────────────────
 
@@ -11,6 +12,13 @@ export type TenantLifecycleStatus =
   | 'suspended'
   | 'expired'
   | 'terminated'
+
+// STATUS-REDESIGN S#212 — status registrasi/onboarding tenant
+export type TenantRegisterStatus =
+  | 'pending'
+  | 'review'
+  | 'approved'
+  | 'rejected'
 
 export type TenantTipe = 'internal' | 'eksternal'
 
@@ -40,7 +48,8 @@ export interface Tenant {
   nama_legal:            string | null
   slug:                  string | null        // kode tenant (citext, unique)
   tenant_display_id:     string | null        // format TEN-YYYY-NNNN
-  status:                TenantLifecycleStatus
+  lifecycle_status:      TenantLifecycleStatus   // STATUS-REDESIGN S#212 (was: status)
+  register_status:       TenantRegisterStatus    // STATUS-REDESIGN S#212 (baru)
   tipe:                  TenantTipe | null
   tier:                  TenantTier
   timezone:              string
@@ -111,7 +120,7 @@ export interface TenantListItem {
   nama_legal:        string | null
   slug:              string | null
   tenant_display_id: string | null
-  status:            TenantLifecycleStatus
+  lifecycle_status:  TenantLifecycleStatus   // STATUS-REDESIGN S#212 (was: status)
   tipe:              TenantTipe | null
   tier:              TenantTier
   pic_name:          string | null
@@ -129,7 +138,7 @@ export interface TenantDetailHeader {
   nama_legal:        string | null
   slug:              string | null
   tenant_display_id: string | null
-  status:            TenantLifecycleStatus
+  lifecycle_status:  TenantLifecycleStatus   // STATUS-REDESIGN S#212 (was: status)
   tipe:              TenantTipe | null
   tier:              TenantTier
   status_pkp:        TenantStatusPKP | null
@@ -191,6 +200,9 @@ export interface UpdateTenantInfoPayload {
 
 // ─── Payload: Update Status Lifecycle ─────────────────────────────────────────
 
+// Catatan: field 'status' di UpdateTenantStatusPayload SENGAJA tidak diubah ke 'lifecycle_status'.
+// Ini adalah payload HTTP request (kontrak API dari client), bukan representasi kolom DB.
+// Di repository layer (tenantRepo_updateStatus), nilai ini di-map ke kolom lifecycle_status.
 export interface UpdateTenantStatusPayload {
   status:  TenantLifecycleStatus
   alasan:  string
@@ -201,7 +213,7 @@ export interface UpdateTenantStatusPayload {
 // ─── Filter: List Tenants ─────────────────────────────────────────────────────
 
 export interface TenantListFilter {
-  status?:  TenantLifecycleStatus | 'all'
+  lifecycle_status?:  TenantLifecycleStatus | 'all'   // STATUS-REDESIGN S#212 (was: status)
   tipe?:    TenantTipe
   tier?:    TenantTier
   search?:  string               // cari nama_brand, nama_legal, slug

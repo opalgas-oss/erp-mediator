@@ -243,7 +243,7 @@ export function useLoginFlow(): LoginFlowState {
       const profile = await fetchLoadUserProfile(uidUser, tid)
       if (!profile.success) { setError(m('login_error_gagal_muat_data')); setTahap('KREDENSIAL'); setIsLoading(false); return }
 
-      const vendorStatus    = (profile.status || '').toUpperCase()
+      const vendorStatus    = (profile.register_status || '').toUpperCase()   // STATUS-REDESIGN S#212 (was: profile.status)
       const blockedStatuses = (configLogin['vendor_blocked_statuses'] || 'PENDING,REVIEW')
         .split(',').map((s: string) => s.trim().toUpperCase())
 

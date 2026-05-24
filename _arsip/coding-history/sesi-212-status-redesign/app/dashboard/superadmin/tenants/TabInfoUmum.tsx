@@ -1,0 +1,6 @@
+// app/dashboard/superadmin/tenants/[id]/TabInfoUmum.tsx — ARSIP SEBELUM EDIT sesi-212-status-redesign
+// STATUS-REDESIGN S#212: tenant.status -> tenant.lifecycle_status
+// Baris yang diubah (sekitar 533):
+//   <LifecycleViz status={tenant.status as LCStatus} ...
+// -> <LifecycleViz status={tenant.lifecycle_status as LCStatus} ...
+// File asli ada di git history commit 2e01b19
