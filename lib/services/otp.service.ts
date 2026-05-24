@@ -307,7 +307,10 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
   if (redisForCheck) {
     try {
       await redisForCheck.incr(resendRedisKey)
-      await redisForCheck.expire(resendRedisKey, otpExpiryDetik * (maxResend + 1))
+      // FIX S#207: TTL = otp_expiry_seconds (bukan * (maxResend+1) — invensi S#205 tanpa dasar spec)
+      // Sesuai Bug_Sesi_085.md BUG-019: TTL resend counter = session timeout = otp_expiry_seconds
+      // Konsisten dengan: UI pesan "tunggu 3 menit", OTP key TTL, attempts counter TTL
+      await redisForCheck.expire(resendRedisKey, otpExpiryDetik)
     } catch (err) {
       console.warn('[OTPService] Redis post-send counter update gagal (non-critical):', err)
     }
