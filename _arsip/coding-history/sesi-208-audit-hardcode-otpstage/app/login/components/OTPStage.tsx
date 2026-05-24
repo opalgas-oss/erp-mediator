@@ -21,13 +21,12 @@ interface OTPStageProps {
   onOtpChange:       (v: string) => void
   onVerifikasi:      () => void
   onKirimUlang:      () => void
-  m:                 (key: string, vars?: Record<string, string>) => string
 }
 
 export function OTPStage(props: OTPStageProps) {
   const {
     otpInput, otpPercobaan, maxOtpPercobaan, hitunganMundur,
-    isLoading, error, gpsKota, onOtpChange, onVerifikasi, onKirimUlang, m,
+    isLoading, error, gpsKota, onOtpChange, onVerifikasi, onKirimUlang,
   } = props
 
   const batasPercobaan = otpPercobaan >= maxOtpPercobaan
@@ -35,17 +34,17 @@ export function OTPStage(props: OTPStageProps) {
   return (
     <Wrapper>
       <CardHeader>
-        <CardTitle className="text-center text-lg font-semibold text-gray-900">{m('otp_title_verifikasi')}</CardTitle>
+        <CardTitle className="text-center text-lg font-semibold text-gray-900">Verifikasi OTP</CardTitle>
         <p className="text-sm text-muted-foreground text-center">ERP Mediator Hyperlocal</p>
       </CardHeader>
       <CardContent className="pb-6 space-y-4">
         <p className="text-sm text-muted-foreground text-center">
-          {m('otp_info_terkirim_wa')}
+          Kode OTP telah dikirim ke WhatsApp Anda.
         </p>
         {error && <KotakError pesan={error} />}
         <div>
           <Label htmlFor="inputOTP" className="text-sm text-gray-600 mb-1.5 block">
-            {m('otp_label_input_kode')}
+            Kode OTP (6 digit)
           </Label>
           <Input id="inputOTP" type="text" inputMode="numeric" maxLength={6}
             value={otpInput}
@@ -64,18 +63,18 @@ export function OTPStage(props: OTPStageProps) {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
               </svg>
-              {m('otp_label_loading_verifikasi')}
+              Memverifikasi...
             </span>
-          ) : m('otp_button_verifikasi')}
+          ) : 'Verifikasi OTP'}
         </Button>
         {!batasPercobaan && (
           hitunganMundur > 0
             ? <p className="text-xs text-center text-muted-foreground">
-                {m('otp_info_countdown_kirim_ulang', { detik: String(hitunganMundur) })}
+                Kirim ulang dalam {hitunganMundur} detik
               </p>
             : <Button variant="ghost" className="w-full text-sm"
                 disabled={isLoading} onClick={onKirimUlang}>
-                {m('otp_button_kirim_ulang')}
+                Kirim Ulang
               </Button>
         )}
         {gpsKota && gpsKota !== 'Tidak Diketahui' && (

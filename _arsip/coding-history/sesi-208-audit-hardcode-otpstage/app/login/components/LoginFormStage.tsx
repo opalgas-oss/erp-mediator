@@ -33,14 +33,13 @@ interface LoginFormStageProps {
   onPasswordChange: (v: string) => void
   onTogglePassword: () => void
   onLogin:          () => void
-  m:                (key: string, vars?: Record<string, string>) => string
 }
 
 export function LoginFormStage(props: LoginFormStageProps) {
   const {
     email, password, tampilPassword, errorEmail, errorPassword,
     isLoading, error, akunDikunci, waktuKunci, gpsKota,
-    onEmailChange, onPasswordChange, onTogglePassword, onLogin, m,
+    onEmailChange, onPasswordChange, onTogglePassword, onLogin,
   } = props
 
   return (
@@ -49,16 +48,18 @@ export function LoginFormStage(props: LoginFormStageProps) {
         <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-1">
           <span className="text-blue-700 font-semibold text-lg">M</span>
         </div>
-        <CardTitle className="text-center text-lg font-semibold text-gray-900">{m('login_title_masuk')}</CardTitle>
+        <CardTitle className="text-center text-lg font-semibold text-gray-900">Masuk ke akun Anda</CardTitle>
         <p className="text-sm text-muted-foreground text-center">ERP Mediator Hyperlocal</p>
       </CardHeader>
       <CardContent className="pb-0 space-y-4">
         {akunDikunci && (
-          <KotakError pesan={m('login_error_akun_dikunci', { lock_until_wib: waktuKunci })} />
+          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+            Akun dikunci hingga pukul <strong>{waktuKunci}</strong>. Coba lagi nanti.
+          </div>
         )}
         {!akunDikunci && error && <KotakError pesan={error} />}
         <div>
-          <Label htmlFor="email" className="text-sm text-gray-600 mb-1.5 block">{m('login_label_email')}</Label>
+          <Label htmlFor="email" className="text-sm text-gray-600 mb-1.5 block">Alamat email</Label>
           <Input id="email" type="email" value={email}
             onChange={e => onEmailChange(e.target.value)}
             placeholder="contoh@email.com" disabled={isLoading}
@@ -66,7 +67,7 @@ export function LoginFormStage(props: LoginFormStageProps) {
           {errorEmail && <p className="text-xs text-red-600 mt-1">{errorEmail}</p>}
         </div>
         <div>
-          <Label htmlFor="password" className="text-sm text-gray-600 mb-1.5 block">{m('login_label_password')}</Label>
+          <Label htmlFor="password" className="text-sm text-gray-600 mb-1.5 block">Password</Label>
           <div className="relative">
             <Input id="password" type={tampilPassword ? 'text' : 'password'} value={password}
               onChange={e => onPasswordChange(e.target.value)}
@@ -75,13 +76,13 @@ export function LoginFormStage(props: LoginFormStageProps) {
               className={`pr-24 ${errorPassword ? 'border-red-400 bg-red-50' : ''}`} />
             <button type="button" tabIndex={-1} onClick={onTogglePassword}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 select-none">
-              {tampilPassword ? m('login_button_sembunyikan') : m('login_button_tampilkan')}
+              {tampilPassword ? 'Sembunyikan' : 'Tampilkan'}
             </button>
           </div>
           {errorPassword && <p className="text-xs text-red-600 mt-1">{errorPassword}</p>}
         </div>
         <div className="text-right">
-          <Link href="/forgot-password" prefetch={false} className="text-sm text-blue-600 hover:text-blue-700">{m('login_link_lupa_password')}</Link>
+          <Link href="/forgot-password" prefetch={false} className="text-sm text-blue-600 hover:text-blue-700">Lupa password?</Link>
         </div>
         <Button className="w-full" disabled={isLoading} onClick={onLogin}>
           {isLoading ? (
@@ -90,13 +91,13 @@ export function LoginFormStage(props: LoginFormStageProps) {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
               </svg>
-              {m('login_button_loading')}
+              Sedang memverifikasi...
             </span>
-          ) : m('login_button_masuk')}
+          ) : 'Masuk'}
         </Button>
         <p className="text-sm text-center text-gray-500">
-          {m('login_info_belum_punya_akun')}{' '}
-          <Link href="/register" prefetch={false} className="text-blue-600 font-medium hover:text-blue-700">{m('login_link_daftar')}</Link>
+          Belum punya akun?{' '}
+          <Link href="/register" prefetch={false} className="text-blue-600 font-medium hover:text-blue-700">Daftar di sini</Link>
         </p>
         {gpsKota && gpsKota !== 'Tidak Diketahui' && (
           <div className="flex items-center gap-1 pb-1">

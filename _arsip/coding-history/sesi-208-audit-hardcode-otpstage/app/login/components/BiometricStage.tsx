@@ -1,30 +1,23 @@
+// ARSIP PRE-EDIT S#208 — BiometricStage.tsx
 // app/login/components/BiometricStage.tsx
-// UI tahap biometric registration/verification
-// Dibuat: Sesi #049 — Step 5 TAHAP D
-
 'use client'
-
 import { Button }                             from '@/components/ui/button'
 import { Badge }                              from '@/components/ui/badge'
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Wrapper, KotakError }                from './shared'
-
 interface BiometricStageProps {
   isLoading: boolean
   error:     string
   gpsKota:   string | null
   onAktifkan: () => void
   onLewati:   () => void
-  m:          (key: string, vars?: Record<string, string>) => string
 }
-
 export function BiometricStage(props: BiometricStageProps) {
-  const { isLoading, error, gpsKota, onAktifkan, onLewati, m } = props
-
+  const { isLoading, error, gpsKota, onAktifkan, onLewati } = props
   return (
     <Wrapper>
       <CardHeader>
-        <CardTitle className="text-center text-base">{m('biometric_title_aktifkan')}</CardTitle>
+        <CardTitle className="text-center text-base">Aktifkan Biometric</CardTitle>
       </CardHeader>
       {gpsKota && (
         <div className="flex justify-end px-6 -mt-2 mb-0">
@@ -33,14 +26,14 @@ export function BiometricStage(props: BiometricStageProps) {
       )}
       <CardContent className="pb-6 space-y-4">
         <p className="text-sm text-muted-foreground text-center">
-          {m('biometric_info_manfaat')}
+          Aktifkan biometric untuk login berikutnya lebih cepat dan aman.
         </p>
         {error && <KotakError pesan={error} />}
         <Button className="w-full" disabled={isLoading} onClick={onAktifkan}>
-          {isLoading ? m('login_button_memproses') : m('biometric_button_aktifkan')}
+          {isLoading ? 'Memproses...' : 'Aktifkan Biometric'}
         </Button>
         <Button variant="ghost" className="w-full text-sm" disabled={isLoading} onClick={onLewati}>
-          {m('biometric_button_lewati')}
+          Lewati
         </Button>
       </CardContent>
     </Wrapper>

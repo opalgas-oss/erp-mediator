@@ -44,12 +44,14 @@ function LoginOrchestrator() {
 
   if (flow.tahap === 'ROLE')
     return <RoleSelectorStage daftarRole={flow.daftarRole} roleDipilih={flow.roleDipilih} isLoading={flow.isLoading}
-      error={flow.error} gpsKota={flow.gpsKota} onRoleChange={flow.setRoleDipilih} onLanjut={flow.handlePilihRole} />
+      error={flow.error} gpsKota={flow.gpsKota} onRoleChange={flow.setRoleDipilih} onLanjut={flow.handlePilihRole}
+      m={flow.m} />
 
   if (flow.tahap === 'OTP')
     return <OTPStage otpInput={flow.otpInput} otpPercobaan={flow.otpPercobaan} maxOtpPercobaan={flow.maxOtpPercobaan}
       hitunganMundur={flow.hitunganMundur} isLoading={flow.isLoading} error={flow.error} gpsKota={flow.gpsKota}
-      onOtpChange={flow.setOtpInput} onVerifikasi={flow.handleVerifikasiOTP} onKirimUlang={flow.handleKirimUlangOTP} />
+      onOtpChange={flow.setOtpInput} onVerifikasi={flow.handleVerifikasiOTP} onKirimUlang={flow.handleKirimUlangOTP}
+      m={flow.m} />
 
   // Default: KREDENSIAL — form email + password
   return <LoginFormStage email={flow.email} password={flow.password} tampilPassword={flow.tampilPassword}
@@ -57,7 +59,7 @@ function LoginOrchestrator() {
     error={flow.error} akunDikunci={flow.akunDikunci} waktuKunci={flow.waktuKunci} gpsKota={flow.gpsKota}
     onEmailChange={v => { flow.setEmail(v); flow.setErrorEmail('') }}
     onPasswordChange={v => { flow.setPassword(v); flow.setErrorPassword('') }}
-    onTogglePassword={flow.togglePassword} onLogin={flow.handleLogin} />
+    onTogglePassword={flow.togglePassword} onLogin={flow.handleLogin} m={flow.m} />
 }
 
 export default function LoginPage() {

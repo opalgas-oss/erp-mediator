@@ -1,15 +1,11 @@
+// ARSIP PRE-EDIT S#208 — RoleSelectorStage.tsx
 // app/login/components/RoleSelectorStage.tsx
-// UI tahap pilih role (ROLE) — untuk user dengan multi-role
-// Dibuat: Sesi #049 — Step 5 TAHAP D
-
 'use client'
-
 import { Button }                             from '@/components/ui/button'
 import { Badge }                              from '@/components/ui/badge'
 import { Label }                              from '@/components/ui/label'
 import { CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Wrapper, KotakError }                from './shared'
-
 interface RoleSelectorStageProps {
   daftarRole:  string[]
   roleDipilih: string
@@ -18,16 +14,13 @@ interface RoleSelectorStageProps {
   gpsKota:     string | null
   onRoleChange: (role: string) => void
   onLanjut:     () => void
-  m:            (key: string, vars?: Record<string, string>) => string
 }
-
 export function RoleSelectorStage(props: RoleSelectorStageProps) {
-  const { daftarRole, roleDipilih, isLoading, error, gpsKota, onRoleChange, onLanjut, m } = props
-
+  const { daftarRole, roleDipilih, isLoading, error, gpsKota, onRoleChange, onLanjut } = props
   return (
     <Wrapper>
       <CardHeader>
-        <CardTitle className="text-center text-base">{m('login_role_title')}</CardTitle>
+        <CardTitle className="text-center text-base">Masuk Sebagai</CardTitle>
       </CardHeader>
       {gpsKota && (
         <div className="flex justify-end px-6 -mt-2 mb-0">
@@ -38,7 +31,7 @@ export function RoleSelectorStage(props: RoleSelectorStageProps) {
         {error && <KotakError pesan={error} />}
         <div>
           <Label htmlFor="pilihRole" className="text-sm text-muted-foreground mb-1.5 block">
-            {m('login_role_label')}
+            Pilih role untuk sesi ini
           </Label>
           <select id="pilihRole" value={roleDipilih} onChange={e => onRoleChange(e.target.value)}
             disabled={isLoading}
@@ -47,7 +40,7 @@ export function RoleSelectorStage(props: RoleSelectorStageProps) {
           </select>
         </div>
         <Button className="w-full" disabled={isLoading || !roleDipilih} onClick={onLanjut}>
-          {isLoading ? m('login_button_memproses') : m('login_button_lanjut')}
+          {isLoading ? 'Memproses...' : 'Lanjut'}
         </Button>
       </CardContent>
     </Wrapper>
