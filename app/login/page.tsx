@@ -14,6 +14,7 @@
 'use client'
 
 import { Suspense }           from 'react'
+import React                  from 'react'
 import { useLoginFlow }       from '@/lib/hooks/useLoginFlow'
 import { Wrapper, SpinnerBiru } from './components/shared'
 import { CardContent }        from '@/components/ui/card'
@@ -22,13 +23,17 @@ import { SesiParalelStage }   from './components/SesiParalelStage'
 import { RoleSelectorStage }  from './components/RoleSelectorStage'
 import { OTPStage }           from './components/OTPStage'
 import { LoginFormOtpOnly }   from './components/LoginFormOtpOnly'
+import { StatusRegistrasiModal } from './components/StatusRegistrasiModal'
 
 function LoginOrchestrator() {
   const flow = useLoginFlow()
 
-  // Loading / Selesai — spinner
+  // Tentukan konten stage aktif sebagai variabel — modal harus bisa tampil di semua tahap
+  // HUTANG-LOGIN-STATUS-POPUP S#213: StatusRegistrasiModal dirender di luar conditional stage
+  let konten: React.ReactNode
+
   if (flow.tahap === 'LOADING' || flow.tahap === 'SELESAI') {
-    return (
+    konten = (
       <Wrapper>
         <CardContent className="pt-6 pb-6 text-center">
           <SpinnerBiru />
@@ -38,26 +43,20 @@ function LoginOrchestrator() {
         </CardContent>
       </Wrapper>
     )
-  }
-
-  if (flow.tahap === 'SESI_PARALEL')
-    return <SesiParalelStage sesiParalel={flow.sesiParalel} m={flow.m} onKembali={flow.handleKembaliDariSesiParalel} />
-
-  if (flow.tahap === 'ROLE')
-    return <RoleSelectorStage daftarRole={flow.daftarRole} roleDipilih={flow.roleDipilih} isLoading={flow.isLoading}
+  } else if (flow.tahap === 'SESI_PARALEL') {
+    konten = <SesiParalelStage sesiParalel={flow.sesiParalel} m={flow.m} onKembali={flow.handleKembaliDariSesiParalel} />
+  } else if (flow.tahap === 'ROLE') {
+    konten = <RoleSelectorStage daftarRole={flow.daftarRole} roleDipilih={flow.roleDipilih} isLoading={flow.isLoading}
       error={flow.error} gpsKota={flow.gpsKota} onRoleChange={flow.setRoleDipilih} onLanjut={flow.handlePilihRole}
       m={flow.m} />
-
-  if (flow.tahap === 'OTP')
-    return <OTPStage otpInput={flow.otpInput} otpPercobaan={flow.otpPercobaan} maxOtpPercobaan={flow.maxOtpPercobaan}
+  } else if (flow.tahap === 'OTP') {
+    konten = <OTPStage otpInput={flow.otpInput} otpPercobaan={flow.otpPercobaan} maxOtpPercobaan={flow.maxOtpPercobaan}
       hitunganMundur={flow.hitunganMundur} isLoading={flow.isLoading} error={flow.error} gpsKota={flow.gpsKota}
       onOtpChange={flow.setOtpInput} onVerifikasi={flow.handleVerifikasiOTP} onKirimUlang={flow.handleKirimUlangOTP}
       m={flow.m} />
-
-  // otp_only mode: tampilkan form nomor HP sebagai pengganti password (S#209)
-  // isOtpOnlyMode di-toggle via setIsOtpOnlyMode dari komponen atau config detection
-  if (flow.isOtpOnlyMode && flow.tahap === 'KREDENSIAL')
-    return <LoginFormOtpOnly
+  } else if (flow.isOtpOnlyMode && flow.tahap === 'KREDENSIAL') {
+    // otp_only mode: tampilkan form nomor HP sebagai pengganti password (S#209)
+    konten = <LoginFormOtpOnly
       nomorHp={flow.nomorHp}
       isLoading={flow.isLoading}
       error={flow.error}
@@ -66,14 +65,26 @@ function LoginOrchestrator() {
       onMasukPassword={() => { flow.setIsOtpOnlyMode(false); flow.setError('') }}
       m={flow.m}
     />
+  } else {
+    // Default: KREDENSIAL — form email + password
+    konten = <LoginFormStage email={flow.email} password={flow.password} tampilPassword={flow.tampilPassword}
+      errorEmail={flow.errorEmail} errorPassword={flow.errorPassword} isLoading={flow.isLoading}
+      error={flow.error} akunDikunci={flow.akunDikunci} waktuKunci={flow.waktuKunci} gpsKota={flow.gpsKota}
+      onEmailChange={v => { flow.setEmail(v); flow.setErrorEmail('') }}
+      onPasswordChange={v => { flow.setPassword(v); flow.setErrorPassword('') }}
+      onTogglePassword={flow.togglePassword} onLogin={flow.handleLogin} m={flow.m} />
+  }
 
-  // Default: KREDENSIAL — form email + password
-  return <LoginFormStage email={flow.email} password={flow.password} tampilPassword={flow.tampilPassword}
-    errorEmail={flow.errorEmail} errorPassword={flow.errorPassword} isLoading={flow.isLoading}
-    error={flow.error} akunDikunci={flow.akunDikunci} waktuKunci={flow.waktuKunci} gpsKota={flow.gpsKota}
-    onEmailChange={v => { flow.setEmail(v); flow.setErrorEmail('') }}
-    onPasswordChange={v => { flow.setPassword(v); flow.setErrorPassword('') }}
-    onTogglePassword={flow.togglePassword} onLogin={flow.handleLogin} m={flow.m} />
+  return (
+    <>
+      {konten}
+      <StatusRegistrasiModal
+        data={flow.statusPopup}
+        m={flow.m}
+        onTutup={() => flow.setStatusPopup(null)}
+      />
+    </>
+  )
 }
 
 export default function LoginPage() {

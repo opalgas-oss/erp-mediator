@@ -85,6 +85,14 @@ export interface LoginFlowState {
   isOtpOnlyMode:      boolean
   setIsOtpOnlyMode:   (v: boolean) => void
   handleKirimOtpOnly: () => Promise<void>
+  // ─── status popup — HUTANG-LOGIN-STATUS-POPUP S#213
+  statusPopup: {
+    pesan_key:       string
+    email_kontak:    string
+    register_status: string
+    lifecycle_status: string | null
+  } | null
+  setStatusPopup: (v: { pesan_key: string; email_kontak: string; register_status: string; lifecycle_status: string | null } | null) => void
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -113,6 +121,13 @@ export function useLoginFlow(): LoginFlowState {
   const [isOtpOnlyMode,  setIsOtpOnlyMode]  = useState(false)
   const [otpOnlyEmail,   setOtpOnlyEmail]   = useState('')  // email untuk finishOtpOnlyAction
   const [isOtpOnlyFlow,  setIsOtpOnlyFlow]  = useState(false) // true saat OTP dari initOtpOnlyAction (bukan 2FA)
+  // ─── status popup — HUTANG-LOGIN-STATUS-POPUP S#213
+  const [statusPopup, setStatusPopup] = useState<{
+    pesan_key:        string
+    email_kontak:     string
+    register_status:  string
+    lifecycle_status: string | null
+  } | null>(null)
   const [akunDikunci,    setAkunDikunci]    = useState(false)
   const [waktuKunci,     setWaktuKunci]     = useState('')
   const [sesiParalel,    setSesiParalel]    = useState<DataSesiParalel | null>(null)
@@ -562,7 +577,13 @@ export function useLoginFlow(): LoginFlowState {
       }
 
       if (!result.ok && result.errorKey) {
-        setError(m(result.errorKey, result.errorVars)); setIsLoading(false); return
+        // HUTANG-LOGIN-STATUS-POPUP S#213: jika ada statusDetail → tampilkan modal, bukan error inline
+        if (result.statusDetail) {
+          setStatusPopup(result.statusDetail)
+        } else {
+          setError(m(result.errorKey, result.errorVars))
+        }
+        setIsLoading(false); return
       }
     } catch (err) {
       console.error('[handleLogin] unified action error — koneksi gagal:', err)
@@ -636,5 +657,7 @@ export function useLoginFlow(): LoginFlowState {
     nomorHp, setNomorHp,
     isOtpOnlyMode, setIsOtpOnlyMode,
     handleKirimOtpOnly,
+    // ─── status popup — S#213
+    statusPopup, setStatusPopup,
   }
 }

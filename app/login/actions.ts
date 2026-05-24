@@ -74,6 +74,13 @@ export interface LoginActionResult {
   tenantId?:    string
   nomorWa?:     string
   role?:        string
+  // HUTANG-LOGIN-STATUS-POPUP S#213 — data untuk pop-up informatif per kondisi status
+  statusDetail?: {
+    register_status:  string
+    lifecycle_status: string | null
+    email_kontak:     string
+    pesan_key:        string
+  }
 }
 
 // ─── Helper: cek lock sebelum proses ─────────────────────────────────────────
@@ -202,7 +209,20 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     if (claims.vendorStatus !== undefined && claims.nomorWa !== undefined) {
       if (claims.vendorStatus.toUpperCase() !== 'APPROVED') {
         try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
-        return { ok: false, errorKey: 'login_error_akun_belum_aktif' }
+        // HUTANG-LOGIN-STATUS-POPUP S#213: return statusDetail untuk pop-up informatif
+        const vStatus  = claims.vendorStatus.toLowerCase()
+        const pesanKey = vStatus === 'rejected'
+          ? 'login_status_ditolak_vendor'
+          : 'login_status_review_vendor'
+        const adminDbV1 = createServerSupabaseClient()
+        const { data: tenantRowV1 } = await adminDbV1.from('tenants')
+          .select('pic_email, email_resmi').eq('id', claimTenantId).maybeSingle()
+        const emailKontak = tenantRowV1?.pic_email ?? tenantRowV1?.email_resmi ?? ''
+        return {
+          ok: false,
+          errorKey: 'login_error_akun_belum_aktif',
+          statusDetail: { register_status: vStatus, lifecycle_status: null, email_kontak: emailKontak, pesan_key: pesanKey },
+        }
       }
       const otpModeVendor1 = parseRequireOtpForRole(
         sessionCfg[getRequireOtpConfigKey(ROLES.VENDOR)] ?? 'required', ROLES.VENDOR
@@ -228,11 +248,31 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     // bersamaan fetch profile → cookie terset SEBELUM vendor status di-cek.
     // Fix: fetch dulu, cek status, baru setCookies jika diizinkan.
     const { data: profileRow } = await adminDb.from('user_profiles')
-      .select('register_status, nomor_wa')   // STATUS-REDESIGN S#212 (was: 'status, nomor_wa')
+      .select('register_status, lifecycle_status, nomor_wa')  // + lifecycle_status S#213
       .eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle()
-    if (profileRow?.register_status !== 'approved') {   // STATUS-REDESIGN S#212
+
+    const vRegStatus = profileRow?.register_status ?? 'pending'
+    const vLcStatus  = profileRow?.lifecycle_status ?? null
+
+    // HUTANG-LOGIN-STATUS-POPUP S#213: cek approved + lifecycle (termasuk belum aktivasi)
+    if (vRegStatus !== 'approved' || vLcStatus === 'pending') {
       try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
-      return { ok: false, errorKey: 'login_error_akun_belum_aktif' }
+      let pesanKeyV2: string
+      let emailKontakV2: string
+      if (vRegStatus === 'approved' && vLcStatus === 'pending') {
+        pesanKeyV2    = 'login_status_belum_aktivasi'
+        emailKontakV2 = ''
+      } else {
+        pesanKeyV2 = vRegStatus === 'rejected' ? 'login_status_ditolak_vendor' : 'login_status_review_vendor'
+        const { data: tenantRowV2 } = await adminDb.from('tenants')
+          .select('pic_email, email_resmi').eq('id', claimTenantId).maybeSingle()
+        emailKontakV2 = tenantRowV2?.pic_email ?? tenantRowV2?.email_resmi ?? ''
+      }
+      return {
+        ok: false,
+        errorKey: 'login_error_akun_belum_aktif',
+        statusDetail: { register_status: vRegStatus, lifecycle_status: vLcStatus, email_kontak: emailKontakV2, pesan_key: pesanKeyV2 },
+      }
     }
     const nomorWa = profileRow?.nomor_wa ?? ''
     const otpModeVendor2 = parseRequireOtpForRole(
@@ -257,6 +297,34 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
   // ── ADMIN TENANT ──────────────────────────────────────────────────────────
   if (role === ROLES.ADMIN_TENANT) {
     const nama = claims.nama
+
+    // HUTANG-LOGIN-STATUS-POPUP S#213: cek register_status + lifecycle_status AT sebelum OTP/login
+    // AT yang pending/review/rejected tidak boleh masuk dashboard
+    const adminDbAT0 = createServerSupabaseClient()
+    const { data: atStatusRow } = await adminDbAT0.from('user_profiles')
+      .select('register_status, lifecycle_status')
+      .eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle()
+    const atRegStatus = atStatusRow?.register_status ?? 'pending'
+    const atLcStatus  = atStatusRow?.lifecycle_status ?? null
+    if (atRegStatus !== 'approved' || atLcStatus === 'pending') {
+      try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
+      let pesanKeyAT: string
+      let emailKontakAT: string
+      if (atRegStatus === 'approved' && atLcStatus === 'pending') {
+        pesanKeyAT    = 'login_status_belum_aktivasi'
+        emailKontakAT = ''
+      } else {
+        pesanKeyAT = atRegStatus === 'rejected' ? 'login_status_ditolak_admintenant' : 'login_status_review_admintenant'
+        const { data: saRow } = await adminDbAT0.from('users').select('email').limit(1).maybeSingle()
+        emailKontakAT = saRow?.email ?? ''
+      }
+      return {
+        ok: false,
+        errorKey: 'login_error_akun_belum_aktif',
+        statusDetail: { register_status: atRegStatus, lifecycle_status: atLcStatus, email_kontak: emailKontakAT, pesan_key: pesanKeyAT },
+      }
+    }
+
     const otpModeAT = parseRequireOtpForRole(
       sessionCfg[getRequireOtpConfigKey(ROLES.ADMIN_TENANT)] ?? 'required', ROLES.ADMIN_TENANT
     )
