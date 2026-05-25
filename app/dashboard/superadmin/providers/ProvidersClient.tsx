@@ -3,35 +3,37 @@
 // Halaman API Provider — tabel full-width + tab + progress bar.
 // Dibuat: Sesi #107 — Update: Sesi #151, S#218
 //   S#218a: tombol + Tambah Provider + DialogTambahProvider
-//   S#218b: fix auto-refresh (useEffect sync initialProviders) + sort per kolom
+//   S#218b: fix auto-refresh (useEffect sync) + sort kolom via useSortableTable (konsisten MessageLibrary)
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
-import { useRouter }                                  from 'next/navigation'
-import { ProviderTableRow }                           from './ProviderTableRow'
-import { DialogKonfigurasiKoneksi }                   from './DialogKonfigurasiKoneksi'
-import { DialogTambahProvider }                       from './DialogTambahProvider'
-import { ICON_STATUS }                                from '@/lib/constants/icons.constant'
-import type { ServiceProvider }                       from '@/lib/types/provider.types'
+import { useState, useCallback, useEffect }   from 'react'
+import { useRouter }                           from 'next/navigation'
+import { useSortableTable }                    from '@/lib/hooks/useSortableTable'
+import { ProviderTableRow }                    from './ProviderTableRow'
+import { DialogKonfigurasiKoneksi }            from './DialogKonfigurasiKoneksi'
+import { DialogTambahProvider }                from './DialogTambahProvider'
+import { ICON_STATUS }                         from '@/lib/constants/icons.constant'
+import type { ServiceProvider }                from '@/lib/types/provider.types'
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 
 const MONITOR_KAT = new Set(['management', 'queue'])
 
-type SortKey = 'nama' | 'kategori' | 'health_overall' | 'tag'
-type SortDir = 'asc' | 'desc'
+// Kolom header — field null = tampilkan icon ⇅ (visual only, tidak clickable)
+// Aksi: noIcon = true, tidak perlu sort indicator sama sekali
+interface ColHeader {
+  label:   string
+  field:   keyof ServiceProvider | null
+  noIcon?: boolean
+  right?:  boolean
+}
 
-// Urutan sort: angka kecil = tampil atas saat asc
-const HEALTH_ORDER: Record<string, number> = { gagal: 0, peringatan: 1, belum_dites: 2, sehat: 3 }
-const TAG_ORDER:    Record<string, number> = { wajib: 0, disarankan: 1, opsional: 2 }
-
-interface ColHeader { label: string; key: SortKey | null; right?: boolean }
 const HEADERS: ColHeader[] = [
-  { label: 'Provider',       key: 'nama' },
-  { label: 'Kategori',       key: 'kategori' },
-  { label: 'Status',         key: 'health_overall' },
-  { label: 'Instance',       key: null },
-  { label: 'Terakhir Dites', key: null },
-  { label: 'Aksi',           key: null, right: true },
+  { label: 'Provider',       field: 'nama' },
+  { label: 'Kategori',       field: 'kategori' },
+  { label: 'Status',         field: 'health_overall' },
+  { label: 'Instance',       field: null },
+  { label: 'Terakhir Dites', field: null },
+  { label: 'Aksi',           field: null, noIcon: true, right: true },
 ]
 
 // ─── Komponen ─────────────────────────────────────────────────────────────────
@@ -42,28 +44,12 @@ export function ProvidersClient({ initialProviders }: Props) {
   const router = useRouter()
 
   // FIX S#218b — sync agar router.refresh() update tampilan tanpa full reload
-  // useState(initialProviders) hanya init sekali saat mount — useEffect sync ketika prop berubah
   const [providers, setProviders] = useState<ServiceProvider[]>(initialProviders)
   useEffect(() => { setProviders(initialProviders) }, [initialProviders])
 
   const [activeTab, setTab]         = useState<'app' | 'monitor'>('app')
   const [dialogProv, setDP]         = useState<ServiceProvider | null>(null)
   const [showTambah, setShowTambah] = useState(false)
-
-  // Sort state — default: nama asc
-  const [sortKey, setSortKey] = useState<SortKey>('nama')
-  const [sortDir, setSortDir] = useState<SortDir>('asc')
-
-  const toggleSort = useCallback((key: SortKey) => {
-    setSortKey(prev => {
-      if (prev === key) {
-        setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-        return key
-      }
-      setSortDir('asc')
-      return key
-    })
-  }, [])
 
   const onTambahSuccess = useCallback(() => {
     setShowTambah(false)
@@ -79,19 +65,12 @@ export function ProvidersClient({ initialProviders }: Props) {
 
   const baseList = activeTab === 'app' ? appList : monitorList
 
-  // Sort memoized — hanya recompute ketika baseList / sortKey / sortDir berubah
-  const list = useMemo(() => {
-    return [...baseList].sort((a, b) => {
-      let cmp = 0
-      switch (sortKey) {
-        case 'nama':          cmp = a.nama.localeCompare(b.nama, 'id'); break
-        case 'kategori':      cmp = a.kategori.localeCompare(b.kategori, 'id'); break
-        case 'health_overall': cmp = (HEALTH_ORDER[a.health_overall] ?? 99) - (HEALTH_ORDER[b.health_overall] ?? 99); break
-        case 'tag':           cmp = (TAG_ORDER[a.tag] ?? 99) - (TAG_ORDER[b.tag] ?? 99); break
-      }
-      return sortDir === 'asc' ? cmp : -cmp
-    })
-  }, [baseList, sortKey, sortDir])
+  // Sort via useSortableTable — sama persis dengan MessageLibraryClient
+  const { sorted: list, handleSort, sortIcon, sortIconClass } = useSortableTable(
+    baseList,
+    'nama',
+    'asc',
+  )
 
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -169,21 +148,24 @@ export function ProvidersClient({ initialProviders }: Props) {
                 {HEADERS.map(h => (
                   <th
                     key={h.label}
-                    onClick={() => h.key && toggleSort(h.key)}
+                    onClick={() => h.field && handleSort(h.field)}
                     style={{
-                      padding: '10px 14px', fontSize: 11, fontWeight: 500,
-                      color: h.key && sortKey === h.key ? '#1a1a1a' : '#6b7280',
+                      padding: '10px 14px',
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: '#6b7280',
                       textAlign: h.right ? 'right' : 'left',
-                      cursor: h.key ? 'pointer' : 'default',
+                      cursor: h.field ? 'pointer' : 'default',
                       userSelect: 'none',
                       whiteSpace: 'nowrap',
                     }}
                   >
                     {h.label}
-                    {h.key && (
-                      <span style={{ marginLeft: 4, fontSize: 9, opacity: sortKey === h.key ? 1 : 0.25 }}>
-                        {sortKey === h.key && sortDir === 'desc' ? '▼' : '▲'}
-                      </span>
+                    {/* Icon sort — ⇅/↑/↓ konsisten dengan MessageLibraryClient */}
+                    {!h.noIcon && (
+                      h.field
+                        ? <span className={sortIconClass(h.field)}>{sortIcon(h.field)}</span>
+                        : <span className="ml-1 text-slate-400 select-none">⇅</span>
                     )}
                   </th>
                 ))}
