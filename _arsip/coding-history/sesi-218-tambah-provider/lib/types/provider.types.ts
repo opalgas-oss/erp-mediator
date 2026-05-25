@@ -2,7 +2,6 @@
 // Tipe data untuk M3 Credential Management — API Provider & Credential
 // Dipakai oleh: credential.repository.ts, credential.service.ts, ProvidersClient.tsx
 // Dibuat: Sesi #107 — M3 Credential Management
-// Update: Sesi #218 — tambah TambahProviderPayload + TambahFieldDefPayload
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
@@ -95,28 +94,6 @@ export interface TestKoneksiResult {
   health_status:    HealthStatus
   pesan:            string | null
   latency_ms:       number | null
-}
-
-// ─── Payload: Tambah Provider Baru (S#218) ───────────────────────────────────
-
-export interface TambahProviderPayload {
-  nama:        string                    // nama tampil di dashboard SA
-  kategori:    string                    // email | messaging | payment | media | cache | database | search | cdn | management | queue
-  tag:         'wajib' | 'disarankan' | 'opsional'
-  deskripsi:   string | null
-  docs_url:    string | null
-  field_defs:  TambahFieldDefPayload[]   // boleh kosong
-}
-
-export interface TambahFieldDefPayload {
-  label:       string
-  field_key:   string                    // auto-generate dari label, bisa diedit SA
-  tipe:        FieldInputType
-  is_required: boolean
-  is_secret:   boolean
-  placeholder: string | null             // contoh format nilai
-  deskripsi:   string | null             // panduan SA saat isi credential
-  sort_order:  number
 }
 
 // ─── Literal Types ───────────────────────────────────────────────────────────

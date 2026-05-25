@@ -2,13 +2,11 @@
 // app/dashboard/superadmin/providers/ProvidersClient.tsx
 // Halaman API Provider — tabel full-width + tab + progress bar (Screenshot 1 Philips S#151).
 // Dipecah: ProviderTableRow.tsx + DialogKonfigurasi.fields.tsx
-// Dibuat: Sesi #107 — Update: Sesi #151, S#218 (tombol Tambah Provider)
+// Dibuat: Sesi #107 — Update: Sesi #151
 
-import { useState, useCallback }             from 'react'
-import { useRouter }                         from 'next/navigation'
+import { useState }                     from 'react'
 import { ProviderTableRow }              from './ProviderTableRow'
 import { DialogKonfigurasiKoneksi }      from './DialogKonfigurasiKoneksi'
-import { DialogTambahProvider }          from './DialogTambahProvider'
 import { ICON_STATUS }                   from '@/lib/constants/icons.constant'
 import type { ServiceProvider }          from '@/lib/types/provider.types'
 
@@ -17,16 +15,9 @@ const MONITOR_KAT = new Set(['management', 'queue'])
 interface Props { initialProviders: ServiceProvider[] }
 
 export function ProvidersClient({ initialProviders }: Props) {
-  const router                              = useRouter()
   const [providers]          = useState<ServiceProvider[]>(initialProviders)
   const [activeTab, setTab]  = useState<'app' | 'monitor'>('app')
   const [dialogProv, setDP]  = useState<ServiceProvider | null>(null)
-  const [showTambah, setShowTambah] = useState(false)
-
-  const onTambahSuccess = useCallback(() => {
-    setShowTambah(false)
-    router.refresh()
-  }, [router])
 
   const appList     = providers.filter(p => !MONITOR_KAT.has(p.kategori))
   const monitorList = providers.filter(p =>  MONITOR_KAT.has(p.kategori))
@@ -39,19 +30,11 @@ export function ProvidersClient({ initialProviders }: Props) {
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 600, color: '#1a1a1a' }}>API Provider & Credential</h1>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
-            Kelola koneksi semua tools — operasional aplikasi dan monitoring otomatis
-          </p>
-        </div>
-        <button
-          onClick={() => setShowTambah(true)}
-          style={{ marginTop: 2, display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '0.5px solid rgba(0,0,0,0.25)', fontSize: 13, color: '#1a1a1a', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500, flexShrink: 0 }}
-        >
-          + Tambah Provider
-        </button>
+      <div>
+        <h1 style={{ fontSize: 20, fontWeight: 600, color: '#1a1a1a' }}>API Provider & Credential</h1>
+        <p style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+          Kelola koneksi semua tools — operasional aplikasi dan monitoring otomatis
+        </p>
       </div>
 
       {/* Progress bar */}
@@ -127,12 +110,6 @@ export function ProvidersClient({ initialProviders }: Props) {
         provider={dialogProv}
         onClose={() => setDP(null)}
         onSuccess={() => setDP(null)}
-      />
-
-      <DialogTambahProvider
-        open={showTambah}
-        onClose={() => setShowTambah(false)}
-        onSuccess={onTambahSuccess}
       />
     </div>
   )
