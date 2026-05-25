@@ -388,6 +388,39 @@ async function testSmtp(creds: Record<string, string>): Promise<TestKoneksiResul
   })
 }
 
+// ─── 9. Resend ─────────────────────────────────────────────────────────────────────────────
+// Verifikasi API key dengan GET /domains — lightweight, tidak kirim email.
+// S#218 — tambah provider Resend email.
+
+async function testResend(creds: Record<string, string>): Promise<TestKoneksiResult> {
+  const { api_key } = creds
+
+  if (!api_key)
+    return buildResult(false, null, 'Credential tidak lengkap (api_key wajib)', 0)
+
+  const start = Date.now()
+
+  try {
+    // GET /domains adalah endpoint ringan untuk verifikasi API key tanpa side effect
+    const res = await fetchWithTimeout('https://api.resend.com/domains', {
+      headers: { Authorization: `Bearer ${api_key}` },
+    }, TIMEOUT_MS)
+
+    const latency_ms = Date.now() - start
+
+    if (res.ok)
+      return buildResult(true, true, null, latency_ms)
+
+    if (res.status === 401 || res.status === 403)
+      return buildResult(true, false, 'API key Resend tidak valid', latency_ms)
+
+    return buildResult(true, false, `Server Resend merespons HTTP ${res.status}`, latency_ms)
+
+  } catch (err) {
+    return buildResult(false, null, err instanceof Error ? err.message : 'Koneksi ke Resend gagal', Date.now() - start)
+  }
+}
+
 // ─── Router utama ─────────────────────────────────────────────────────────────
 
 /**
@@ -412,6 +445,7 @@ export async function testProvider(
     case 'typesense':  return testTypesense(credentials)
     case 'cloudflare': return testCloudflare(credentials)
     case 'smtp':       return testSmtp(credentials)
+    case 'resend':     return testResend(credentials)
     default:
       return buildResult(false, null, `Provider '${providerKode}' tidak dikenali di provider-tester`, 0)
   }
