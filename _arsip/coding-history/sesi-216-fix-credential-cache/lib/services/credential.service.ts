@@ -1,10 +1,19 @@
+// lib/utils/otp-only.server.ts
+// Helper server-side untuk fitur OTP Mode Login: otp_only (Pengganti Password)
+// Dibuat: Sesi #209 — Fitur OTP Mode Login per Role (TDD Step 2)
+//
+// Fungsi di file ini dipakai oleh initOtpOnlyAction + finishOtpOnlyAction
+// di app/login/actions.ts untuk flow login tanpa password via WA OTP.
+//
+// Registry: code_registry.cr_functions
+//   - getNomorWaSuperAdmin — AUTH/otp_only — is_shared=false (khusus SA)
+
 // lib/services/credential.service.ts
 // Service layer untuk credential management.
 // Enkripsi/dekripsi dilakukan di sini (bukan di repository atau route).
 // Dibuat: Sesi #052 — BLOK C-02 TODO_ARSITEKTUR_LAYER_v1
 // Update: Sesi #107 — M3 Credential Management (+5 fungsi UI dashboard)
 // Update: Sesi #109 — M3 Step 5.2b: testKoneksi() → authenticated test via provider-tester.ts
-// Update: Sesi #216 — FIX: revalidateTag setelah simpanCredential (cache stale bug)
 
 import 'server-only'
 import { unstable_cache } from 'next/cache'
@@ -263,24 +272,8 @@ export async function testKoneksi(instanceId: string): Promise<TestKoneksiResult
     }
   }
 
-  // 2. Ambil credentials FRESH dari DB (tanpa cache) — saat test, wajib baca data terbaru.
-  //    Tidak pakai getCredentialsByProvider() karena unstable_cache TTL 900 detik bisa
-  //    mengembalikan data lama jika credentials baru saja disimpan (BUG S#216).
-  const credRows = await getAllByProvider(providerInfo.kode)
-  const credentials: Record<string, string> = {}
-  for (const c of credRows) {
-    try {
-      credentials[c.field_key] = c.is_secret ? dekripsi(c.encrypted_value) : c.encrypted_value
-    } catch { /* skip field yang gagal didekripsi */ }
-  }
-  // Env fallback: sama dengan perilaku getCredentialsByProvider — fallback ke .env jika DB kosong
-  const envFields = ENV_FALLBACK[providerInfo.kode] ?? {}
-  for (const [fieldKey, envKey] of Object.entries(envFields)) {
-    if (!credentials[fieldKey]) {
-      const val = process.env[envKey]
-      if (val) credentials[fieldKey] = val
-    }
-  }
+  // 2. Ambil credentials (dari DB atau env fallback)
+  const credentials = await getCredentialsByProvider(providerInfo.kode)
 
   // 3. Jalankan authenticated test via provider-tester.ts
   const result = await testProvider(providerInfo.kode, credentials)
