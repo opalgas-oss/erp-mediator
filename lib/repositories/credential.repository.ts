@@ -4,6 +4,8 @@
 // Dibuat: Sesi #051 — BLOK B-07 TODO_ARSITEKTUR_LAYER_v1
 // Update: Sesi #107 — M3 Credential Management (+3 fungsi UI dashboard)
 // Update: Sesi #216 — tambah getCredentialsByInstanceId (fix envelope decrypt di testKoneksi)
+// Update: Sesi #217 — fix getAllByProvider: tambah encrypted_dek untuk backward-compat dekripsi
+// Update: Sesi #218 — tambah insertProvider + insertFieldDef untuk fitur Tambah Provider SA
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -24,6 +26,7 @@ export interface CredentialResult {
 }
 
 interface CredWithDef {
+  encrypted_dek?:  string | null   // S#217: tambah untuk backward-compat dekripsiCredential
   encrypted_value: string
   provider_field_definitions: { field_key: string; is_secret: boolean } |
     Array<{ field_key: string; is_secret: boolean }> | null
@@ -62,7 +65,7 @@ export async function spGetCredential(params: {
  * Dekripsi TIDAK dilakukan di sini — dilakukan di CredentialService.
  */
 export async function getAllByProvider(providerKode: string): Promise<
-  Array<{ field_key: string; encrypted_value: string; is_secret: boolean }>
+  Array<{ field_key: string; encrypted_dek?: string | null; encrypted_value: string; is_secret: boolean }>
 > {
   const db = createServerSupabaseClient()
 
@@ -87,7 +90,7 @@ export async function getAllByProvider(providerKode: string): Promise<
 
   const { data: creds } = await db
     .from('instance_credentials')
-    .select('encrypted_value, provider_field_definitions!inner(field_key, is_secret)')
+    .select('encrypted_dek, encrypted_value, provider_field_definitions!inner(field_key, is_secret)')
     .eq('instance_id', instance.id)
 
   if (!creds || creds.length === 0) return []
@@ -98,6 +101,7 @@ export async function getAllByProvider(providerKode: string): Promise<
       : c.provider_field_definitions
     return {
       field_key:       def?.field_key ?? '',
+      encrypted_dek:   c.encrypted_dek ?? null,   // S#217: null jika data lama tanpa DEK
       encrypted_value: c.encrypted_value,
       is_secret:       def?.is_secret ?? false,
     }
@@ -343,6 +347,95 @@ export async function upsertCredential(params: {
     })
 
   if (error) throw new Error(`[credential.repository] upsertCredential: ${error.message}`)
+}
+
+/**
+ * Insert provider baru ke service_providers.
+ * Kode harus sudah di-generate dan di-validasi unik di service layer sebelum masuk sini.
+ * S#218 — fitur Tambah Provider dashboard SA.
+ */
+export async function insertProvider(payload: {
+  kode:      string
+  nama:      string
+  kategori:  string
+  tag:       string
+  deskripsi: string | null
+  docs_url:  string | null
+}): Promise<ServiceProvider> {
+  const db = createServerSupabaseClient()
+
+  // Ambil sort_order max untuk auto-increment
+  const { data: maxRow } = await db
+    .from('service_providers')
+    .select('sort_order')
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .single()
+
+  const nextSortOrder = (maxRow?.sort_order ?? 0) + 1
+
+  const { data, error } = await db
+    .from('service_providers')
+    .insert({
+      kode:       payload.kode,
+      nama:       payload.nama,
+      kategori:   payload.kategori,
+      tag:        payload.tag,
+      deskripsi:  payload.deskripsi,
+      docs_url:   payload.docs_url,
+      is_aktif:   true,
+      sort_order: nextSortOrder,
+    })
+    .select()
+    .single()
+
+  if (error) {
+    // Tangkap UNIQUE violation kode untuk pesan error yang informatif
+    if (error.code === '23505') {
+      throw new Error(`KODE_DUPLIKAT: Kode provider "${payload.kode}" sudah dipakai`)
+    }
+    throw new Error(`[credential.repository] insertProvider: ${error.message}`)
+  }
+
+  return {
+    ...data,
+    health_overall: 'belum_dites',
+  } as ServiceProvider
+}
+
+/**
+ * Insert satu field definition untuk satu provider.
+ * Dipakai loop per field di service layer.
+ * S#218 — fitur Tambah Provider dashboard SA.
+ */
+export async function insertFieldDef(payload: {
+  provider_id: string
+  field_key:   string
+  label:       string
+  tipe:        string
+  is_required: boolean
+  is_secret:   boolean
+  placeholder: string | null
+  deskripsi:   string | null
+  sort_order:  number
+}): Promise<void> {
+  const db = createServerSupabaseClient()
+
+  const { error } = await db
+    .from('provider_field_definitions')
+    .insert({
+      provider_id: payload.provider_id,
+      field_key:   payload.field_key,
+      label:       payload.label,
+      tipe:        payload.tipe,
+      is_required: payload.is_required,
+      is_secret:   payload.is_secret,
+      placeholder: payload.placeholder,
+      deskripsi:   payload.deskripsi,
+      sort_order:  payload.sort_order,
+    })
+
+  if (error) throw new Error(`[credential.repository] insertFieldDef: ${error.message}`)
 }
 
 /**

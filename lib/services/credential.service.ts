@@ -5,6 +5,7 @@
 // Update: Sesi #107 — M3 Credential Management (+5 fungsi UI dashboard)
 // Update: Sesi #109 — M3 Step 5.2b: testKoneksi() → authenticated test via provider-tester.ts
 // Update: Sesi #216 — FIX: bypass cache + dekripsiCredential di testKoneksi + getCredentialPlaintext untuk UI Kelola
+// Update: Sesi #217 — fix getCredentialsByProvider: dekripsiCredential jika DEK ada, fallback dekripsi jika tidak
 
 import 'server-only'
 import { unstable_cache } from 'next/cache'
@@ -21,6 +22,8 @@ import {
   upsertCredential,
   spTestProviderConnection,
   getProviderByInstanceId,
+  insertProvider,
+  insertFieldDef,
   type CredentialResult,
 } from '@/lib/repositories/credential.repository'
 import { enkripsiCredential, dekripsi, dekripsiCredential, fingerprint } from '@/lib/credential-crypto'
@@ -31,6 +34,7 @@ import type {
   ProviderFieldDef,
   InstanceCredential,
   TambahInstancePayload,
+  TambahProviderPayload,
   SimpanCredentialPayload,
   TestKoneksiResult,
 } from '@/lib/types/provider.types'
@@ -136,7 +140,16 @@ export async function getCredentialsByProvider(
         const map:  Record<string, string> = {}
         for (const c of creds) {
           try {
-            map[c.field_key] = c.is_secret ? dekripsi(c.encrypted_value) : c.encrypted_value
+            if (c.encrypted_dek) {
+              // Envelope encryption (format S#107+) — semua fields simpanCredential pakai enkripsiCredential
+              map[c.field_key] = dekripsiCredential(c.encrypted_dek, c.encrypted_value)
+            } else if (c.is_secret) {
+              // Simple encryption (format lama, data sebelum S#107) — fallback backward-compat
+              map[c.field_key] = dekripsi(c.encrypted_value)
+            } else {
+              // Non-secret tanpa DEK (data lama, tidak terenkripsi) — simpan as-is
+              map[c.field_key] = c.encrypted_value
+            }
           } catch { /* skip field gagal didekripsi */ }
         }
         return map
@@ -325,4 +338,46 @@ export async function testKoneksi(instanceId: string): Promise<TestKoneksiResult
 }
 
 // ─── Re-export untuk caller yang butuh fungsi crypto ─────────────────────────
+/**
+ * Tambah provider baru ke Supabase + field definitions-nya.
+ * Auto-generate kode dari nama: lowercase, non-alphanumeric diganti underscore.
+ * Validasi unik kode via UNIQUE constraint Supabase.
+ * S#218 - fitur Tambah Provider dashboard SA.
+ */
+export async function tambahProvider(
+  payload: TambahProviderPayload,
+  userId:  string
+): Promise<ServiceProvider> {
+  const kode = payload.nama
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+
+  const provider = await insertProvider({
+    kode,
+    nama:      payload.nama,
+    kategori:  payload.kategori,
+    tag:       payload.tag,
+    deskripsi: payload.deskripsi,
+    docs_url:  payload.docs_url,
+  })
+
+  for (const fd of payload.field_defs) {
+    await insertFieldDef({
+      provider_id: provider.id,
+      field_key:   fd.field_key,
+      label:       fd.label,
+      tipe:        fd.tipe,
+      is_required: fd.is_required,
+      is_secret:   fd.is_secret,
+      placeholder: fd.placeholder,
+      deskripsi:   fd.deskripsi,
+      sort_order:  fd.sort_order,
+    })
+  }
+
+  void userId
+  return provider
+}
+
 export { enkripsiCredential, dekripsi, fingerprint }
