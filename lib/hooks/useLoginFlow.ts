@@ -91,8 +91,9 @@ export interface LoginFlowState {
     email_kontak:    string
     register_status: string
     lifecycle_status: string | null
+    user_email?:     string  // untuk kirim ulang aktivasi — S#215
   } | null
-  setStatusPopup: (v: { pesan_key: string; email_kontak: string; register_status: string; lifecycle_status: string | null } | null) => void
+  setStatusPopup: (v: { pesan_key: string; email_kontak: string; register_status: string; lifecycle_status: string | null; user_email?: string } | null) => void
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -127,6 +128,7 @@ export function useLoginFlow(): LoginFlowState {
     email_kontak:     string
     register_status:  string
     lifecycle_status: string | null
+    user_email?:      string  // untuk kirim ulang aktivasi — S#215
   } | null>(null)
   const [akunDikunci,    setAkunDikunci]    = useState(false)
   const [waktuKunci,     setWaktuKunci]     = useState('')

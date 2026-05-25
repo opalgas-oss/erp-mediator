@@ -80,6 +80,7 @@ export interface LoginActionResult {
     lifecycle_status: string | null
     email_kontak:     string
     pesan_key:        string
+    user_email?:      string  // email user untuk kirim ulang aktivasi — S#215
   }
 }
 
@@ -271,7 +272,7 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
       return {
         ok: false,
         errorKey: 'login_error_akun_belum_aktif',
-        statusDetail: { register_status: vRegStatus, lifecycle_status: vLcStatus, email_kontak: emailKontakV2, pesan_key: pesanKeyV2 },
+        statusDetail: { register_status: vRegStatus, lifecycle_status: vLcStatus, email_kontak: emailKontakV2, pesan_key: pesanKeyV2, user_email: email },
       }
     }
     const nomorWa = profileRow?.nomor_wa ?? ''
@@ -321,7 +322,7 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
       return {
         ok: false,
         errorKey: 'login_error_akun_belum_aktif',
-        statusDetail: { register_status: atRegStatus, lifecycle_status: atLcStatus, email_kontak: emailKontakAT, pesan_key: pesanKeyAT },
+        statusDetail: { register_status: atRegStatus, lifecycle_status: atLcStatus, email_kontak: emailKontakAT, pesan_key: pesanKeyAT, user_email: email },
       }
     }
 
