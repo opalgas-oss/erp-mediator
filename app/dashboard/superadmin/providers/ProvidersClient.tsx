@@ -184,7 +184,7 @@ export function ProvidersClient({ initialProviders }: Props) {
         open={!!dialogProv}
         provider={dialogProv}
         onClose={() => setDP(null)}
-        onSuccess={() => setDP(null)}
+        onSuccess={() => { setDP(null); router.refresh() }}
       />
 
       <DialogTambahProvider
