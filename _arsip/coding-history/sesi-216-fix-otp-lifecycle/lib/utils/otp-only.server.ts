@@ -85,7 +85,6 @@ export async function lookupUserByNomorWa(nomorHpInput: string): Promise<OtpOnly
     .select('id, email, nama, role, tenant_id, nomor_wa')
     .or(`nomor_wa.eq.${norm},nomor_wa.eq.${alt}`)
     .eq('register_status', 'approved')   // STATUS-REDESIGN S#212 (was: .eq('status', 'aktif'))
-    .eq('lifecycle_status', 'active')    // FIX S#216: user belum aktivasi email tidak boleh masuk via WA OTP
     .limit(5)
 
   if (profiles && profiles.length > 0) {
