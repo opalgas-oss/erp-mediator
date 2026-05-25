@@ -12,6 +12,7 @@ import { getConfigValue, parseConfigNumber } from '@/lib/config-registry'
 import {
   spGetCredential,
   getAllByProvider,
+  getCredentialsByInstanceId,
   getProvidersWithStatus,
   getInstancesByProvider,
   getFieldDefinitions,
@@ -22,7 +23,7 @@ import {
   getProviderByInstanceId,
   type CredentialResult,
 } from '@/lib/repositories/credential.repository'
-import { enkripsiCredential, dekripsi, fingerprint } from '@/lib/credential-crypto'
+import { enkripsiCredential, dekripsi, dekripsiCredential, fingerprint } from '@/lib/credential-crypto'
 import { testProvider }                               from '@/lib/services/provider-tester'
 import type {
   ServiceProvider,
@@ -263,17 +264,19 @@ export async function testKoneksi(instanceId: string): Promise<TestKoneksiResult
     }
   }
 
-  // 2. Ambil credentials FRESH dari DB (tanpa cache) — saat test, wajib baca data terbaru.
-  //    Tidak pakai getCredentialsByProvider() karena unstable_cache TTL 900 detik bisa
-  //    mengembalikan data lama jika credentials baru saja disimpan (BUG S#216).
-  const credRows = await getAllByProvider(providerInfo.kode)
+  // 2. Ambil credentials FRESH dari DB dengan dekripsiCredential (envelope encryption).
+  //    S#216 FIX: simpanCredential pakai enkripsiCredential (DEK per field),
+  //    tapi getAllByProvider pakai dekripsi (simple, Master Key langsung) — MISMATCH.
+  //    Solusi: query langsung dengan encrypted_dek via getCredentialsByInstanceId,
+  //    kemudian pakai dekripsiCredential(encrypted_dek, encrypted_value) yang benar.
+  const credRows = await getCredentialsByInstanceId(instanceId)
   const credentials: Record<string, string> = {}
   for (const c of credRows) {
     try {
-      credentials[c.field_key] = c.is_secret ? dekripsi(c.encrypted_value) : c.encrypted_value
+      credentials[c.field_key] = dekripsiCredential(c.encrypted_dek, c.encrypted_value)
     } catch { /* skip field yang gagal didekripsi */ }
   }
-  // Env fallback: sama dengan perilaku getCredentialsByProvider — fallback ke .env jika DB kosong
+  // Env fallback: jika DB kosong, coba ambil dari .env (untuk provider lama yang belum migrasi ke DB)
   const envFields = ENV_FALLBACK[providerInfo.kode] ?? {}
   for (const [fieldKey, envKey] of Object.entries(envFields)) {
     if (!credentials[fieldKey]) {

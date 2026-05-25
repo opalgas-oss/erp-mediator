@@ -3,6 +3,7 @@
 // Dekripsi TIDAK dilakukan di sini — dilakukan di CredentialService.
 // Dibuat: Sesi #051 — BLOK B-07 TODO_ARSITEKTUR_LAYER_v1
 // Update: Sesi #107 — M3 Credential Management (+3 fungsi UI dashboard)
+// Update: Sesi #216 — tambah getCredentialsByInstanceId (fix envelope decrypt di testKoneksi)
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -23,6 +24,13 @@ export interface CredentialResult {
 }
 
 interface CredWithDef {
+  encrypted_value: string
+  provider_field_definitions: { field_key: string; is_secret: boolean } |
+    Array<{ field_key: string; is_secret: boolean }> | null
+}
+
+interface CredWithDefAndDek {
+  encrypted_dek:   string
   encrypted_value: string
   provider_field_definitions: { field_key: string; is_secret: boolean } |
     Array<{ field_key: string; is_secret: boolean }> | null
@@ -96,6 +104,36 @@ export async function getAllByProvider(providerKode: string): Promise<
 }
 
 // ─── Repository (M3 — UI Dashboard) — Sesi #107 ─────────────────────────────
+
+/**
+ * Ambil credential fields untuk satu instance, dengan encrypted_dek.
+ * Dipakai oleh testKoneksi() untuk dekripsi dengan dekripsiCredential (envelope encryption).
+ * S#216 — Bug fix: getAllByProvider hanya return encrypted_value, tidak cukup untuk envelope decrypt.
+ */
+export async function getCredentialsByInstanceId(instanceId: string): Promise<
+  Array<{ field_key: string; encrypted_dek: string; encrypted_value: string; is_secret: boolean }>
+> {
+  const db = createServerSupabaseClient()
+
+  const { data: creds } = await db
+    .from('instance_credentials')
+    .select('encrypted_dek, encrypted_value, provider_field_definitions!inner(field_key, is_secret)')
+    .eq('instance_id', instanceId)
+
+  if (!creds || creds.length === 0) return []
+
+  return (creds as unknown as CredWithDefAndDek[]).map(c => {
+    const def = Array.isArray(c.provider_field_definitions)
+      ? c.provider_field_definitions[0]
+      : c.provider_field_definitions
+    return {
+      field_key:       def?.field_key ?? '',
+      encrypted_dek:   c.encrypted_dek,
+      encrypted_value: c.encrypted_value,
+      is_secret:       def?.is_secret ?? false,
+    }
+  }).filter(c => c.field_key !== '')
+}
 
 /**
  * Ambil semua provider aktif beserta health_overall.
