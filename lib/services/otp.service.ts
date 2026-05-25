@@ -43,6 +43,10 @@
 //   sendOTP() channel=whatsapp — ganti inline fetch Fonnte dengan sendFonnteWA()
 //   dari lib/utils/fonnte.server.ts. Token tetap diambil dalam Promise.all (efisien).
 //
+// PERUBAHAN Sesi #218 — Ganti SMTP ke Resend:
+//   sendOTP() channel=email — ganti sendSmtpOTP() dengan sendResendEmail()
+//   dari lib/utils/resend.server.ts. Credentials dibaca SA dari dashboard Providers.
+//
 // ARSITEKTUR:
 //   Route Handler → OTPService → OTPRepository + CredentialService + MessageLibrary
 //   OTPService juga panggil: config-registry untuk config OTP.
@@ -58,7 +62,7 @@ import { getRedisClient }                                          from '@/lib/r
 import { getCredential }                                           from '@/lib/services/credential.service'
 import { getMessage, interpolate }                                 from '@/lib/message-library'
 import { getConfigValues, parseConfigNumber, getPlatformTimezone } from '@/lib/config-registry'
-import { sendSmtpOTP }             from '@/lib/utils/smtp.server'
+import { sendResendEmail }        from '@/lib/utils/resend.server'
 import { getNamaBrandPlatform }    from '@/lib/utils/brand.server'
 import { sendFonnteWA }            from '@/lib/utils/fonnte.server'
 
@@ -282,14 +286,14 @@ export async function sendOTP(params: SendOTPParams): Promise<SendOTPResult> {
     }
     const textBody  = interpolate(emailTemplate, interpolateVars)
     const htmlBody  = `<p>${textBody.replace(/\n/g, '<br>')}</p>`
-    const smtpResult = await sendSmtpOTP({
+    const resendResult = await sendResendEmail({
       toEmail:  params.email,
       toNama:   params.nama || params.role,
       subject:  `Kode OTP Login - ${namaPlatform}`,
       textBody,
       htmlBody,
     })
-    if (!smtpResult.success) return smtpResult
+    if (!resendResult.success) return resendResult
 
   } else {
     // ── Channel tidak dikenal atau SMS (belum ada provider) ───────────────────
