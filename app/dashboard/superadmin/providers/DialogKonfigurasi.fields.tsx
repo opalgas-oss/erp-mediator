@@ -28,11 +28,13 @@ export function groupFields(defs: ProviderFieldDef[]): ProviderFieldDef[][] {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface CredFieldsProps {
-  fieldRows:  ProviderFieldDef[][]
-  formCred:   Record<string, string>
-  showFields: Record<string, boolean>
-  onChange:   (id: string, val: string) => void
-  onToggle:   (id: string) => void
+  fieldRows:    ProviderFieldDef[][]
+  formCred:     Record<string, string>
+  showFields:   Record<string, boolean>
+  onChange:     (id: string, val: string) => void
+  onToggle:     (id: string) => void
+  isEditMode?:  boolean  // true = mode Kelola (form pre-filled dari DB)
+  loadingCred?: boolean  // true = sedang load credential dari server
 }
 
 // ─── InlinePanduan ────────────────────────────────────────────────────────────
@@ -170,7 +172,7 @@ function SingleField({ f, formCred, showFields, openPanduan, onChange, onToggle,
 
 // ─── CredentialFields ────────────────────────────────────────────────────────
 
-export function CredentialFields({ fieldRows, formCred, showFields, onChange, onToggle }: CredFieldsProps) {
+export function CredentialFields({ fieldRows, formCred, showFields, onChange, onToggle, isEditMode, loadingCred }: CredFieldsProps) {
   // Semua panduan mulai tertutup — user buka sesuai kebutuhan per field
   const [openPanduan, setOpenPanduan] = useState<Record<string, boolean>>({})
 
@@ -186,6 +188,22 @@ export function CredentialFields({ fieldRows, formCred, showFields, onChange, on
           Credential
         </p>
       </div>
+
+      {/* Loading indicator saat fetch credential dari DB */}
+      {loadingCred && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', fontSize: 12, color: '#6b7280' }}>
+          <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
+          Memuat credential yang tersimpan...
+        </div>
+      )}
+
+      {/* Note mode edit — tampil setelah selesai load */}
+      {isEditMode && !loadingCred && (
+        <div style={{ background: '#EAF3DE', border: '0.5px solid #97C459', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 11, color: '#3B6D11' }}>
+          ✅ Credential tersimpan sudah dimuat. Ubah field yang perlu diperbarui saja.
+          Klik ikon mata (👁) untuk melihat nilai asli yang tersimpan.
+        </div>
+      )}
 
       {/* ── Field rows ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

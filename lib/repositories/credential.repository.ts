@@ -30,6 +30,7 @@ interface CredWithDef {
 }
 
 interface CredWithDefAndDek {
+  field_def_id:    string
   encrypted_dek:   string
   encrypted_value: string
   provider_field_definitions: { field_key: string; is_secret: boolean } |
@@ -111,13 +112,13 @@ export async function getAllByProvider(providerKode: string): Promise<
  * S#216 — Bug fix: getAllByProvider hanya return encrypted_value, tidak cukup untuk envelope decrypt.
  */
 export async function getCredentialsByInstanceId(instanceId: string): Promise<
-  Array<{ field_key: string; encrypted_dek: string; encrypted_value: string; is_secret: boolean }>
+  Array<{ field_key: string; field_def_id: string; encrypted_dek: string; encrypted_value: string; is_secret: boolean }>
 > {
   const db = createServerSupabaseClient()
 
   const { data: creds } = await db
     .from('instance_credentials')
-    .select('encrypted_dek, encrypted_value, provider_field_definitions!inner(field_key, is_secret)')
+    .select('field_def_id, encrypted_dek, encrypted_value, provider_field_definitions!inner(field_key, is_secret)')
     .eq('instance_id', instanceId)
 
   if (!creds || creds.length === 0) return []
@@ -128,6 +129,7 @@ export async function getCredentialsByInstanceId(instanceId: string): Promise<
       : c.provider_field_definitions
     return {
       field_key:       def?.field_key ?? '',
+      field_def_id:    c.field_def_id,
       encrypted_dek:   c.encrypted_dek,
       encrypted_value: c.encrypted_value,
       is_secret:       def?.is_secret ?? false,

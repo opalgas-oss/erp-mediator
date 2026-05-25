@@ -60,11 +60,12 @@ interface BodyProps {
   cred:       Record<string, string>; show: Record<string, boolean>
   onChange:   (id: string, v: string) => void
   onToggle:   (id: string) => void
-  // panduan DIHAPUS S#152 — sekarang inline per-field di CredentialFields
   res:        { berhasil: boolean; pesan: string | null; latency_ms: number | null } | null
+  loadingCred?: boolean   // true saat sedang fetch credential dari DB
+  isEditMode?:  boolean   // true jika mode Kelola (instance sudah ada)
 }
 
-export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, fds, cred, show, onChange, onToggle, res }: BodyProps) {
+export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, fds, cred, show, onChange, onToggle, res, loadingCred, isEditMode }: BodyProps) {
   const warn  = provider ? (WARN[provider.kode] ?? '') : ''
   const rows  = groupFields(fds)
 
@@ -108,6 +109,8 @@ export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, fds, cred, s
               showFields={show}
               onChange={onChange}
               onToggle={onToggle}
+              isEditMode={isEditMode}
+              loadingCred={loadingCred}
             />
           )}
 

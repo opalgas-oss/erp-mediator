@@ -4,7 +4,7 @@
 // Dibuat: Sesi #052 — BLOK C-02 TODO_ARSITEKTUR_LAYER_v1
 // Update: Sesi #107 — M3 Credential Management (+5 fungsi UI dashboard)
 // Update: Sesi #109 — M3 Step 5.2b: testKoneksi() → authenticated test via provider-tester.ts
-// Update: Sesi #216 — FIX: revalidateTag setelah simpanCredential (cache stale bug)
+// Update: Sesi #216 — FIX: bypass cache + dekripsiCredential di testKoneksi + getCredentialPlaintext untuk UI Kelola
 
 import 'server-only'
 import { unstable_cache } from 'next/cache'
@@ -232,6 +232,30 @@ export async function simpanCredential(
       updated_by:      userId,
     })
   }
+}
+
+/**
+ * Ambil credential plaintext untuk satu instance — dipakai UI "Kelola" untuk pre-fill form.
+ * Mengembalikan DUA map: byFieldDefId (untuk isi cred state dialog) + byFieldKey (untuk referensi).
+ * SA only — tidak boleh dipakai di context browser langsung tanpa auth gate di route.
+ */
+export async function getCredentialPlaintext(instanceId: string): Promise<{
+  byFieldDefId: Record<string, string>
+  byFieldKey:   Record<string, string>
+}> {
+  const rows = await getCredentialsByInstanceId(instanceId)
+  const byFieldDefId: Record<string, string> = {}
+  const byFieldKey:   Record<string, string>   = {}
+
+  for (const row of rows) {
+    try {
+      const val = dekripsiCredential(row.encrypted_dek, row.encrypted_value)
+      byFieldDefId[row.field_def_id] = val
+      byFieldKey[row.field_key]      = val
+    } catch { /* skip field yang gagal didekripsi */ }
+  }
+
+  return { byFieldDefId, byFieldKey }
 }
 
 /**
