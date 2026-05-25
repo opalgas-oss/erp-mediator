@@ -72,8 +72,7 @@ function LoginOrchestrator() {
       error={flow.error} akunDikunci={flow.akunDikunci} waktuKunci={flow.waktuKunci} gpsKota={flow.gpsKota}
       onEmailChange={v => { flow.setEmail(v); flow.setErrorEmail('') }}
       onPasswordChange={v => { flow.setPassword(v); flow.setErrorPassword('') }}
-      onTogglePassword={flow.togglePassword} onLogin={flow.handleLogin} m={flow.m}
-      onMasukOtpOnly={() => { flow.setIsOtpOnlyMode(true); flow.setError('') }} />
+      onTogglePassword={flow.togglePassword} onLogin={flow.handleLogin} m={flow.m} />
   }
 
   return (
