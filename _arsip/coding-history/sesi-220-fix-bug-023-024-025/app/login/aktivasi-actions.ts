@@ -84,8 +84,7 @@ export async function kirimUlangEmailAktivasiAction(
       sent_at:          new Date().toISOString(),
       token_hash:       tokenHash,
       token_expires_at: expiry.toISOString(),
-      status:           'sent',   // FIX BUG-025 S#220: 'pending' tidak ada di CHECK constraint
-                                   // DB CHECK: ARRAY['sent','clicked','expired','failed'] — tidak include 'pending'
+      status:           'pending',
     })
 
   if (logError) {

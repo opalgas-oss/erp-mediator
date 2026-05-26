@@ -37,7 +37,7 @@ import {
 } from '@/app/login/login-types'
 import type { Tahap, DataSesiParalel } from '@/app/login/login-types'
 
-import { loginUnifiedAction, initOtpOnlyAction, finishOtpOnlyAction } from '@/app/login/actions'
+import { loginUnifiedAction, initOtpOnlyAction, finishOtpOnlyAction, verifyOtpOnlyAction } from '@/app/login/actions'
 
 import {
   fetchCheckLock, fetchLockAccount, fetchUnlockAccount,
@@ -602,7 +602,16 @@ export function useLoginFlow(): LoginFlowState {
     if (otpInput.length !== 6) { setError(m('otp_error_kurang_digit')); return }
     setIsLoading(true); setError('')
     try {
-      const data = await fetchVerifyOTP({ uid, tenantId, inputCode: otpInput })
+      // BUG-024 FIX S#220: isOtpOnlyFlow=true → pakai Server Action (tidak butuh JWT)
+      // isOtpOnlyFlow=false (2FA path) → tetap pakai fetchVerifyOTP (HTTP route, user punya session)
+      // Root cause BUG-024: fetchVerifyOTP panggil /api/auth/verify-otp yang cek verifyJWT().
+      // Flow otp_only belum punya Supabase session → JWT null → 401 → OTP dianggap salah.
+      let data: { success: boolean; result?: string }
+      if (isOtpOnlyFlow) {
+        data = await verifyOtpOnlyAction({ uid, tenantId, inputCode: otpInput })
+      } else {
+        data = await fetchVerifyOTP({ uid, tenantId, inputCode: otpInput })
+      }
       if (data.success) {
         fetchActivityLog({ uid, tenantId, nama, role: roleDipilih, sessionId: '', actionType: 'FORM_SUBMIT', module: 'AUTH', page: '/login', pageLabel: 'Halaman Login', actionDetail: 'Verifikasi OTP berhasil', result: 'SUCCESS', gpsKota: '' })
         // S#209: isOtpOnlyFlow → Supabase session belum ada → finishOtpOnlyAction

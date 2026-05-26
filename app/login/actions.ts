@@ -51,7 +51,7 @@ import {
   buildLoginFormSchema, buatSupabaseSSR, prosesGagalLogin,
 } from './login-action-helpers'
 // OTP Mode otp_only — Fase 3 Coding S#209 (TDD Step 3)
-import { sendOTP }             from '@/lib/services/otp.service'
+import { sendOTP, verifyAndConsume } from '@/lib/services/otp.service'
 import { lookupUserByNomorWa } from '@/lib/utils/otp-only.server'
 
 // ─── Tipe ────────────────────────────────────────────────────────────────────
@@ -256,11 +256,14 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
     const vLcStatus  = profileRow?.lifecycle_status ?? null
 
     // HUTANG-LOGIN-STATUS-POPUP S#213: cek approved + lifecycle (termasuk belum aktivasi)
-    if (vRegStatus !== 'approved' || vLcStatus === 'pending') {
+    // BUG-023 FIX S#220: ganti 'pending' dengan !== 'active' agar 'in_registration' juga terblokir
+    // Sebelum: hanya vLcStatus === 'pending' → user approved+in_registration LOLOS ke dashboard
+    // Sesudah: semua nilai kecuali 'active' diblokir (null, pending, in_registration, suspended, expired, terminated)
+    if (vRegStatus !== 'approved' || vLcStatus !== 'active') {
       try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
       let pesanKeyV2: string
       let emailKontakV2: string
-      if (vRegStatus === 'approved' && vLcStatus === 'pending') {
+      if (vRegStatus === 'approved' && (vLcStatus === 'pending' || vLcStatus === 'in_registration')) {
         pesanKeyV2    = 'login_status_belum_aktivasi'
         emailKontakV2 = ''
       } else {
@@ -307,11 +310,14 @@ export async function loginUnifiedAction(params: LoginActionParams): Promise<Log
       .eq('id', uid).eq('tenant_id', claimTenantId).maybeSingle()
     const atRegStatus = atStatusRow?.register_status ?? 'pending'
     const atLcStatus  = atStatusRow?.lifecycle_status ?? null
-    if (atRegStatus !== 'approved' || atLcStatus === 'pending') {
+    // BUG-023 FIX S#220: ganti 'pending' dengan !== 'active' agar 'in_registration' juga terblokir
+    // Sebelum: hanya atLcStatus === 'pending' → user approved+in_registration LOLOS ke dashboard
+    // Sesudah: semua nilai kecuali 'active' diblokir (null, pending, in_registration, suspended, expired, terminated)
+    if (atRegStatus !== 'approved' || atLcStatus !== 'active') {
       try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* abaikan */ }
       let pesanKeyAT: string
       let emailKontakAT: string
-      if (atRegStatus === 'approved' && atLcStatus === 'pending') {
+      if (atRegStatus === 'approved' && (atLcStatus === 'pending' || atLcStatus === 'in_registration')) {
         pesanKeyAT    = 'login_status_belum_aktivasi'
         emailKontakAT = ''
       } else {
@@ -562,5 +568,45 @@ export async function finishOtpOnlyAction(params: FinishOtpOnlyParams): Promise<
   return {
     ok:         true,
     redirectTo: hitungTujuanRedirectServer(role, ''),
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// verifyOtpOnlyAction — BUG-024 FIX S#220
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Server Action untuk verifikasi OTP pada flow otp_only (tanpa JWT).
+ *
+ * ROOT CAUSE BUG-024: fetchVerifyOTP memanggil HTTP route /api/auth/verify-otp
+ * yang memerlukan JWT (verifyJWT()). Flow otp_only belum punya session Supabase
+ * saat tahap OTP — session baru dibuat di finishOtpOnlyAction setelah OTP verified.
+ * Akibat: verifyJWT() selalu null → 401 → client anggap 'OTP salah'.
+ *
+ * FIX: Server Action ini bypass HTTP route dan panggil verifyAndConsume() langsung.
+ * Server Action tidak butuh JWT — dieksekusi server-side di Next.js secara aman.
+ * Return type kompatibel dengan fetchVerifyOTP: { success, result? }.
+ *
+ * HANYA dipakai saat isOtpOnlyFlow=true (flow otp_only via initOtpOnlyAction).
+ * Flow 2FA tetap pakai fetchVerifyOTP (user sudah punya session dari loginUnifiedAction).
+ */
+export async function verifyOtpOnlyAction(
+  params: { uid: string; tenantId: string; inputCode: string }
+): Promise<{ success: boolean; result?: string }> {
+  // Validasi basic sebelum panggil service
+  if (!params.uid || params.inputCode.length !== 6) {
+    return { success: false, result: 'NOT_FOUND' }
+  }
+
+  try {
+    const result = await verifyAndConsume({
+      uid:       params.uid,
+      tenantId:  params.tenantId,
+      inputCode: params.inputCode,
+    })
+    return { success: result === 'OK', result }
+  } catch (err) {
+    console.error('[verifyOtpOnlyAction] verifyAndConsume gagal:', err)
+    return { success: false, result: 'NOT_FOUND' }
   }
 }
