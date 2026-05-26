@@ -134,6 +134,7 @@ export async function TenantService_updateLifecycleStatus(
   if (!tenant) throw new Error('Tenant tidak ditemukan')
 
   const validTransitions: Record<TenantLifecycleStatus, TenantLifecycleStatus[]> = {
+    in_registration: [], // TAMBAH S#219 FIX BUG-026 - transisi otomatis via approve, bukan manual SA
     pending:    ['active', 'terminated'],
     active:     ['suspended', 'terminated'],
     suspended:  ['active', 'terminated'],

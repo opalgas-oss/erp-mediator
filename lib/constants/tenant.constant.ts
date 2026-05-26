@@ -1,11 +1,13 @@
 // lib/constants/tenant.constant.ts
-// Konstanta untuk M6 Tenant Management — status, tipe, tier, kontrak
+// Konstanta untuk M6 Tenant Management - status, tipe, tier, kontrak
 // Dipakai oleh: tenant.service.ts, API routes, UI komponen
-// Dibuat: Sesi #132 — M6 FASE 3 Step 3.5
+// Dibuat: Sesi #132 - M6 FASE 3 Step 3.5
+// Update: Sesi #219 - FIX BUG-026: tambah 'in_registration' ke semua status map
 
-// ─── Status Lifecycle Tenant ──────────────────────────────────────────────────
+// Status Lifecycle Tenant
 
 export const TENANT_STATUS = {
+  IN_REGISTRATION: 'in_registration', // TAMBAH S#219 FIX BUG-026 - nilai awal (keputusan S#214)
   PENDING:    'pending',
   ACTIVE:     'active',
   SUSPENDED:  'suspended',
@@ -17,6 +19,7 @@ export type TenantStatusValue = typeof TENANT_STATUS[keyof typeof TENANT_STATUS]
 
 /** Label UI Bahasa Indonesia per status */
 export const TENANT_STATUS_LABELS: Record<TenantStatusValue, string> = {
+  in_registration: 'Dalam Registrasi', // TAMBAH S#219 FIX BUG-026
   pending:    'Menunggu aktivasi',
   active:     'Aktif',
   suspended:  'Dinonaktifkan sementara',
@@ -28,6 +31,7 @@ export const TENANT_STATUS_LABELS: Record<TenantStatusValue, string> = {
 export const TENANT_STATUS_COLORS: Record<TenantStatusValue, {
   bg: string; text: string; border: string
 }> = {
+  in_registration: { bg: '#EEF2FF', text: '#3730A3', border: '#A5B4FC' }, // TAMBAH S#219 FIX BUG-026
   pending:    { bg: '#FAEEDA', text: '#854F0B', border: '#EF9F27' },
   active:     { bg: '#EAF3DE', text: '#3B6D11', border: '#97C459' },
   suspended:  { bg: '#FAEEDA', text: '#854F0B', border: '#EF9F27' },
@@ -35,7 +39,7 @@ export const TENANT_STATUS_COLORS: Record<TenantStatusValue, {
   terminated: { bg: '#FCEBEB', text: '#A32D2D', border: '#F09595' },
 }
 
-// ─── Tipe Tenant ──────────────────────────────────────────────────────────────
+// Tipe Tenant
 
 export const TENANT_TIPE = {
   INTERNAL:  'internal',
@@ -56,7 +60,7 @@ export const TENANT_TIPE_COLORS: Record<TenantTipeValue, {
   eksternal: { bg: '#FAECE7', text: '#993C1D', border: '#F0997B' },
 }
 
-// ─── Tier / Paket ─────────────────────────────────────────────────────────────
+// Tier / Paket
 
 export const TENANT_TIER = {
   STARTER:    'starter',
@@ -79,7 +83,7 @@ export const TENANT_TIER_USER_LIMIT: Record<TenantTierValue, number | null> = {
   enterprise: null,   // null = unlimited
 }
 
-// ─── Status PKP ───────────────────────────────────────────────────────────────
+// Status PKP
 
 export const STATUS_PKP = {
   PKP:     'pkp',
@@ -93,7 +97,7 @@ export const STATUS_PKP_LABELS: Record<StatusPKPValue, string> = {
   non_pkp: 'Non-PKP',
 }
 
-// ─── Bentuk Badan Usaha ───────────────────────────────────────────────────────
+// Bentuk Badan Usaha
 
 export const BENTUK_BADAN_USAHA = {
   PT:              'pt',
@@ -111,7 +115,7 @@ export const BENTUK_BADAN_USAHA_LABELS: Record<string, string> = {
   koperasi:        'Koperasi',
 }
 
-// ─── Status Kontrak ───────────────────────────────────────────────────────────
+// Status Kontrak
 
 export const CONTRACT_STATUS = {
   DRAFT:          'draft',
@@ -129,7 +133,7 @@ export const CONTRACT_STATUS_LABELS: Record<string, string> = {
   diperbarui:      'Diperbarui',
 }
 
-// ─── Konstanta Operasional ────────────────────────────────────────────────────
+// Konstanta Operasional
 
 /** Hari minimum sebelum notifikasi perpanjangan kontrak */
 export const CONTRACT_RENEWAL_WARNING_DAYS = 30
@@ -143,20 +147,20 @@ export const TENANT_ID_PREFIX = 'TEN'
 /** Tarif PPN standar marketplace Indonesia 2025 */
 export const PPN_RATE = 0.11
 
-// ─── Alias UI (shorthand untuk dipakai di komponen) ──────────────────────────
+// Alias UI (shorthand untuk dipakai di komponen)
 
-/** Alias: TENANT_STATUS_LABELS — dipakai di komponen UI */
+/** Alias: TENANT_STATUS_LABELS - dipakai di komponen UI */
 export const TENANT_LIFECYCLE_LABEL = TENANT_STATUS_LABELS
 
-/** Alias: CONTRACT_STATUS_LABELS — dipakai di komponen UI */
+/** Alias: CONTRACT_STATUS_LABELS - dipakai di komponen UI */
 export const TENANT_CONTRACT_STATUS_LABEL = CONTRACT_STATUS_LABELS
 
-/** Alias: TENANT_TIER_LABELS — dipakai di komponen UI */
+/** Alias: TENANT_TIER_LABELS - dipakai di komponen UI */
 export const TENANT_TIER_LABEL = TENANT_TIER_LABELS
 
-// ─── Konstanta PIC (Person In Charge) ──────────────────────────────────────────────────
+// Konstanta PIC (Person In Charge)
 
-/** Opsi relasi PIC ke perusahaan — untuk dropdown form tambah/ganti PIC */
+/** Opsi relasi PIC ke perusahaan - untuk dropdown form tambah/ganti PIC */
 export const PIC_RELASI_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'owner',            label: 'Owner / Pemilik' },
   { value: 'direktur',         label: 'Direktur' },
@@ -165,7 +169,7 @@ export const PIC_RELASI_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'keluarga_pemilik', label: 'Keluarga Pemilik' },
 ]
 
-/** Opsi alasan pergantian PIC — untuk dropdown Step 2 wizard ganti PIC utama */
+/** Opsi alasan pergantian PIC - untuk dropdown Step 2 wizard ganti PIC utama */
 export const PIC_ALASAN_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'resign',            label: 'Resign' },
   { value: 'mutasi',            label: 'Mutasi' },

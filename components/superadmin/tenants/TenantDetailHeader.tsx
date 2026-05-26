@@ -11,6 +11,7 @@ import type { Tenant, TenantLifecycleStatus, TenantTipe, TenantTier, TenantStatu
 // ─── Konstanta badge ──────────────────────────────────────────────────────────
 
 const STATUS_STYLE: Record<TenantLifecycleStatus, { bg: string; text: string; border: string; icon: string; label: string }> = {
+  in_registration: { bg: '#EEF2FF', text: '#3730A3', border: '#A5B4FC', icon: 'ti-file-description', label: 'Dalam Registrasi' }, // TAMBAH S#219 FIX BUG-026
   pending:    { bg: '#FAEEDA', text: '#854F0B', border: '#EF9F27', icon: 'ti-hourglass',       label: 'Menunggu' },
   active:     { bg: '#EAF3DE', text: '#3B6D11', border: '#97C459', icon: 'ti-circle-check',    label: 'Aktif' },
   suspended:  { bg: '#FAEEDA', text: '#854F0B', border: '#EF9F27', icon: 'ti-player-pause',    label: 'Dinonaktifkan' },

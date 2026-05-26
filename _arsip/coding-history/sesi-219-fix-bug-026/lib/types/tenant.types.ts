@@ -7,7 +7,6 @@
 // ─── Literal Types ────────────────────────────────────────────────────────────
 
 export type TenantLifecycleStatus =
-  | 'in_registration' // TAMBAH S#219 FIX BUG-026 — nilai awal saat tenant baru daftar (sesuai keputusan S#214)
   | 'pending'
   | 'active'
   | 'suspended'
