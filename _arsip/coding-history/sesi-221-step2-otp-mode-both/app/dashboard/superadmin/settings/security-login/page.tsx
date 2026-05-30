@@ -28,8 +28,8 @@ import type { ConfigItemData }                     from '@/components/ConfigItem
 // ─── Konfigurasi tipe per field JSON per-role ─────────────────────────────────
 
 const JSON_FIELD_CONFIG: Record<string, JsonFieldConfig> = {
-  require_otp:                      { valueType: 'select', options: ['disabled', 'required', 'otp_only', 'both'], allowedRoles: ['customer', 'vendor', 'admin_tenant'] },
-  require_otp_superadmin:           { valueType: 'select', options: ['disabled', 'required', 'otp_only', 'both'], allowedRoles: ['super_admin'] },
+  require_otp:                      { valueType: 'select', options: ['disabled', 'required', 'otp_only'], allowedRoles: ['customer', 'vendor', 'admin_tenant'] },
+  require_otp_superadmin:           { valueType: 'select', options: ['disabled', 'required', 'otp_only'], allowedRoles: ['super_admin'] },
   biometric_mode:                   { valueType: 'select', options: ['required', 'disabled'], allowedRoles: ['customer', 'vendor', 'admin_tenant'] },
   biometric_mode_superadmin:        { valueType: 'select', options: ['required', 'disabled'], allowedRoles: ['super_admin'] },
   max_concurrent_sessions_per_role: { valueType: 'number' },

@@ -73,7 +73,7 @@ function LoginOrchestrator() {
       onEmailChange={v => { flow.setEmail(v); flow.setErrorEmail('') }}
       onPasswordChange={v => { flow.setPassword(v); flow.setErrorPassword('') }}
       onTogglePassword={flow.togglePassword} onLogin={flow.handleLogin} m={flow.m}
-      onMasukOtpOnly={flow.showWaOtpLink ? () => { flow.setIsOtpOnlyMode(true); flow.setError('') } : undefined} />
+      onMasukOtpOnly={() => { flow.setIsOtpOnlyMode(true); flow.setError('') }} />
   }
 
   return (

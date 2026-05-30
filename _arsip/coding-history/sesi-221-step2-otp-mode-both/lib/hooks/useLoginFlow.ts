@@ -25,7 +25,7 @@
 
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter, useSearchParams }               from 'next/navigation'
 import { createBrowserSupabaseClient }              from '@/lib/supabase-client'
 import { useOTPTimer }                              from '@/lib/hooks/useOTPTimer'
@@ -85,7 +85,6 @@ export interface LoginFlowState {
   isOtpOnlyMode:      boolean
   setIsOtpOnlyMode:   (v: boolean) => void
   handleKirimOtpOnly: () => Promise<void>
-  showWaOtpLink:      boolean  // tampilkan opsi WA OTP di layar login jika ada role non-SA dengan mode otp_only atau both
   // ─── status popup — HUTANG-LOGIN-STATUS-POPUP S#213
   statusPopup: {
     pesan_key:       string
@@ -153,19 +152,6 @@ export function useLoginFlow(): LoginFlowState {
     if (!vars) return teks
     return teks.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? `{${k}}`)
   }, [dbPesan])
-
-  // ─── showWaOtpLink — S#221: kontrol visibilitas tombol WA OTP di layar login ─
-  // Layar login tidak tahu role user di awal → cek require_otp config untuk role non-SA.
-  // Tampilkan WA OTP link jika ADA role yang punya mode 'otp_only' atau 'both'.
-  // require_otp_superadmin tidak diikutkan (RLS: tidak bisa dibaca di halaman login publik).
-  const showWaOtpLink = useMemo(() => {
-    const requireOtpConfig = configLogin['require_otp'] ?? 'required'
-    const nonSaRoles = ['customer', 'vendor', 'admin_tenant'] as const
-    return nonSaRoles.some(role => {
-      const mode = parseRequireOtpForRole(requireOtpConfig, role)
-      return mode === 'otp_only' || mode === 'both'
-    })
-  }, [configLogin])
 
   useEffect(() => {
     fetch('/api/message-library?kategori=login_ui,otp_ui')
@@ -308,9 +294,8 @@ export function useLoginFlow(): LoginFlowState {
   async function lanjutSetelahRole(role: string, tid: string, uidUser: string, namaUser: string, waNumber: string) {
     try {
       const otpMode = parseRequireOtpForRole(configLogin[getRequireOtpConfigKey(role)] ?? 'required', role)
-      if (otpMode === 'disabled' || otpMode === 'otp_only' || otpMode === 'both') {
-        // otp_only/both di path password (RB-05): session sudah ada dari loginUnifiedAction
-        // both: user sudah pilih path password — skip OTP (path WA OTP ditangani handleKirimOtpOnly)
+      if (otpMode === 'disabled' || otpMode === 'otp_only') {
+        // otp_only di path fallback password (RB-05): session sudah ada dari loginUnifiedAction
         await selesaiLogin(uidUser, tid, role)
       } else {
         await kirimOTP(uidUser, tid, role, waNumber, namaUser)
@@ -683,7 +668,6 @@ export function useLoginFlow(): LoginFlowState {
     nomorHp, setNomorHp,
     isOtpOnlyMode, setIsOtpOnlyMode,
     handleKirimOtpOnly,
-    showWaOtpLink,
     // ─── status popup — S#213
     statusPopup, setStatusPopup,
   }

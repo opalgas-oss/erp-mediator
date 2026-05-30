@@ -38,10 +38,9 @@ const ROLE_LABEL: Record<RoleKey, string> = {
 // HUTANG-MINOR: biometric_mode yang juga pakai 'required'/'disabled' akan ikut terlabel Indonesia.
 //   Jika perlu label berbeda per field, refactor dengan kondisi fieldName di masa depan.
 const OTP_MODE_LABEL: Record<string, string> = {
-  disabled:  'Tanpa OTP',
+  disabled:  'Nonaktif',
   required:  'Keamanan Pendukung (2FA)',
   otp_only:  'Pengganti Password',
-  both:      'Keduanya',
 }
 
 // Tipe nilai yang didukung per baris
