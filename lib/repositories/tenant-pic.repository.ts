@@ -1,10 +1,11 @@
 // lib/repositories/tenant-pic.repository.ts
-// Repository untuk tabel tenant_pic_history — akses DB only.
+// Repository untuk tabel tenant_admintenant_history (RENAMED S#230 dari tenant_pic_history) — akses DB only.
 // TIDAK ada logika bisnis — hanya query dan return data.
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.3
+// Update: Sesi #230 — update .from() ke nama tabel baru setelah rename
 //
 // ARSITEKTUR:
-//   Service → TenantPICRepository → DB (tabel tenant_pic_history)
+//   Service → TenantPICRepository → DB (tabel tenant_admintenant_history)
 //   Dipakai oleh: tenant-pic.service.ts
 
 import 'server-only'
@@ -29,7 +30,7 @@ export async function findAktifByTenantId(
 ): Promise<TenantPICHistory | null> {
   const db = createServerSupabaseClient()
   const { data, error } = await db
-    .from('tenant_pic_history')
+    .from('tenant_admintenant_history')  // RENAMED S#230
     .select('*')
     .eq('tenant_id', tenantId)
     .eq('tipe_pic', tipePic)
@@ -51,7 +52,7 @@ export async function findAllByTenantId(
 ): Promise<TenantPICHistory[]> {
   const db = createServerSupabaseClient()
   const { data, error } = await db
-    .from('tenant_pic_history')
+    .from('tenant_admintenant_history')  // RENAMED S#230
     .select('*')
     .eq('tenant_id', tenantId)
     .order('started_at', { ascending: false })
@@ -95,7 +96,7 @@ export async function updateUserIdPIC(
 ): Promise<boolean> {
   const db = createServerSupabaseClient()
   const { error } = await db
-    .from('tenant_pic_history')
+    .from('tenant_admintenant_history')  // RENAMED S#230
     .update({ user_id: userId })
     .eq('id', picHistoryId)
 
@@ -145,7 +146,7 @@ export async function hapusCadanganByTenantId(
 ): Promise<{ ok: boolean; rowsAffected: number; error?: string }> {
   const db = createServerSupabaseClient()
   const { data, error } = await db
-    .from('tenant_pic_history')
+    .from('tenant_admintenant_history')  // RENAMED S#230
     .update({
       ended_at:          new Date().toISOString(),
       alasan_pergantian: 'dihapus',   // penanda: dihapus manual, bukan pergantian
@@ -219,7 +220,7 @@ export async function updateCadanganByTenantId(
 ): Promise<{ ok: boolean; rowsAffected: number; error?: string }> {
   const db = createServerSupabaseClient()
   const { data, error } = await db
-    .from('tenant_pic_history')
+    .from('tenant_admintenant_history')  // RENAMED S#230
     .update({
       user_name:            fields.user_name,
       user_email:           fields.user_email,
