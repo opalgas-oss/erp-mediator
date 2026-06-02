@@ -37,13 +37,13 @@ const TIER_STYLE: Record<TenantTier, { bg: string; text: string; border: string;
 
 // ─── Tipe tab ─────────────────────────────────────────────────────────────────
 
-export type TenantTabId = 'info' | 'kontrak' | 'kategori' | 'admintenant' | 'user' | 'config'
+export type TenantTabId = 'info' | 'kontrak' | 'kategori' | 'pic' | 'user' | 'config'
 
 const TABS: { id: TenantTabId; label: string }[] = [
   { id: 'info',     label: 'Info Umum' },
   { id: 'kontrak',  label: 'Kontrak Sewa' },
   { id: 'kategori', label: 'Kategori' },
-  { id: 'admintenant', label: 'AdminTenant' },
+  { id: 'pic',      label: 'PIC & Riwayat' },
   { id: 'user',     label: 'User Tenant' },
   { id: 'config',   label: 'Override Config' },
 ]
@@ -93,10 +93,8 @@ function Bdg({ bg, text, border, icon, label }: { bg: string; text: string; bord
   )
 }
 
-// ─── Komponen utama ───────────────────────────────────────────────────────────
-
 export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, onTerminate, quickStats }: Props) {
-  const statusStyle = STATUS_STYLE[tenant.lifecycle_status]   // STATUS-REDESIGN S#212 (was: tenant.status)
+  const statusStyle = STATUS_STYLE[tenant.lifecycle_status]
   const initials    = (tenant.nama_brand ?? 'T').substring(0, 2).toUpperCase()
 
   const userDisplay = tenant.tier === 'enterprise'
@@ -105,8 +103,6 @@ export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, 
 
   return (
     <div style={{ marginBottom: '1.25rem' }}>
-
-      {/* ── Breadcrumb ─────────────────────────────────────────────────────── */}
       <div style={{ fontSize: 13, color: '#6b7280', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: 6 }}>
         <i className="ti ti-layout-dashboard" />
         Dashboard SuperAdmin
@@ -115,136 +111,43 @@ export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, 
         <i className="ti ti-chevron-right" style={{ fontSize: 11 }} />
         {tenant.nama_brand}
       </div>
-
-      {/* ── Satu card container: info + quick stats + tab nav ──────────────── */}
-      <div style={{
-        background: '#fff',
-        borderWidth: '0.5px',
-        borderStyle: 'solid',
-        borderColor: 'rgba(0,0,0,0.12)',
-        borderRadius: 12,
-        overflow: 'hidden',
-        marginBottom: '1.25rem',
-      }}>
-
-        {/* Info & tombol aksi */}
+      <div style={{ background: '#fff', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 12, overflow: 'hidden', marginBottom: '1.25rem' }}>
         <div style={{ padding: '1.25rem 1.25rem 1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-
-            {/* Kiri: avatar + nama + badge */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{
-                width: 52, height: 52, borderRadius: '50%', flexShrink: 0,
-                background: '#E6F1FB', color: '#185FA5', fontSize: 18, fontWeight: 500,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {initials}
-              </div>
+              <div style={{ width: 52, height: 52, borderRadius: '50%', flexShrink: 0, background: '#E6F1FB', color: '#185FA5', fontSize: 18, fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials}</div>
               <div>
                 <div style={{ fontSize: 18, fontWeight: 500, lineHeight: 1.3 }}>{tenant.nama_brand}</div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 3 }}>
-                  {[tenant.nama_legal, tenant.tenant_display_id, `Bergabung ${formatTglLengkap(tenant.created_at)}`]
-                    .filter(Boolean).join(' · ')}
-                </div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 3 }}>{[tenant.nama_legal, tenant.tenant_display_id, `Bergabung ${formatTglLengkap(tenant.created_at)}`].filter(Boolean).join(' · ')}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, alignItems: 'center' }}>
                   <Bdg bg={statusStyle.bg} text={statusStyle.text} border={statusStyle.border} icon={statusStyle.icon} label={statusStyle.label} />
                   {tenant.status_pkp && <Bdg {...PKP_STYLE[tenant.status_pkp]} />}
                   {tenant.tipe && <Bdg {...TIPE_STYLE[tenant.tipe]} />}
                   <Bdg {...TIER_STYLE[tenant.tier]} />
-                  {tenant.updated_at && (
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>
-                      Aktivitas terakhir:{' '}
-                      {new Date(tenant.updated_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  )}
+                  {tenant.updated_at && (<span style={{ fontSize: 11, color: '#9ca3af' }}>Aktivitas terakhir:{' '}{new Date(tenant.updated_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>)}
                 </div>
               </div>
             </div>
-
-            {/* Kanan: tombol aksi */}
             <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-              {tenant.lifecycle_status === 'active' && (   // STATUS-REDESIGN S#212
-                <button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#EF9F27', color: '#854F0B', background: 'transparent' }}>
-                  <i className="ti ti-player-pause" /> Nonaktifkan sementara
-                </button>
-              )}
-              {tenant.lifecycle_status === 'suspended' && (   // STATUS-REDESIGN S#212
-                <button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#97C459', color: '#3B6D11', background: 'transparent' }}>
-                  <i className="ti ti-refresh" /> Aktifkan kembali
-                </button>
-              )}
-              {tenant.lifecycle_status !== 'terminated' && (   // STATUS-REDESIGN S#212
-                <button onClick={onTerminate} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#F09595', color: '#A32D2D', background: 'transparent' }}>
-                  <i className="ti ti-circle-x" /> Akhiri tenant
-                </button>
-              )}
+              {tenant.lifecycle_status === 'active' && (<button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#EF9F27', color: '#854F0B', background: 'transparent' }}><i className="ti ti-player-pause" /> Nonaktifkan sementara</button>)}
+              {tenant.lifecycle_status === 'suspended' && (<button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#97C459', color: '#3B6D11', background: 'transparent' }}><i className="ti ti-refresh" /> Aktifkan kembali</button>)}
+              {tenant.lifecycle_status !== 'terminated' && (<button onClick={onTerminate} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#F09595', color: '#A32D2D', background: 'transparent' }}><i className="ti ti-circle-x" /> Akhiri tenant</button>)}
             </div>
           </div>
         </div>
-
-        {/* Quick stats */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8,
-          padding: '0 1.25rem 1rem',
-        }}>
-          {[
-            { label: 'Kategori dipegang', value: String(quickStats.kategori_aktif) },
-            { label: 'User aktif',        value: userDisplay },
-            { label: 'Kontrak berakhir',  value: formatTgl(quickStats.kontrak_berakhir) },
-            { label: 'Auto-renewal',      value: quickStats.auto_renewal ? 'Aktif' : 'Tidak aktif' },
-          ].map(({ label, value }) => (
-            <div key={label} style={{ background: '#f9f9f8', borderRadius: 8, padding: '10px 12px' }}>
-              <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 3 }}>{label}</div>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>{value}</div>
-            </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, padding: '0 1.25rem 1rem' }}>
+          {[{ label: 'Kategori dipegang', value: String(quickStats.kategori_aktif) }, { label: 'User aktif', value: userDisplay }, { label: 'Kontrak berakhir', value: formatTgl(quickStats.kontrak_berakhir) }, { label: 'Auto-renewal', value: quickStats.auto_renewal ? 'Aktif' : 'Tidak aktif' }].map(({ label, value }) => (
+            <div key={label} style={{ background: '#f9f9f8', borderRadius: 8, padding: '10px 12px' }}><div style={{ fontSize: 11, color: '#6b7280', marginBottom: 3 }}>{label}</div><div style={{ fontSize: 13, fontWeight: 500 }}>{value}</div></div>
           ))}
         </div>
-
-        {/* Tab navigation — bagian dari card, borderTop sebagai pemisah */}
-        <div style={{
-          display: 'flex',
-          overflowX: 'auto',
-          borderTopWidth: '0.5px',
-          borderTopStyle: 'solid',
-          borderTopColor: 'rgba(0,0,0,0.12)',
-          padding: '0 1.25rem',
-        }}>
+        <div style={{ display: 'flex', overflowX: 'auto', borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)', padding: '0 1.25rem' }}>
           {TABS.map(tab => {
             const isActive = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                onClick={() => onTabChange(tab.id)}
-                style={{
-                  padding: '10px 16px',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  color: isActive ? '#1a1a1a' : '#6b7280',
-                  fontWeight: isActive ? 500 : 400,
-                  background: 'transparent',
-                  // ← gunakan HANYA non-shorthand, tidak campur dengan borderBottom shorthand
-                  borderTopWidth: 0,
-                  borderTopStyle: 'solid',
-                  borderTopColor: 'transparent',
-                  borderLeftWidth: 0,
-                  borderLeftStyle: 'solid',
-                  borderLeftColor: 'transparent',
-                  borderRightWidth: 0,
-                  borderRightStyle: 'solid',
-                  borderRightColor: 'transparent',
-                  borderBottomWidth: 2,
-                  borderBottomStyle: 'solid',
-                  borderBottomColor: isActive ? '#1a1a1a' : 'transparent',
-                  marginBottom: -0.5,   // overlap border card
-                }}
-              >
-                {tab.label}
-              </button>
-            )
+            return (<button key={tab.id} onClick={() => onTabChange(tab.id)} style={{ padding: '10px 16px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', color: isActive ? '#1a1a1a' : '#6b7280', fontWeight: isActive ? 500 : 400, background: 'transparent', borderTopWidth: 0, borderTopStyle: 'solid', borderTopColor: 'transparent', borderLeftWidth: 0, borderLeftStyle: 'solid', borderLeftColor: 'transparent', borderRightWidth: 0, borderRightStyle: 'solid', borderRightColor: 'transparent', borderBottomWidth: 2, borderBottomStyle: 'solid', borderBottomColor: isActive ? '#1a1a1a' : 'transparent', marginBottom: -0.5 }}>{tab.label}</button>)
           })}
         </div>
       </div>
     </div>
   )
 }
+// PRE-EDIT ARSIP S#240 — sebelum STEP B (tab 'pic' → 'admintenant')

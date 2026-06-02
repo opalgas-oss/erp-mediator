@@ -11,7 +11,7 @@ import { TenantDetailHeader, type TenantTabId } from '@/components/superadmin/te
 import { TabInfoUmum }       from './TabInfoUmum'
 import { TabKontrakSewa }    from './TabKontrakSewa'
 import { TabKategori }       from './TabKategori'
-import { TabAdminTenantHistory } from './TabAdminTenantHistory'
+import { TabPICHistory }     from './TabPICHistory'
 import { TabUserTenant }     from './TabUserTenant'
 import { TabOverrideConfig } from './TabOverrideConfig'
 import type { Tenant }       from '@/lib/types/tenant.types'
@@ -65,7 +65,7 @@ export function TenantDetailClient({ tenant: initialTenant }: Props) {
         {activeTab === 'info'     && <TabInfoUmum      tenant={tenant} onRefresh={handleRefresh} />}
         {activeTab === 'kontrak'  && <TabKontrakSewa   tenant={tenant} onRefresh={handleRefresh} />}
         {activeTab === 'kategori' && <TabKategori      tenantId={tenant.id} />}
-        {activeTab === 'admintenant' && <TabAdminTenantHistory tenantId={tenant.id} tenantNama={tenant.nama_brand ?? ''} />}
+        {activeTab === 'pic'      && <TabPICHistory    tenantId={tenant.id} />}
         {activeTab === 'user'     && <TabUserTenant    tenantId={tenant.id} tier={tenant.tier} />}
         {activeTab === 'config'   && <TabOverrideConfig tenantId={tenant.id} />}
       </div>

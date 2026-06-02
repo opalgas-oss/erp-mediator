@@ -84,7 +84,7 @@ export async function tenantRepo_findAll(params?: {
   let query = db
     .from('tenants')
     .select(
-      'id, nama_brand, nama_legal, slug, tenant_display_id, lifecycle_status, tipe, tier, admintenant_name, created_at',   // STATUS-REDESIGN S#212 + K-18 S#238
+      'id, nama_brand, nama_legal, slug, tenant_display_id, lifecycle_status, tipe, tier, pic_name, created_at',   // STATUS-REDESIGN S#212
       { count: 'exact' }
     )
     .is('deleted_at', null)
@@ -200,7 +200,7 @@ export async function tenantRepo_create(
       slug:        payload.slug,
       tipe:        payload.tipe,
       npwp:        payload.npwp,
-      pic_name:    payload.pic_name,    // TEMP: BuatTenantPayload belum direname (SP lama masih aktif, BUG-028). Rename saat SP di-DROP.
+      pic_name:    payload.pic_name,
       pic_email:   payload.pic_email,
       pic_wa:      payload.pic_wa,
       lifecycle_status: 'pending',   // STATUS-REDESIGN S#212 (was: status: 'pending')
@@ -292,10 +292,10 @@ export async function tenantRepo_updateContract(
 export async function tenantRepo_updatePICDenorm(
   tenantId: string,
   input: {
-    current_admintenant_user_id?: string | null   // RENAMED K-18 S#238 (was: current_pic_user_id)
-    admintenant_name:             string          // RENAMED K-18 S#238 (was: pic_name)
-    admintenant_email:            string | null   // RENAMED K-18 S#238 (was: pic_email)
-    admintenant_wa:               string | null   // RENAMED K-18 S#238 (was: pic_wa)
+    current_pic_user_id?: string | null
+    pic_name:             string
+    pic_email:            string | null
+    pic_wa:               string | null
   },
   updatedBy: string
 ): Promise<boolean> {

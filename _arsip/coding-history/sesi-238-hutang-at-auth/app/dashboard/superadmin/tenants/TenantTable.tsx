@@ -69,7 +69,7 @@ export function TenantTable({ data, loading, onRowClick }: Props) {
         </colgroup>
         <thead>
           <tr style={{ background: '#f9f9f8' }}>
-            {['Nama tenant', 'Kode tenant', 'Kategori', 'Tipe', 'AdminTenant', 'Status', 'Bergabung', ''].map((h, i) => (
+            {['Nama tenant', 'Kode tenant', 'Kategori', 'Tipe', 'PIC saat ini', 'Status', 'Bergabung', ''].map((h, i) => (
               <th key={i} style={{ padding: '10px 14px', fontSize: 11, fontWeight: 500, color: '#6b7280', textAlign: 'left' }}>{h}</th>
             ))}
           </tr>
@@ -131,8 +131,8 @@ export function TenantTable({ data, loading, onRowClick }: Props) {
 
                 {/* PIC */}
                 <td style={{ padding: '12px 14px' }}>
-                  {tenant.admintenant_name ? (
-                    <span style={{ fontSize: 12 }}>{tenant.admintenant_name}</span>
+                  {tenant.pic_name ? (
+                    <span style={{ fontSize: 12 }}>{tenant.pic_name}</span>
                   ) : (
                     <span style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>Belum ada</span>
                   )}

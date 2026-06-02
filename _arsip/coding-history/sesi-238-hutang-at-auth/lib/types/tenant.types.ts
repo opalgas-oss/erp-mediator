@@ -86,11 +86,11 @@ export interface Tenant {
   logo_dark_url:         string | null
   logo_url:              string | null        // legacy — backward compat
 
-  // AdminTenant Aktif (denormalized) — RENAMED K-18 S#238
-  current_admintenant_user_id:   string | null
-  admintenant_name:              string | null
-  admintenant_email:             string | null
-  admintenant_wa:                string | null
+  // PIC Aktif (denormalized)
+  current_pic_user_id:   string | null
+  pic_name:              string | null
+  pic_email:             string | null
+  pic_wa:                string | null
 
   // Kontrak
   contract_number:           string | null
@@ -124,7 +124,7 @@ export interface TenantListItem {
   lifecycle_status:  TenantLifecycleStatus   // STATUS-REDESIGN S#212 (was: status)
   tipe:              TenantTipe | null
   tier:              TenantTier
-  admintenant_name:  string | null
+  pic_name:          string | null
   created_at:        string
   // Joins
   active_categories: number              // count dari tenant_category_assignments
