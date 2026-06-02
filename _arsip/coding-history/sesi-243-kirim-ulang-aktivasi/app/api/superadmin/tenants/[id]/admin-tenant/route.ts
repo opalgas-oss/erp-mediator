@@ -52,10 +52,10 @@ export async function GET(
 
 // ─── POST — Tambah AdminTenant ────────────────────────────────────────────────
 // Body JSON:
-//   action: 'cek_email'            → gerbang F-REQ-03 (cek sebelum submit)
-//   action: 'tambah_baru'          → F-REQ-01 (email belum terdaftar)
-//   action: 'tambah_existing'      → F-REQ-05 (aksi YES saat email sudah terdaftar)
-//   action: 'kirim_ulang_aktivasi' → Kirim ulang email aktivasi (K-30 Jalur 1)
+//   action: 'cek_email'           → gerbang F-REQ-03 (cek sebelum submit)
+//   action: 'tambah_baru'         → F-REQ-01 (email belum terdaftar)
+//   action: 'tambah_existing'     → F-REQ-05 (aksi YES saat email sudah terdaftar)
+//   action: 'kirim_ulang_aktivasi'→ Kirim ulang email aktivasi (K-30 Jalur 1)
 
 export async function POST(
   request: Request,
@@ -115,7 +115,7 @@ export async function POST(
     return NextResponse.json({ success: true })
   }
 
-  // ── Kirim ulang email aktivasi (K-30 Jalur 1) ────────────────────────────────────
+  // ── Kirim ulang email aktivasi (K-30 Jalur 1) ────────────────────────────
   if (body.action === 'kirim_ulang_aktivasi') {
     const userId     = String(body.user_id ?? '').trim()
     const tenantNama = String(body.tenant_nama ?? '')

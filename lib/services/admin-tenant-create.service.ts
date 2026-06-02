@@ -248,3 +248,81 @@ export async function tambahAdminTenantBaru(
 
   return { ok: true, emailTerkirim }
 }
+
+// ─── FUNGSI: kirimUlangAktivasi ───────────────────────────────────────────────
+/**
+ * K-30 Jalur 1 — SA kirim ulang email aktivasi ke AT yang masih in_registration.
+ * Reuse kirimEmailAktivasi() — hanya generate ulang link + kirim.
+ * Log ke activation_email_logs (insert baru, bukan update).
+ */
+export async function kirimUlangAktivasi(
+  userId:     string,
+  tenantNama: string
+): Promise<{ ok: boolean; emailTerkirim: boolean; error?: string }> {
+  const db = createServerSupabaseClient()
+
+  // Ambil data AT dari user_profiles
+  const { data: profile, error: profileErr } = await db
+    .from('user_profiles')
+    .select('email, nama, lifecycle_status')
+    .eq('id', userId)
+    .single()
+
+  if (profileErr || !profile) {
+    return { ok: false, emailTerkirim: false, error: 'Profil AT tidak ditemukan' }
+  }
+
+  if (profile.lifecycle_status === 'active') {
+    return { ok: false, emailTerkirim: false, error: 'Akun sudah aktif — tidak perlu kirim ulang aktivasi' }
+  }
+
+  // Ambil jabatan dari tenant_admintenant_history
+  const { data: histRow } = await db
+    .from('tenant_admintenant_history')
+    .select('jabatan')
+    .eq('user_id', userId)
+    .is('ended_at', null)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  const jabatan = (histRow?.jabatan ?? 'lainnya') as AdminTenantJabatan
+
+  // Generate link aktivasi baru
+  const { data: linkData } = await db.auth.admin.generateLink({
+    type:  'recovery',
+    email: profile.email,
+  })
+
+  let emailTerkirim = false
+  let emailErrorMsg: string | undefined
+
+  if (linkData?.properties?.action_link) {
+    emailTerkirim = await kirimEmailAktivasi(
+      profile.email, profile.nama, jabatan, tenantNama, linkData.properties.action_link
+    )
+    if (!emailTerkirim) {
+      emailErrorMsg = 'sendResendEmail gagal — cek credential Resend di dashboard SA Providers'
+    }
+  } else {
+    emailErrorMsg = 'generateLink tidak mengembalikan action_link'
+    console.warn('[admin-tenant-create.service] kirimUlangAktivasi:', emailErrorMsg)
+  }
+
+  // Log ke activation_email_logs
+  await db
+    .from('activation_email_logs')
+    .insert({
+      entity_type:   'admin_tenant',
+      entity_id:     userId,
+      email_to:      profile.email,
+      email_type:    'activation',
+      status:        emailTerkirim ? 'sent' : 'failed',
+      error_message: emailTerkirim ? null : (emailErrorMsg ?? 'unknown error'),
+    })
+    .then(({ error: logErr }) => {
+      if (logErr) console.error('[admin-tenant-create.service] INSERT activation_email_logs (ulang) gagal:', logErr.message)
+    })
+
+  return { ok: true, emailTerkirim }
+}

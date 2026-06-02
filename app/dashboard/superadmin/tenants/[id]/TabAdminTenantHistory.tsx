@@ -56,8 +56,11 @@ export function TabAdminTenantHistory({ tenantId, tenantNama }: Props) {
       <TabelAktif
         loading={loading}
         aktif={aktif}
+        tenantId={tenantId}
+        tenantNama={tenantNama}
         onEdit={at => setEditTarget(at)}
         onTambah={() => setShowTambah(true)}
+        onRefresh={load}
       />
 
       <TimelineRiwayat loading={loading} riwayat={riwayat} />
