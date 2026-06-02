@@ -253,6 +253,49 @@ export async function membershipRepo_checkExisting(
 }
 
 /**
+ * BUG-030 FIX S#242: Upsert membership — UPDATE jika row ANY status sudah ada, INSERT jika belum.
+ * Mencegah DUPLICATE KEY error pada unique constraint (user_id, tenant_id, role_id).
+ * Dipakai oleh: admin-tenant.service.ts (tambahAdminTenantExisting)
+ *              admin-tenant-create.service.ts (tambahAdminTenantBaru)
+ * @returns 'updated' jika row lama diaktifkan, 'inserted' jika row baru dibuat
+ */
+export async function membershipRepo_upsertActive(
+  userId:   string,
+  tenantId: string,
+  roleId:   number
+): Promise<'updated' | 'inserted'> {
+  const db = createServerSupabaseClient()
+
+  // Cek row dengan ANY status (termasuk inactive)
+  const { data: existing, error: findErr } = await db
+    .from('user_memberships')
+    .select('id, status')
+    .eq('user_id', userId)
+    .eq('tenant_id', tenantId)
+    .eq('role_id', roleId)
+    .maybeSingle()
+
+  if (findErr) throw new Error(`[user-membership.repository] upsertActive find: ${findErr.message}`)
+
+  if (existing) {
+    // Row sudah ada (active atau inactive) — UPDATE ke active
+    const { error: updateErr } = await db
+      .from('user_memberships')
+      .update({ status: 'active', updated_at: new Date().toISOString() })
+      .eq('id', existing.id)
+    if (updateErr) throw new Error(`[user-membership.repository] upsertActive update: ${updateErr.message}`)
+    return 'updated'
+  }
+
+  // Belum ada sama sekali — INSERT baru
+  const { error: insertErr } = await db
+    .from('user_memberships')
+    .insert({ user_id: userId, tenant_id: tenantId, role_id: roleId, status: 'active' })
+  if (insertErr) throw new Error(`[user-membership.repository] upsertActive insert: ${insertErr.message}`)
+  return 'inserted'
+}
+
+/**
  * Cek apakah slot tenant+role sudah ditempati user LAIN yang aktif.
  *
  * Dipakai untuk gate allow_account_sharing (T-052):

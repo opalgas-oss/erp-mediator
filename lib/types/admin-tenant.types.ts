@@ -70,7 +70,10 @@ export interface AdminTenantKartu {
   jabatan:              AdminTenantJabatan | null
   relasi_ke_perusahaan: AdminTenantRelasiPerusahaan | null
   started_at:           string
-  // Status koneksi ke platform — true jika user_id != null
+  // BUG-029 FIX S#242: lifecycle_status dari user_profiles (JOIN)
+  // 'active' = sudah klik aktivasi, 'in_registration' = belum
+  lifecycle_status:     string | null
+  // sudah_aktivasi = true jika lifecycle_status === 'active'
   sudah_aktivasi:       boolean
 }
 

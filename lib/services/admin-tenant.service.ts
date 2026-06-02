@@ -18,7 +18,7 @@ import {
   cekEmailTerdaftar,
   insertHistoryAT,
 } from '@/lib/repositories/admin-tenant.repository'
-import { membershipRepo_insert, membershipRepo_checkExisting } from '@/lib/repositories/user-membership.repository'
+import { membershipRepo_upsertActive } from '@/lib/repositories/user-membership.repository'
 import type {
   AdminTenantHistory,
   AdminTenantKartu,
@@ -31,7 +31,7 @@ import type {
 
 // ─── Helper: Bangun AdminTenantKartu dari History ─────────────────────────────
 
-export function buildKartu(row: AdminTenantHistory): AdminTenantKartu {
+export function buildKartu(row: AdminTenantHistory & { lifecycle_status?: string | null }): AdminTenantKartu {
   return {
     id:                   row.id,
     tenant_id:            row.tenant_id,
@@ -42,7 +42,9 @@ export function buildKartu(row: AdminTenantHistory): AdminTenantKartu {
     jabatan:              row.jabatan,
     relasi_ke_perusahaan: row.relasi_ke_perusahaan,
     started_at:           row.started_at,
-    sudah_aktivasi:       row.user_id !== null,
+    // BUG-029 FIX S#242: lifecycle_status dari user_profiles, bukan user_id !== null
+    lifecycle_status:     row.lifecycle_status ?? null,
+    sudah_aktivasi:       row.lifecycle_status === 'active',
   }
 }
 
@@ -87,17 +89,10 @@ export async function tambahAdminTenantExisting(
   payload:    TambahAdminTenantExistingPayload,
   assignedBy: string
 ): Promise<{ ok: boolean; error?: string }> {
-  // Cek duplikat membership aktif di tenant ini (FSD 12.5)
-  const isDuplicate = await membershipRepo_checkExisting(payload.user_id, payload.tenant_id, 3)
-  if (isDuplicate) {
-    return { ok: false, error: 'at_error_email_sudah_aktif_tenant' }
-  }
-
+  // BUG-030 FIX S#242: pakai upsertActive — UPDATE jika row inactive ada, INSERT jika belum
+  // Mencegah DUPLICATE KEY saat AT yang pernah dicabut ditambahkan kembali
   try {
-    await membershipRepo_insert(payload.user_id, {
-      tenant_id: payload.tenant_id,
-      role_id:   3,   // admin_tenant
-    })
+    await membershipRepo_upsertActive(payload.user_id, payload.tenant_id, 3)
   } catch (err) {
     return { ok: false, error: `Gagal assign membership: ${String(err)}` }
   }

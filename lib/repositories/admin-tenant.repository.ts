@@ -23,12 +23,13 @@ import type {
 // ─── FUNGSI: getAktifByTenantId ───────────────────────────────────────────────
 /**
  * Ambil semua AdminTenant aktif (ended_at IS NULL) untuk satu tenant.
+ * BUG-029 FIX S#242: JOIN lifecycle_status dari user_profiles untuk badge status yang benar.
  * Urut berdasarkan started_at paling awal (untuk KP-02: kontak resmi = yang pertama).
  * @param tenantId - UUID tenant
  */
 export async function getAktifByTenantId(
   tenantId: string
-): Promise<AdminTenantHistory[]> {
+): Promise<(AdminTenantHistory & { lifecycle_status: string | null })[]> {
   const db = createServerSupabaseClient()
   const { data, error } = await db
     .from('tenant_admintenant_history')
@@ -38,7 +39,29 @@ export async function getAktifByTenantId(
     .order('started_at', { ascending: true })
 
   if (error || !data) return []
-  return data as AdminTenantHistory[]
+
+  const rows = data as AdminTenantHistory[]
+
+  // Ambil lifecycle_status dari user_profiles untuk AT yang sudah punya user_id
+  const userIds = rows.map(r => r.user_id).filter((id): id is string => id !== null)
+  let lifecycleMap: Record<string, string> = {}
+
+  if (userIds.length > 0) {
+    const { data: profiles } = await db
+      .from('user_profiles')
+      .select('id, lifecycle_status')
+      .in('id', userIds)
+    if (profiles) {
+      lifecycleMap = Object.fromEntries(
+        (profiles as { id: string; lifecycle_status: string }[]).map(p => [p.id, p.lifecycle_status])
+      )
+    }
+  }
+
+  return rows.map(row => ({
+    ...row,
+    lifecycle_status: row.user_id ? (lifecycleMap[row.user_id] ?? null) : null,
+  }))
 }
 
 // ─── FUNGSI: getRiwayatByTenantId ─────────────────────────────────────────────

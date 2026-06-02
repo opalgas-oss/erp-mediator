@@ -1,3 +1,6 @@
+// ARSIP PRE-EDIT sesi-242-fix-bug-029-030-031-032
+// File: lib/services/admin-tenant-create.service.ts
+// Alasan: Fix BUG-031 — tambah INSERT ke activation_email_logs (status sent/failed)
 // lib/services/admin-tenant-create.service.ts
 // Service layer — buat AdminTenant baru (email BELUM terdaftar, F-REQ-01/02/07/08/09).
 // Dipisah dari admin-tenant.service.ts karena orchestration kompleks (>10KB jika disatukan).
@@ -22,15 +25,13 @@ import {
   insertHistoryAT,
 } from '@/lib/repositories/admin-tenant.repository'
 import { tenantRepo_updatePICDenorm } from '@/lib/repositories/tenant.repository'
-import { membershipRepo_upsertActive } from '@/lib/repositories/user-membership.repository'
+import { membershipRepo_insert } from '@/lib/repositories/user-membership.repository'
 import { sendResendEmail } from '@/lib/utils/resend.server'
 import { getMessage, interpolate } from '@/lib/message-library'
 import type {
   TambahAdminTenantPayload,
   AdminTenantJabatan,
 } from '@/lib/types/admin-tenant.types'
-
-// ─── Helper: Kirim email aktivasi (F-REQ-07, C-01, K-01) ─────────────────────
 
 const JABATAN_LABEL: Record<AdminTenantJabatan, string> = {
   penanggung_jawab: 'Penanggung Jawab',
@@ -86,8 +87,6 @@ async function kirimEmailAktivasi(
   return result.success
 }
 
-// ─── Helper: Update kontak denormalized tenant (KP-02) ───────────────────────
-
 async function updateKontakTenantJikaPerlu(
   tenantId:  string,
   userId:    string,
@@ -98,11 +97,8 @@ async function updateKontakTenantJikaPerlu(
   updatedBy: string
 ): Promise<void> {
   if (jabatan !== 'penanggung_jawab') return
-
-  // KP-02: kontak diisi oleh penanggung_jawab PERTAMA
   const existing = await getAktifByJabatan(tenantId, 'penanggung_jawab')
   if (existing && existing.user_id !== userId) return
-
   await tenantRepo_updatePICDenorm(
     tenantId,
     {
@@ -115,12 +111,6 @@ async function updateKontakTenantJikaPerlu(
   )
 }
 
-// ─── FUNGSI: tambahAdminTenantBaru ────────────────────────────────────────────
-/**
- * F-REQ-01/02/07/08/09 — email BELUM terdaftar di platform.
- * NF-REQ-04: gagal sebagian → rollback sehingga tidak ada akun yatim.
- * FSD 12.3: email gagal → tidak rollback akun, log error, SA bisa retry.
- */
 export async function tambahAdminTenantBaru(
   payload:    TambahAdminTenantPayload,
   assignedBy: string,
@@ -131,7 +121,6 @@ export async function tambahAdminTenantBaru(
   const namaTrim    = payload.nama.trim()
   const waNormal    = payload.nomor_wa.replace(/\D/g, '')
 
-  // Step 1: Buat auth.users via Admin API (C-02: server-only, service_role)
   const { data: authData, error: authError } = await db.auth.admin.createUser({
     email:         emailNormal,
     email_confirm: false,
@@ -145,8 +134,6 @@ export async function tambahAdminTenantBaru(
 
   const userId = authData.user.id
 
-  // Step 2: Insert user_profiles
-  // ATURAN 41: role = 'admin_tenant' (lowercase). KT-02: lifecycle_status = 'in_registration'
   const { error: profileError } = await db
     .from('user_profiles')
     .insert({
@@ -155,9 +142,9 @@ export async function tambahAdminTenantBaru(
       email:            emailNormal,
       nama:             namaTrim,
       nomor_wa:         waNormal,
-      role:             'admin_tenant',       // ATURAN 41: lowercase
-      register_status:  'approved',           // KT-02: SA yang create → langsung approved
-      lifecycle_status: 'in_registration',    // KT-02: → 'active' setelah klik link aktivasi
+      role:             'admin_tenant',
+      register_status:  'approved',
+      lifecycle_status: 'in_registration',
     })
 
   if (profileError) {
@@ -167,18 +154,14 @@ export async function tambahAdminTenantBaru(
     return { ok: false, emailTerkirim: false, error: `Gagal buat profil: ${profileError.message}` }
   }
 
-  // Step 3: Insert user_memberships (role_id=3=admin_tenant, status=active per KT-02)
-  // BUG-030 FIX S#242: pakai upsertActive — handle kasus akun re-created setelah inactive
   try {
-    await membershipRepo_upsertActive(userId, payload.tenant_id, 3)
+    await membershipRepo_insert(userId, { tenant_id: payload.tenant_id, role_id: 3 })
   } catch (membershipErr) {
-    // Rollback: hapus user_profiles + auth.users
     try { await db.from('user_profiles').delete().eq('id', userId) } catch { /* ignore */ }
     await db.auth.admin.deleteUser(userId).catch(() => {})
     return { ok: false, emailTerkirim: false, error: `Gagal assign membership: ${String(membershipErr)}` }
   }
 
-  // Step 4: Insert history AT via SP sp_tambah_admintenant (atomik)
   const updateKontak = payload.jabatan === 'penanggung_jawab'
   const { error: spError } = await db.rpc('sp_tambah_admintenant', {
     p_tenant_id:      payload.tenant_id,
@@ -193,7 +176,6 @@ export async function tambahAdminTenantBaru(
   })
 
   if (spError) {
-    // Fallback: insert manual + update kontak manual
     console.warn('[admin-tenant-create.service] sp_tambah_admintenant gagal, fallback:', spError)
     await insertHistoryAT({
       tenant_id:            payload.tenant_id,
@@ -210,41 +192,19 @@ export async function tambahAdminTenantBaru(
     )
   }
 
-  // Step 5: Generate link aktivasi + kirim email (K-01: Gaya A — AT buat password sendiri)
   const { data: linkData } = await db.auth.admin.generateLink({
     type:  'recovery',
     email: emailNormal,
   })
 
   let emailTerkirim = false
-  let emailErrorMsg: string | undefined
-
   if (linkData?.properties?.action_link) {
     emailTerkirim = await kirimEmailAktivasi(
       emailNormal, namaTrim, payload.jabatan, tenantNama, linkData.properties.action_link
     )
-    if (!emailTerkirim) {
-      emailErrorMsg = 'sendResendEmail gagal — cek RESEND_API_KEY dan domain Resend'
-    }
   } else {
-    emailErrorMsg = 'generateLink tidak mengembalikan action_link'
-    console.warn('[admin-tenant-create.service]', emailErrorMsg)
+    console.warn('[admin-tenant-create.service] generateLink tidak mengembalikan action_link')
   }
-
-  // BUG-031 FIX S#242: log hasil kirim email ke activation_email_logs
-  await db
-    .from('activation_email_logs')
-    .insert({
-      entity_type:   'admin_tenant',
-      entity_id:     userId,
-      email_to:      emailNormal,
-      email_type:    'activation',
-      status:        emailTerkirim ? 'sent' : 'failed',
-      error_message: emailTerkirim ? null : (emailErrorMsg ?? 'unknown error'),
-    })
-    .then(({ error: logErr }) => {
-      if (logErr) console.error('[admin-tenant-create.service] INSERT activation_email_logs gagal:', logErr.message)
-    })
 
   return { ok: true, emailTerkirim }
 }
