@@ -99,11 +99,13 @@ export interface TambahAdminTenantExistingPayload {
 
 // ─── Payload: Edit Data AdminTenant In-Place (F-REQ-12) ────────────────────────
 // Edit = UPDATE in-place nama/WA orang yang SAMA. Tidak buat baris history baru.
+// BUG-032 FIX S#242: tambah email (K-29 — email editable untuk koreksi typo)
 
 export interface EditAdminTenantPayload {
   history_id:  string          // ID baris di tenant_admintenant_history yang diedit
   user_name:   string
   user_wa:     string | null
+  email?:      string | null   // K-29: jika berubah → kirim ulang tautan aktivasi
 }
 
 // ─── Payload: Ganti Penanggung Jawab (F-REQ-10) ────────────────────────────────

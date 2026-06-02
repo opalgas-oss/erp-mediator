@@ -3,11 +3,13 @@
 // Dibuat: Sesi #240 — HUTANG-AT-AUTH STEP 2 Fase 2
 
 export type DialogKelolaState =
-  | 'default'        // State 1: Inactive off, checklist aktif
-  | 'inactive-on'    // State 2: Toggle inactive menyala, alasan wajib, checklist disabled
+  | 'default'        // State 1: Tab Kelola Akses, inactive off
   | 'loading'        // State 3: Spinner
   | 'sukses-atur'    // State 4: Sukses simpan perubahan akses area
   | 'sukses-inactive' // State 5: Sukses nonaktifkan AT
+
+// BUG-032 FIX S#242: tipe tab untuk struktur 2-tab B4 v2
+export type DialogKelolaTab = 'profil' | 'akses'
 
 // K-21 FINAL: 4 alasan cabut akses (sesuai CHECK chk_pic_alasan di DB)
 export const ALASAN_OPTIONS = [
@@ -59,6 +61,14 @@ export const DB4 = {
   toggleKnob:(on: boolean) => ({ width: 14, height: 14, borderRadius: '50%', background: '#fff', position: 'absolute' as const, top: 2, left: on ? 18 : 2, transition: 'left 0.15s', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }),
   // Warn
   warnBox:   { background: '#FAEEDA', border: '0.5px solid #EF9F27', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#854F0B', display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 12 },
+  // Tab bar (B4 v2)
+  tabBar:    { display: 'flex', borderBottom: '0.5px solid rgba(0,0,0,0.12)', background: '#f9f9f8', flexShrink: 0 },
+  tabBtn:    (active: boolean) => ({ flex: 1, padding: '8px 12px', fontSize: 12, fontWeight: 500, color: active ? '#185FA5' : '#6b7280', background: 'transparent', border: 'none', borderBottom: `2px solid ${active ? '#185FA5' : 'transparent'}`, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, lineHeight: 1, marginBottom: -0.5 }),
+  // Form input (Tab Edit Profil)
+  formGrp:   { display: 'flex', flexDirection: 'column' as const, gap: 4, marginBottom: 12 },
+  formLbl:   { fontSize: 12, color: '#6b7280', fontWeight: 500 },
+  formInput: { fontSize: 13, padding: '8px 10px', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, background: '#fff', fontFamily: 'inherit', width: '100%', color: '#1a1a1a', outline: 'none', lineHeight: 1.4 },
+  formHint:  { fontSize: 11, color: '#185FA5', lineHeight: 1.5, marginTop: 3, display: 'flex', alignItems: 'flex-start', gap: 4 },
   // Buttons
   btn:       (border: string, color: string) => ({ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, border, color, background: 'transparent', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }),
   btnSm:     (border: string, color: string) => ({ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 8, border, color, background: 'transparent', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }),

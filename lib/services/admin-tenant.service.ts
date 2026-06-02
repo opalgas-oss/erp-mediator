@@ -115,7 +115,9 @@ export async function tambahAdminTenantExisting(
 // ─── FUNGSI: editAdminTenantProfile ───────────────────────────────────────────
 /**
  * F-REQ-12 — Edit nama/WA orang yang SAMA (tidak ganti orang).
+ * BUG-032 FIX S#242: tambah edit email (K-29).
  * UPDATE in-place baris history + user_profiles. Tidak buat baris history baru.
+ * Jika email berubah → update auth.users + kirim ulang tautan aktivasi.
  */
 export async function editAdminTenantProfile(
   payload:   EditAdminTenantPayload,
@@ -125,7 +127,7 @@ export async function editAdminTenantProfile(
 
   const { data: historyRow, error: readError } = await db
     .from('tenant_admintenant_history')
-    .select('id, user_id, tenant_id')
+    .select('id, user_id, tenant_id, user_email')
     .eq('id', payload.history_id)
     .is('ended_at', null)
     .maybeSingle()
@@ -134,15 +136,43 @@ export async function editAdminTenantProfile(
     return { ok: false, error: 'AdminTenant tidak ditemukan atau sudah tidak aktif' }
   }
 
+  const emailBaru = payload.email?.toLowerCase().trim() ?? null
+  const emailLama = (historyRow as { user_email: string | null }).user_email
+  const emailBerubah = emailBaru && emailBaru !== emailLama
+
   if (historyRow.user_id) {
     const updates: Record<string, unknown> = { nama: payload.user_name }
     if (payload.user_wa !== undefined) updates.nomor_wa = payload.user_wa
+    if (emailBerubah)                  updates.email   = emailBaru
     await db.from('user_profiles').update(updates).eq('id', historyRow.user_id)
+
+    // K-29: jika email berubah → update auth.users + kirim ulang tautan aktivasi
+    if (emailBerubah && emailBaru) {
+      await db.auth.admin.updateUserById(historyRow.user_id, { email: emailBaru }).catch(e =>
+        console.error('[admin-tenant.service] updateUserById email gagal:', e)
+      )
+
+      // Generate ulang link aktivasi dan kirim email baru
+      const { data: linkData } = await db.auth.admin.generateLink({ type: 'recovery', email: emailBaru })
+      if (linkData?.properties?.action_link) {
+        const { sendResendEmail } = await import('@/lib/utils/resend.server')
+        await sendResendEmail({
+          toEmail:  emailBaru,
+          toNama:   payload.user_name,
+          subject:  'Aktivasi Akun AdminTenant — Email Diperbarui',
+          htmlBody: `<p>Halo ${payload.user_name},</p><p>Email akun Anda telah diperbarui. Klik tautan berikut untuk mengaktifkan akun Anda:</p><p><a href="${linkData.properties.action_link}">${linkData.properties.action_link}</a></p>`,
+          textBody: `Halo ${payload.user_name}, klik tautan berikut untuk aktivasi: ${linkData.properties.action_link}`,
+        }).catch(e => console.error('[admin-tenant.service] kirim ulang email aktivasi gagal:', e))
+      }
+    }
   }
 
+  // Update history row
+  const historyUpdate: Record<string, unknown> = { user_name: payload.user_name, user_wa: payload.user_wa }
+  if (emailBerubah) historyUpdate.user_email = emailBaru
   await db
     .from('tenant_admintenant_history')
-    .update({ user_name: payload.user_name, user_wa: payload.user_wa })
+    .update(historyUpdate)
     .eq('id', payload.history_id)
 
   return { ok: true }
