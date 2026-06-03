@@ -1,3 +1,7 @@
+// ARSIP PRE-EDIT S#252b — app/auth/verify/page.tsx
+// Sebelum: teks hardcode "Reset Password" untuk semua kasus.
+// S#252b: dibuat kondisional — kalau next mengandung /aktivasi → teks aktivasi AT.
+
 'use client'
 
 import { useState, Suspense } from 'react'
@@ -7,9 +11,6 @@ import { createBrowserSupabaseClient } from '@/lib/supabase-client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 
-// Halaman ini sengaja menampilkan tombol — TIDAK langsung verifikasi token
-// Tujuan: cegah Gmail/email scanner consume token saat preview link di email
-// Token diverifikasi HANYA saat user klik tombol secara manual
 function VerifyForm() {
   const router        = useRouter()
   const searchParams  = useSearchParams()
@@ -19,10 +20,6 @@ function VerifyForm() {
   const token_hash = searchParams.get('token_hash')
   const type       = searchParams.get('type') as EmailOtpType | null
   const next       = searchParams.get('next') ?? '/reset-password'
-
-  // S#252b: bedakan jalur aktivasi AT vs reset password biasa via tujuan `next`.
-  // next mengandung '/aktivasi' → ini aktivasi akun AT baru (buat password pertama).
-  const isAktivasi = next.includes('/aktivasi')
 
   if (!token_hash || !type) {
     return (
@@ -69,13 +66,9 @@ function VerifyForm() {
           </svg>
         </div>
         <div>
-          <p className="font-semibold text-gray-900 text-base">
-            {isAktivasi ? 'Aktivasi Akun Admin Tenant' : 'Reset Password'}
-          </p>
+          <p className="font-semibold text-gray-900 text-base">Reset Password</p>
           <p className="text-sm text-muted-foreground mt-1">
-            {isAktivasi
-              ? 'Klik tombol di bawah untuk melanjutkan aktivasi dan membuat password akun Anda.'
-              : 'Klik tombol di bawah untuk melanjutkan proses reset password Anda.'}
+            Klik tombol di bawah untuk melanjutkan proses reset password Anda.
           </p>
         </div>
         {status === 'ERROR' && (
@@ -84,9 +77,7 @@ function VerifyForm() {
           </div>
         )}
         <Button className="w-full" disabled={status === 'LOADING'} onClick={handleVerify}>
-          {status === 'LOADING'
-            ? 'Memverifikasi...'
-            : isAktivasi ? 'Aktifkan Akun Sekarang' : 'Lanjutkan Reset Password'}
+          {status === 'LOADING' ? 'Memverifikasi...' : 'Lanjutkan Reset Password'}
         </Button>
         <p className="text-sm text-gray-500">
           Link salah?{' '}

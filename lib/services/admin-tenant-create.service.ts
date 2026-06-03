@@ -18,8 +18,9 @@
 // Update: Sesi #252 — buildRedirectTo() ganti /reset-password → /aktivasi (halaman khusus AT)
 // Update: Sesi #252b — ROOT CAUSE FIX: action_link pakai implicit flow (#access_token di fragment)
 //   yang DITOLAK oleh @supabase/ssr (PKCE flow). Ganti: pakai properties.hashed_token → bangun URL
-//   sendiri ke route server /auth/confirm-aktivasi?token_hash=...&type=recovery yang verifyOtp
-//   server-side (set cookie session). Referensi: Research Supabase PKCE+generateLink S#252.
+//   ke route EXISTING /auth/confirm?token_hash=...&type=recovery&next=/aktivasi (sudah terdaftar
+//   di Supabase Redirect URLs). /auth/confirm → /auth/verify (tombol manual, verifyOtp client) →
+//   /aktivasi (buat password). Referensi: Research Supabase PKCE+generateLink S#252.
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -92,15 +93,14 @@ async function kirimEmailAktivasi(
   return result.success
 }
 
-// ─── Helper: Bangun URL aktivasi PKCE-safe (token_hash → route server) ───────
+// ─── Helper: Bangun URL aktivasi PKCE-safe (token_hash → route EXISTING /auth/confirm) ───
 //
 // PENTING: TIDAK pakai action_link dari generateLink — itu implicit flow (#access_token
 // di fragment URL) yang ditolak oleh @supabase/ssr (PKCE client). Sebagai gantinya kita
-// pakai properties.hashed_token + bangun URL ke route server /auth/confirm-aktivasi yang
-// memanggil verifyOtp({ token_hash, type:'recovery' }) server-side → set session cookie.
-//
-// Path /auth/confirm-aktivasi adalah PENANDA JALUR AKTIVASI — terpisah dari reset password
-// biasa (/reset-password), sehingga tidak ada collision saat fitur Lupa Password AT dibuat.
+// pakai properties.hashed_token + arahkan ke route EXISTING /auth/confirm yang sudah:
+//   - terdaftar di Supabase Redirect URLs
+//   - punya proteksi scanner (redirect ke /auth/verify, verifyOtp hanya saat tombol diklik)
+// Parameter next=/aktivasi membedakan jalur aktivasi AT dari reset password biasa.
 
 function getAppUrl(): string {
   return process.env.NEXT_PUBLIC_URL
@@ -113,7 +113,7 @@ function buildAktivasiUrl(hashedToken: string): string {
     type:       'recovery',
     next:       '/aktivasi',
   })
-  return `${getAppUrl()}/auth/confirm-aktivasi?${params.toString()}`
+  return `${getAppUrl()}/auth/confirm?${params.toString()}`
 }
 
 // redirectTo untuk generateLink — fallback saja. URL aktual yang dikirim ke user

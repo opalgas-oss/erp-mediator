@@ -4,20 +4,20 @@
 // Halaman Aktivasi Akun AdminTenant — K-01 Gaya A (TDD_AT_AUTH_v1.md)
 //
 // Alur:
-//   1. AT klik link aktivasi di email → /auth/confirm-aktivasi (verifyOtp, set session cookie)
-//   2. Redirect ke /aktivasi → session SUDAH ada di cookie storage
+//   1. AT klik link aktivasi di email → /auth/confirm → /auth/verify (tombol manual, verifyOtp)
+//   2. /auth/verify router.push('/aktivasi') → session SUDAH ada di cookie storage
 //   3. useEffect → getSession() → session terbaca → tampilkan form Buat Password
 //   4. User isi password baru → supabase.auth.updateUser({ password })
 //   5. Setelah berhasil → POST /api/at/aktivasi → update lifecycle_status='active'
 //   6. Redirect ke /login?activated=1
 //
-// PENTING: Halaman ini TIDAK lagi memproses #access_token fragment. Verifikasi token sudah
-// dilakukan server-flow di /auth/confirm-aktivasi (verifyOtp token_hash). Saat user sampai
-// di sini, session sudah valid — cukup getSession() biasa.
+// PENTING: Halaman ini TIDAK memproses #access_token fragment. Verifikasi token dilakukan di
+// /auth/verify (verifyOtp token_hash, set session cookie). Saat user sampai di sini, session
+// sudah valid — cukup getSession() biasa.
 //
 // Dibuat: Sesi #252 — HUTANG-AKTIVASI-PAGE
-// Update: Sesi #252b — sederhanakan: buang onAuthStateChange+timeout (tebakan), pakai getSession()
-//   karena session di-set lebih dulu oleh /auth/confirm-aktivasi.
+// Update: Sesi #252b — pakai infrastruktur EXISTING /auth/confirm → /auth/verify (bukan path baru).
+//   getSession() biasa karena session di-set lebih dulu oleh /auth/verify.
 // Referensi: PROMPT_SESI_252 LANGKAH 2, Research Supabase PKCE S#252
 
 import { useState, useEffect, Suspense } from 'react'
