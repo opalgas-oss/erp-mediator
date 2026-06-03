@@ -2,12 +2,13 @@
 // app/dashboard/superadmin/providers/DialogKonfigurasi.body.tsx
 // Body + Footer visual untuk DialogKonfigurasiKoneksi — dipecah ATURAN 9
 // Update S#152: hapus panduan prop (sekarang inline per-field di fields.tsx)
+// Update S#246: tambah FieldsKelola (fdsAll + onToggleIsAktif + togglingId) ke BodyProps
 // Dibuat: Sesi #151
 
 import { ICON_ACTION, ICON_STATUS } from '@/lib/constants/icons.constant'
 import { Input }       from '@/components/ui/input'
 import { HealthBadge } from '@/components/superadmin/HealthBadge'
-import { CredentialFields, SaveButtonInfo, groupFields } from './DialogKonfigurasi.fields'
+import { CredentialFields, FieldsKelola, SaveButtonInfo, groupFields } from './DialogKonfigurasi.fields'
 import type { ServiceProvider, ProviderFieldDef } from '@/lib/types/provider.types'
 
 // ─── TAG_ST (duplikasi dari dialog — agar body bisa berdiri sendiri) ──────────
@@ -53,19 +54,22 @@ export function DialogKonfigHeader({ provider, isMon }: HeaderProps) {
 // ─── DialogKonfigBody ─────────────────────────────────────────────────────────
 
 interface BodyProps {
-  provider:   ServiceProvider | null
-  isQS:       boolean; isMon: boolean
-  ns:         string; onNs: (v: string) => void
-  fds:        ProviderFieldDef[]
-  cred:       Record<string, string>; show: Record<string, boolean>
-  onChange:   (id: string, v: string) => void
-  onToggle:   (id: string) => void
-  res:        { berhasil: boolean; pesan: string | null; latency_ms: number | null } | null
-  loadingCred?: boolean   // true saat sedang fetch credential dari DB
-  isEditMode?:  boolean   // true jika mode Kelola (instance sudah ada)
+  provider:        ServiceProvider | null
+  isQS:            boolean; isMon: boolean
+  ns:              string; onNs: (v: string) => void
+  fds:             ProviderFieldDef[]
+  cred:            Record<string, string>; show: Record<string, boolean>
+  onChange:        (id: string, v: string) => void
+  onToggle:        (id: string) => void
+  res:             { berhasil: boolean; pesan: string | null; latency_ms: number | null } | null
+  loadingCred?:    boolean   // true saat sedang fetch credential dari DB
+  isEditMode?:     boolean   // true jika mode Kelola (instance sudah ada)
+  fdsAll?:         ProviderFieldDef[]   // semua field inkl nonaktif — untuk section Kelola Field
+  onToggleIsAktif?:(fieldDefId: string, isAktif: boolean) => void  // S#246
+  togglingId?:     string | null        // S#246
 }
 
-export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, fds, cred, show, onChange, onToggle, res, loadingCred, isEditMode }: BodyProps) {
+export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, fds, cred, show, onChange, onToggle, res, loadingCred, isEditMode, fdsAll, onToggleIsAktif, togglingId }: BodyProps) {
   const warn  = provider ? (WARN[provider.kode] ?? '') : ''
   const rows  = groupFields(fds)
 
@@ -111,6 +115,15 @@ export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, fds, cred, s
               onToggle={onToggle}
               isEditMode={isEditMode}
               loadingCred={loadingCred}
+            />
+          )}
+
+          {/* Kelola Field section — hanya tampil di mode Kelola (isEditMode) */}
+          {isEditMode && fdsAll && fdsAll.length > 0 && onToggleIsAktif && (
+            <FieldsKelola
+              fdsAll={fdsAll}
+              onToggleIsAktif={onToggleIsAktif}
+              togglingId={togglingId ?? null}
             />
           )}
 

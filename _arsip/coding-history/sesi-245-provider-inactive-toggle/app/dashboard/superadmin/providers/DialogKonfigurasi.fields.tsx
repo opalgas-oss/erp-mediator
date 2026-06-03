@@ -1,8 +1,8 @@
 'use client'
+// ARSIP PRE-EDIT S#245 — DialogKonfigurasi.fields.tsx
 // app/dashboard/superadmin/providers/DialogKonfigurasi.fields.tsx
 // Komponen rendering field credential + panduan kontekstual per-field + info box footer
 // Update S#152: panduan inline per-field (collapsible), fix 2-col layout saat ada panduan
-// Update S#246: tambah FieldsKelola untuk mode Kelola toggle is_aktif per field
 // Dibuat: Sesi #151
 
 import { useState } from 'react'
@@ -39,8 +39,6 @@ interface CredFieldsProps {
 }
 
 // ─── InlinePanduan ────────────────────────────────────────────────────────────
-// Panel "Cara mendapatkan credential" — muncul inline di bawah setiap field
-// yang punya panduan_langkah. Toggle buka/tutup per field.
 
 interface InlinePanduanProps {
   panduan:  PanduanLangkah[]
@@ -51,7 +49,6 @@ interface InlinePanduanProps {
 function InlinePanduan({ panduan, isOpen, onToggle }: InlinePanduanProps) {
   return (
     <div style={{ marginTop: 3 }}>
-      {/* Toggle button */}
       <button
         type="button"
         onClick={onToggle}
@@ -72,7 +69,6 @@ function InlinePanduan({ panduan, isOpen, onToggle }: InlinePanduanProps) {
         }}>▼</span>
       </button>
 
-      {/* Expandable steps */}
       {isOpen && (
         <div style={{
           marginTop: 6,
@@ -109,7 +105,6 @@ function InlinePanduan({ panduan, isOpen, onToggle }: InlinePanduanProps) {
 }
 
 // ─── SingleField ──────────────────────────────────────────────────────────────
-// Satu field credential lengkap: label + input + deskripsi + panduan inline
 
 interface SingleFieldProps {
   f:              ProviderFieldDef
@@ -124,14 +119,12 @@ interface SingleFieldProps {
 function SingleField({ f, formCred, showFields, openPanduan, onChange, onToggle, onTogglePanduan }: SingleFieldProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {/* Label */}
       <Label htmlFor={f.id} style={{ fontSize: 11, fontWeight: 500, color: '#1a1a1a' }}>
         {f.label}
         {f.is_required && <span style={{ color: '#A32D2D' }}> *</span>}
         {f.is_secret   && <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 400 }}> · terenkripsi</span>}
       </Label>
 
-      {/* Input + toggle mata */}
       <div style={{ display: 'flex', gap: 6 }}>
         <Input
           id={f.id}
@@ -154,12 +147,10 @@ function SingleField({ f, formCred, showFields, openPanduan, onChange, onToggle,
         )}
       </div>
 
-      {/* Deskripsi singkat */}
       {f.deskripsi && (
         <p style={{ fontSize: 10, color: '#9ca3af' }}>{f.deskripsi}</p>
       )}
 
-      {/* Panduan inline — hanya tampil jika field ini punya langkah */}
       {f.panduan_langkah && f.panduan_langkah.length > 0 && (
         <InlinePanduan
           panduan={f.panduan_langkah}
@@ -174,7 +165,6 @@ function SingleField({ f, formCred, showFields, openPanduan, onChange, onToggle,
 // ─── CredentialFields ────────────────────────────────────────────────────────
 
 export function CredentialFields({ fieldRows, formCred, showFields, onChange, onToggle, isEditMode, loadingCred }: CredFieldsProps) {
-  // Semua panduan mulai tertutup — user buka sesuai kebutuhan per field
   const [openPanduan, setOpenPanduan] = useState<Record<string, boolean>>({})
 
   const hasSecret     = fieldRows.some(row => row.some(f => f.is_secret))
@@ -183,14 +173,12 @@ export function CredentialFields({ fieldRows, formCred, showFields, onChange, on
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
 
-      {/* ── Section header: CREDENTIAL ── */}
       <div style={{ borderTop: '0.5px solid rgba(0,0,0,0.08)', paddingTop: 14, marginBottom: 10 }}>
         <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           Credential
         </p>
       </div>
 
-      {/* Loading indicator saat fetch credential dari DB */}
       {loadingCred && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', fontSize: 12, color: '#6b7280' }}>
           <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
@@ -198,7 +186,6 @@ export function CredentialFields({ fieldRows, formCred, showFields, onChange, on
         </div>
       )}
 
-      {/* Note mode edit — tampil setelah selesai load */}
       {isEditMode && !loadingCred && (
         <div style={{ background: '#EAF3DE', border: '0.5px solid #97C459', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 11, color: '#3B6D11' }}>
           ✅ Credential tersimpan sudah dimuat. Ubah field yang perlu diperbarui saja.
@@ -206,11 +193,8 @@ export function CredentialFields({ fieldRows, formCred, showFields, onChange, on
         </div>
       )}
 
-      {/* ── Field rows ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {fieldRows.map((row, ri) => {
-          // Jika ada field dalam baris ini yang punya panduan → force 1-column full-width
-          // supaya panel panduan tidak terpotong di layout 2-kolom sempit
           const anyPanduan = row.some(f => f.panduan_langkah?.length)
           const is2Col     = row.length === 2 && !anyPanduan
 
@@ -240,7 +224,6 @@ export function CredentialFields({ fieldRows, formCred, showFields, onChange, on
         })}
       </div>
 
-      {/* ── Note ikon mata — muncul sekali di bawah semua fields ── */}
       {hasSecret && (
         <div style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
           <div style={{
@@ -310,103 +293,6 @@ export function SaveButtonInfo() {
             <span style={{ fontSize: 10, color: '#6b7280', lineHeight: 1.5 }}>{text}</span>
           </div>
         ))}
-      </div>
-    </div>
-  )
-}
-
-// ─── FieldsKelola ──────────────────────────────────────────────────────────────────────────────
-// Mode Kelola SA: tampilkan semua field (aktif + nonaktif) + toggle is_aktif per field
-// S#246: komponen baru HUTANG-PROVIDER-INACTIVE-TOGGLE C8
-
-interface FieldsKelolaProps {
-  fdsAll:          ProviderFieldDef[]   // semua field termasuk nonaktif
-  onToggleIsAktif: (fieldDefId: string, isAktif: boolean) => void
-  togglingId:      string | null        // fieldDefId yang sedang dalam proses toggle
-}
-
-export function FieldsKelola({ fdsAll, onToggleIsAktif, togglingId }: FieldsKelolaProps) {
-  if (!fdsAll.length) return null
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-
-      {/* Section header */}
-      <div style={{ borderTop: '0.5px solid rgba(0,0,0,0.08)', paddingTop: 14, marginBottom: 10 }}>
-        <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Kelola Field
-        </p>
-      </div>
-
-      {/* Info note */}
-      <div style={{ background: '#EAF3DE', border: '0.5px solid #97C459', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 11, color: '#3B6D11' }}>
-        Field nonaktif tidak muncul di form Isi Credential dan tidak dibaca sistem saat runtime.
-      </div>
-
-      {/* Field list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {fdsAll.map(f => {
-          const isToggling = togglingId === f.id
-          return (
-            <div
-              key={f.id}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '8px 12px', borderRadius: 8,
-                border: '0.5px solid',
-                borderColor: f.is_aktif ? 'rgba(0,0,0,0.08)' : '#F09595',
-                background: f.is_aktif ? '#fafafa' : '#FFF5F5',
-                opacity: isToggling ? 0.6 : 1,
-                transition: 'all 0.15s',
-              }}
-            >
-              {/* Field info kiri */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: f.is_aktif ? '#1a1a1a' : '#A32D2D' }}>
-                    {f.label}
-                  </span>
-                  {f.is_required && (
-                    <span style={{ fontSize: 10, color: '#9ca3af' }}>wajib</span>
-                  )}
-                  {f.is_secret && (
-                    <span style={{ fontSize: 10, color: '#9ca3af' }}>· rahasia</span>
-                  )}
-                  {!f.is_aktif && (
-                    <span style={{
-                      fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 100,
-                      background: '#FCEBEB', color: '#A32D2D', border: '0.5px solid #F09595',
-                    }}>NONAKTIF</span>
-                  )}
-                </div>
-                <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace' }}>{f.field_key}</span>
-              </div>
-
-              {/* Toggle kanan */}
-              <button
-                type="button"
-                disabled={isToggling}
-                onClick={() => onToggleIsAktif(f.id, !f.is_aktif)}
-                style={{
-                  flexShrink: 0, marginLeft: 12,
-                  width: 40, height: 22, borderRadius: 11,
-                  border: 'none', cursor: isToggling ? 'not-allowed' : 'pointer',
-                  background: f.is_aktif ? '#3B6D11' : '#d1d5db',
-                  position: 'relative', transition: 'background 0.2s',
-                  padding: 0,
-                }}
-                title={f.is_aktif ? 'Klik untuk nonaktifkan field ini' : 'Klik untuk aktifkan kembali field ini'}
-              >
-                <span style={{
-                  position: 'absolute', top: 3, width: 16, height: 16, borderRadius: '50%',
-                  background: '#fff', transition: 'left 0.2s',
-                  left: f.is_aktif ? 21 : 3,
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                }} />
-              </button>
-            </div>
-          )
-        })}
       </div>
     </div>
   )

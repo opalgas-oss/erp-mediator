@@ -1,3 +1,5 @@
+// ARSIP PRE-EDIT S#245 — credential.repository.ts
+// Dibuat: 2 Juni 2026 — sebelum STEP 1 Inactive Toggle
 // lib/repositories/credential.repository.ts
 // Repository untuk credential service — akses DB via SP.
 // Dekripsi TIDAK dilakukan di sini — dilakukan di CredentialService.
@@ -6,7 +8,6 @@
 // Update: Sesi #216 — tambah getCredentialsByInstanceId (fix envelope decrypt di testKoneksi)
 // Update: Sesi #217 — fix getAllByProvider: tambah encrypted_dek untuk backward-compat dekripsi
 // Update: Sesi #218 — tambah insertProvider + insertFieldDef untuk fitur Tambah Provider SA
-// Update: Sesi #246 — C5 HUTANG-PROVIDER-INACTIVE-TOGGLE: +is_aktif di getFieldDefinitions SELECT+filter, +getFieldDefinitionsAll, +updateFieldDefIsAktif
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -43,10 +44,6 @@ interface CredWithDefAndDek {
 
 // ─── Repository (existing) ───────────────────────────────────────────────────
 
-/**
- * Panggil SP sp_get_credential — ambil credential terenkripsi satu field.
- * Dekripsi TIDAK dilakukan di sini — dilakukan di CredentialService.
- */
 export async function spGetCredential(params: {
   providerKode: string
   fieldKey:     string
@@ -61,10 +58,6 @@ export async function spGetCredential(params: {
   return data as CredentialResult
 }
 
-/**
- * Ambil semua credential fields untuk satu provider — join 4 tabel.
- * Dekripsi TIDAK dilakukan di sini — dilakukan di CredentialService.
- */
 export async function getAllByProvider(providerKode: string): Promise<
   Array<{ field_key: string; encrypted_dek?: string | null; encrypted_value: string; is_secret: boolean }>
 > {
@@ -102,20 +95,13 @@ export async function getAllByProvider(providerKode: string): Promise<
       : c.provider_field_definitions
     return {
       field_key:       def?.field_key ?? '',
-      encrypted_dek:   c.encrypted_dek ?? null,   // S#217: null jika data lama tanpa DEK
+      encrypted_dek:   c.encrypted_dek ?? null,
       encrypted_value: c.encrypted_value,
       is_secret:       def?.is_secret ?? false,
     }
   }).filter(c => c.field_key !== '')
 }
 
-// ─── Repository (M3 — UI Dashboard) — Sesi #107 ─────────────────────────────
-
-/**
- * Ambil credential fields untuk satu instance, dengan encrypted_dek.
- * Dipakai oleh testKoneksi() untuk dekripsi dengan dekripsiCredential (envelope encryption).
- * S#216 — Bug fix: getAllByProvider hanya return encrypted_value, tidak cukup untuk envelope decrypt.
- */
 export async function getCredentialsByInstanceId(instanceId: string): Promise<
   Array<{ field_key: string; field_def_id: string; encrypted_dek: string; encrypted_value: string; is_secret: boolean }>
 > {
@@ -142,11 +128,6 @@ export async function getCredentialsByInstanceId(instanceId: string): Promise<
   }).filter(c => c.field_key !== '')
 }
 
-/**
- * Ambil semua provider aktif beserta health_overall.
- * health_overall dihitung dari semua instance milik provider:
- *   gagal > peringatan > belum_dites > sehat
- */
 export async function getProvidersWithStatus(): Promise<ServiceProvider[]> {
   const db = createServerSupabaseClient()
 
@@ -189,9 +170,6 @@ export async function getProvidersWithStatus(): Promise<ServiceProvider[]> {
   })
 }
 
-/**
- * Ambil semua instance untuk satu provider berdasarkan provider_id.
- */
 export async function getInstancesByProvider(providerId: string): Promise<ProviderInstance[]> {
   const db = createServerSupabaseClient()
 
@@ -209,11 +187,6 @@ export async function getInstancesByProvider(providerId: string): Promise<Provid
   return (data ?? []) as ProviderInstance[]
 }
 
-/**
- * Ambil field definitions AKTIF saja untuk satu provider.
- * Dipakai untuk render dialog Isi Credential (user tidak perlu lihat field nonaktif).
- * S#246: tambah is_aktif di SELECT + filter .eq('is_aktif', true).
- */
 export async function getFieldDefinitions(providerId: string): Promise<ProviderFieldDef[]> {
   const db = createServerSupabaseClient()
 
@@ -221,65 +194,17 @@ export async function getFieldDefinitions(providerId: string): Promise<ProviderF
     .from('provider_field_definitions')
     .select(`
       id, provider_id, field_key, label, tipe,
-      is_required, is_secret, is_aktif, options, placeholder, deskripsi,
+      is_required, is_secret, options, placeholder, deskripsi,
       panduan_langkah, deep_link_url, prefix_sandbox, prefix_production,
       nilai_default, sort_order
     `)
     .eq('provider_id', providerId)
-    .eq('is_aktif', true)
     .order('sort_order')
 
   if (error) throw new Error(`[credential.repository] getFieldDefinitions: ${error.message}`)
   return (data ?? []) as ProviderFieldDef[]
 }
 
-/**
- * Ambil SEMUA field definitions (aktif + nonaktif) untuk satu provider.
- * Dipakai oleh mode Kelola SA agar SA dapat melihat dan me-toggle field yang nonaktif.
- * S#246: fungsi baru HUTANG-PROVIDER-INACTIVE-TOGGLE C5.
- */
-export async function getFieldDefinitionsAll(providerId: string): Promise<ProviderFieldDef[]> {
-  const db = createServerSupabaseClient()
-
-  const { data, error } = await db
-    .from('provider_field_definitions')
-    .select(`
-      id, provider_id, field_key, label, tipe,
-      is_required, is_secret, is_aktif, options, placeholder, deskripsi,
-      panduan_langkah, deep_link_url, prefix_sandbox, prefix_production,
-      nilai_default, sort_order
-    `)
-    .eq('provider_id', providerId)
-    .order('sort_order')
-
-  if (error) throw new Error(`[credential.repository] getFieldDefinitionsAll: ${error.message}`)
-  return (data ?? []) as ProviderFieldDef[]
-}
-
-/**
- * Toggle is_aktif satu field definition per fieldDefId.
- * Dipakai oleh PATCH /api/superadmin/providers/[providerId]/field-defs/[fieldId].
- * S#246: fungsi baru HUTANG-PROVIDER-INACTIVE-TOGGLE C5.
- */
-export async function updateFieldDefIsAktif(params: {
-  fieldDefId: string
-  isAktif:    boolean
-}): Promise<void> {
-  const db = createServerSupabaseClient()
-
-  const { error } = await db
-    .from('provider_field_definitions')
-    .update({ is_aktif: params.isAktif })
-    .eq('id', params.fieldDefId)
-
-  if (error) throw new Error(`[credential.repository] updateFieldDefIsAktif: ${error.message}`)
-}
-
-/**
- * Ambil credential (fingerprint saja — bukan nilai asli) per instance.
- * Dipakai di UI untuk tampilkan status pengisian per field.
- * Nilai terenkripsi TIDAK di-expose — hanya fingerprint 4 karakter.
- */
 export async function getCredentialFingerprints(instanceId: string): Promise<InstanceCredential[]> {
   const db = createServerSupabaseClient()
 
@@ -304,10 +229,6 @@ export async function getCredentialFingerprints(instanceId: string): Promise<Ins
   }))
 }
 
-/**
- * Ambil provider_id + kode provider berdasarkan instance_id.
- * Dipakai oleh testKoneksi() agar tidak perlu loop semua provider.
- */
 export async function getProviderByInstanceId(
   instanceId: string
 ): Promise<{ provider_id: string; kode: string } | null> {
@@ -327,10 +248,6 @@ export async function getProviderByInstanceId(
   return { provider_id: data.provider_id, kode }
 }
 
-/**
- * Insert instance baru untuk satu provider.
- * Jika is_default = true, unset is_default semua instance lain provider tersebut dulu.
- */
 export async function insertInstance(payload: {
   provider_id: string
   nama_server: string
@@ -340,7 +257,6 @@ export async function insertInstance(payload: {
 }): Promise<ProviderInstance> {
   const db = createServerSupabaseClient()
 
-  // Jika is_default = true → unset semua is_default existing dulu
   if (payload.is_default) {
     await db
       .from('provider_instances')
@@ -364,10 +280,6 @@ export async function insertInstance(payload: {
   return data as ProviderInstance
 }
 
-/**
- * Upsert satu field credential — enkripsi sudah dilakukan di Service sebelum masuk sini.
- * Pakai UPSERT agar idempotent: update jika sudah ada, insert jika belum.
- */
 export async function upsertCredential(params: {
   instance_id:     string
   field_def_id:    string
@@ -395,11 +307,6 @@ export async function upsertCredential(params: {
   if (error) throw new Error(`[credential.repository] upsertCredential: ${error.message}`)
 }
 
-/**
- * Insert provider baru ke service_providers.
- * Kode harus sudah di-generate dan di-validasi unik di service layer sebelum masuk sini.
- * S#218 — fitur Tambah Provider dashboard SA.
- */
 export async function insertProvider(payload: {
   kode:      string
   nama:      string
@@ -410,7 +317,6 @@ export async function insertProvider(payload: {
 }): Promise<ServiceProvider> {
   const db = createServerSupabaseClient()
 
-  // Ambil sort_order max untuk auto-increment
   const { data: maxRow } = await db
     .from('service_providers')
     .select('sort_order')
@@ -436,7 +342,6 @@ export async function insertProvider(payload: {
     .single()
 
   if (error) {
-    // Tangkap UNIQUE violation kode untuk pesan error yang informatif
     if (error.code === '23505') {
       throw new Error(`KODE_DUPLIKAT: Kode provider "${payload.kode}" sudah dipakai`)
     }
@@ -449,11 +354,6 @@ export async function insertProvider(payload: {
   } as ServiceProvider
 }
 
-/**
- * Insert satu field definition untuk satu provider.
- * Dipakai loop per field di service layer.
- * S#218 — fitur Tambah Provider dashboard SA.
- */
 export async function insertFieldDef(payload: {
   provider_id: string
   field_key:   string
@@ -484,10 +384,6 @@ export async function insertFieldDef(payload: {
   if (error) throw new Error(`[credential.repository] insertFieldDef: ${error.message}`)
 }
 
-/**
- * Panggil SP sp_test_provider_connection — simpan hasil authenticated test.
- * SP diupdate S#109: +p_is_authenticated + p_auth_error.
- */
 export async function spTestProviderConnection(params: {
   instanceId:       string
   healthStatus:     HealthStatus

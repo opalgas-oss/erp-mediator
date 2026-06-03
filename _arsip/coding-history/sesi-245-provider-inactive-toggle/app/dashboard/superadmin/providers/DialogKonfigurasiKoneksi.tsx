@@ -4,7 +4,6 @@
 // Visual rendering di: DialogKonfigurasi.body.tsx + DialogKonfigurasi.fields.tsx
 // Update S#152: fix DialogTitle (accessibility), hapus panduan prop (sekarang per-field)
 // Update S#216: mode edit (Kelola) — pre-fill form dari DB + tidak buat instance baru
-// Update S#246: tambah fdsAll state + load getFieldDefinitionsAll + handler onToggleIsAktif
 // Dibuat: Sesi #107 — Update: Sesi #151, S#152, S#216
 
 import { useState, useEffect, useCallback } from 'react'
@@ -20,7 +19,6 @@ interface Props { open: boolean; provider: ServiceProvider | null; onClose: () =
 
 export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }: Props) {
   const [fds,                setFds]               = useState<ProviderFieldDef[]>([])
-  const [fdsAll,             setFdsAll]            = useState<ProviderFieldDef[]>([])
   const [ns,                 setNs]                = useState('')
   const [cred,               setCred]              = useState<Record<string, string>>({})
   const [show,               setShow]              = useState<Record<string, boolean>>({})
@@ -28,7 +26,6 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
   const [res,                setRes]               = useState<TR | null>(null)
   const [existingInstanceId, setExistingInstanceId]= useState<string | null>(null)
   const [loadingCred,        setLoadingCred]       = useState(false)
-  const [togglingId,         setTogglingId]        = useState<string | null>(null)
 
   const isMon = provider ? MONITOR.has(provider.kode) : false
   const isQS  = provider?.kode === 'qstash'
@@ -36,20 +33,18 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
 
   useEffect(() => {
     if (!open || !provider) return
-    setFds([]); setFdsAll([]); setCred({}); setShow({}); setRes(null); setExistingInstanceId(null)
+    setFds([]); setCred({}); setShow({}); setRes(null); setExistingInstanceId(null)
     setNs(provider.nama + ' Production')
     setLoadingCred(false)
 
     async function loadData() {
       // Paralel: load field defs + instances existing
-      const [fdsRes, fdsAllRes, instRes] = await Promise.all([
+      const [fdsRes, instRes] = await Promise.all([
         fetch(`/api/superadmin/providers/${provider!.id}/field-defs`).then(r => r.json()),
-        fetch(`/api/superadmin/providers/${provider!.id}/field-defs/all`).then(r => r.json()),
         fetch(`/api/superadmin/providers/${provider!.id}/instances`).then(r => r.json()),
       ])
 
       if (fdsRes.success) setFds(fdsRes.data)
-      if (fdsAllRes.success) setFdsAll(fdsAllRes.data)
 
       // Jika ada instance yang sudah terkonfigurasi — mode EDIT (Kelola)
       if (instRes.success && instRes.data?.length > 0) {
@@ -81,28 +76,6 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
 
     loadData().catch(e => console.error('[DialogKonfigurasiKoneksi] loadData error:', e))
   }, [open, provider])
-
-  const onToggleIsAktif = useCallback(async (fieldDefId: string, isAktif: boolean) => {
-    if (!provider) return
-    setTogglingId(fieldDefId)
-    try {
-      const r = await fetch(
-        `/api/superadmin/providers/${provider.id}/field-defs/${fieldDefId}`,
-        { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_aktif: isAktif }) }
-      ).then(res => res.json())
-      if (!r.success) { toast.error('Gagal mengubah status field'); return }
-      // Update state lokal — tidak perlu refetch
-      setFdsAll(prev => prev.map(f => f.id === fieldDefId ? { ...f, is_aktif: isAktif } : f))
-      setFds(prev => isAktif
-        ? (fdsAll.find(f => f.id === fieldDefId)
-           ? [...prev, { ...fdsAll.find(f => f.id === fieldDefId)! }].sort((a, b) => a.sort_order - b.sort_order)
-           : prev)
-        : prev.filter(f => f.id !== fieldDefId)
-      )
-      toast.success(isAktif ? 'Field diaktifkan' : 'Field dinonaktifkan')
-    } catch { toast.error('Terjadi error jaringan') }
-    finally { setTogglingId(null) }
-  }, [provider, fdsAll])
 
   const onToggle   = useCallback((id: string) => setShow(p => ({ ...p, [id]: !p[id] })), [])
   const onChange   = useCallback((id: string, v: string) => setCred(p => ({ ...p, [id]: v })), [])
@@ -168,9 +141,6 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
           res={res}
           loadingCred={loadingCred}
           isEditMode={!!existingInstanceId}
-          fdsAll={fdsAll}
-          onToggleIsAktif={onToggleIsAktif}
-          togglingId={togglingId}
         />
         <DialogKonfigFooter
           isQS={isQS} saving={saving}

@@ -46,7 +46,6 @@ export interface ProviderFieldDef {
   tipe:              FieldInputType
   is_required:       boolean
   is_secret:         boolean
-  is_aktif:          boolean
   options:           SelectOption[] | null
   placeholder:       string | null
   deskripsi:         string | null
