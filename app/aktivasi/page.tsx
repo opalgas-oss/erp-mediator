@@ -4,18 +4,21 @@
 // Halaman Aktivasi Akun AdminTenant — K-01 Gaya A (TDD_AT_AUTH_v1.md)
 //
 // Alur:
-//   1. AT klik link aktivasi di email → Supabase verifikasi token → redirect ke /aktivasi#access_token=...
-//   2. useEffect → supabase.auth.getSession() → session terbaca dari hash fragment secara otomatis
-//   3. Jika session ada → tampilkan form "Buat Password"
+//   1. AT klik link aktivasi di email → /auth/confirm-aktivasi (verifyOtp, set session cookie)
+//   2. Redirect ke /aktivasi → session SUDAH ada di cookie storage
+//   3. useEffect → getSession() → session terbaca → tampilkan form Buat Password
 //   4. User isi password baru → supabase.auth.updateUser({ password })
 //   5. Setelah berhasil → POST /api/at/aktivasi → update lifecycle_status='active'
 //   6. Redirect ke /login?activated=1
 //
-// PENTING: Ini BUKAN halaman reset password. Ini halaman aktivasi akun baru AT.
-// Fragment (#access_token) tidak dikirim ke server — WAJIB client-side useEffect + getSession().
+// PENTING: Halaman ini TIDAK lagi memproses #access_token fragment. Verifikasi token sudah
+// dilakukan server-flow di /auth/confirm-aktivasi (verifyOtp token_hash). Saat user sampai
+// di sini, session sudah valid — cukup getSession() biasa.
 //
 // Dibuat: Sesi #252 — HUTANG-AKTIVASI-PAGE
-// Referensi: PROMPT_SESI_252 LANGKAH 2, app/reset-password/page.tsx (pola referensi)
+// Update: Sesi #252b — sederhanakan: buang onAuthStateChange+timeout (tebakan), pakai getSession()
+//   karena session di-set lebih dulu oleh /auth/confirm-aktivasi.
+// Referensi: PROMPT_SESI_252 LANGKAH 2, Research Supabase PKCE S#252
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter }                      from 'next/navigation'
@@ -44,32 +47,23 @@ function AktivasiForm() {
   const [isLoading, setIsLoading]   = useState(false)
 
   useEffect(() => {
-    const supabase = createBrowserSupabaseClient()
-
-    // Supabase JS v2 memproses #access_token dari fragment URL via onAuthStateChange.
-    // getSession() saja tidak cukup — fragment diproses async oleh Supabase internal.
-    // Harus listen ke event SIGNED_IN yang terpicu setelah fragment diproses.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        setTahap('FORM')
-      } else if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
-        // Abaikan — bukan event yang relevan untuk halaman ini
-      } else if (!session && tahap === 'LOADING') {
-        // Fallback: jika tidak ada session setelah timeout
+    async function cekSession() {
+      try {
+        const supabase = createBrowserSupabaseClient()
+        // Session sudah di-set oleh /auth/confirm-aktivasi (verifyOtp) sebelum sampai sini.
+        // getSession() membaca dari cookie storage @supabase/ssr.
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          setTahap('FORM')
+        } else {
+          setTahap('INVALID')
+        }
+      } catch {
         setTahap('INVALID')
       }
-    })
-
-    // Fallback timeout: jika setelah 5 detik tidak ada event SIGNED_IN → INVALID
-    const timeout = setTimeout(() => {
-      setTahap(prev => prev === 'LOADING' ? 'INVALID' : prev)
-    }, 5000)
-
-    return () => {
-      subscription.unsubscribe()
-      clearTimeout(timeout)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    cekSession()
+  }, [])
 
   async function handleSimpan() {
     if (!password)               { setError('Password wajib diisi'); return }

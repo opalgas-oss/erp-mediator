@@ -16,6 +16,10 @@
 // KP-02: kontak denormalized = penanggung_jawab PERTAMA saja
 // Update: Sesi #251 — fix generateLink: tambah redirectTo (camelCase) agar link tidak ke localhost
 // Update: Sesi #252 — buildRedirectTo() ganti /reset-password → /aktivasi (halaman khusus AT)
+// Update: Sesi #252b — ROOT CAUSE FIX: action_link pakai implicit flow (#access_token di fragment)
+//   yang DITOLAK oleh @supabase/ssr (PKCE flow). Ganti: pakai properties.hashed_token → bangun URL
+//   sendiri ke route server /auth/confirm-aktivasi?token_hash=...&type=recovery yang verifyOtp
+//   server-side (set cookie session). Referensi: Research Supabase PKCE+generateLink S#252.
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -88,12 +92,34 @@ async function kirimEmailAktivasi(
   return result.success
 }
 
-// ─── Helper: Bangun redirectTo URL ───────────────────────────────────────────
+// ─── Helper: Bangun URL aktivasi PKCE-safe (token_hash → route server) ───────
+//
+// PENTING: TIDAK pakai action_link dari generateLink — itu implicit flow (#access_token
+// di fragment URL) yang ditolak oleh @supabase/ssr (PKCE client). Sebagai gantinya kita
+// pakai properties.hashed_token + bangun URL ke route server /auth/confirm-aktivasi yang
+// memanggil verifyOtp({ token_hash, type:'recovery' }) server-side → set session cookie.
+//
+// Path /auth/confirm-aktivasi adalah PENANDA JALUR AKTIVASI — terpisah dari reset password
+// biasa (/reset-password), sehingga tidak ada collision saat fitur Lupa Password AT dibuat.
 
-function buildRedirectTo(): string {
-  const appUrl = process.env.NEXT_PUBLIC_URL
+function getAppUrl(): string {
+  return process.env.NEXT_PUBLIC_URL
     ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-  return `${appUrl}/aktivasi`
+}
+
+function buildAktivasiUrl(hashedToken: string): string {
+  const params = new URLSearchParams({
+    token_hash: hashedToken,
+    type:       'recovery',
+    next:       '/aktivasi',
+  })
+  return `${getAppUrl()}/auth/confirm-aktivasi?${params.toString()}`
+}
+
+// redirectTo untuk generateLink — fallback saja. URL aktual yang dikirim ke user
+// dibangun dari hashed_token via buildAktivasiUrl(), bukan dari action_link.
+function buildRedirectTo(): string {
+  return `${getAppUrl()}/aktivasi`
 }
 
 // ─── Helper: Update kontak denormalized tenant (KP-02) ───────────────────────
@@ -219,7 +245,7 @@ export async function tambahAdminTenantBaru(
   }
 
   // Step 5: Generate link aktivasi + kirim email (K-01: Gaya A — AT buat password sendiri)
-  // S#251 FIX: redirectTo (camelCase) wajib diisi agar link mengarah ke URL aktual, bukan localhost
+  // S#252b: pakai hashed_token (PKCE-safe), BUKAN action_link (implicit flow / fragment).
   const { data: linkData } = await db.auth.admin.generateLink({
     type:    'recovery',
     email:   emailNormal,
@@ -229,15 +255,16 @@ export async function tambahAdminTenantBaru(
   let emailTerkirim = false
   let emailErrorMsg: string | undefined
 
-  if (linkData?.properties?.action_link) {
+  if (linkData?.properties?.hashed_token) {
+    const aktivasiUrl = buildAktivasiUrl(linkData.properties.hashed_token)
     emailTerkirim = await kirimEmailAktivasi(
-      emailNormal, namaTrim, payload.jabatan, tenantNama, linkData.properties.action_link
+      emailNormal, namaTrim, payload.jabatan, tenantNama, aktivasiUrl
     )
     if (!emailTerkirim) {
       emailErrorMsg = 'sendResendEmail gagal — cek RESEND_API_KEY dan domain Resend'
     }
   } else {
-    emailErrorMsg = 'generateLink tidak mengembalikan action_link'
+    emailErrorMsg = 'generateLink tidak mengembalikan hashed_token'
     console.warn('[admin-tenant-create.service]', emailErrorMsg)
   }
 
@@ -298,7 +325,7 @@ export async function kirimUlangAktivasi(
 
   const jabatan = (histRow?.jabatan ?? 'lainnya') as AdminTenantJabatan
 
-  // S#251 FIX: redirectTo (camelCase) wajib diisi agar link mengarah ke URL aktual, bukan localhost
+  // S#252b: pakai hashed_token (PKCE-safe), BUKAN action_link (implicit flow / fragment).
   const { data: linkData } = await db.auth.admin.generateLink({
     type:    'recovery',
     email:   profile.email,
@@ -308,15 +335,16 @@ export async function kirimUlangAktivasi(
   let emailTerkirim = false
   let emailErrorMsg: string | undefined
 
-  if (linkData?.properties?.action_link) {
+  if (linkData?.properties?.hashed_token) {
+    const aktivasiUrl = buildAktivasiUrl(linkData.properties.hashed_token)
     emailTerkirim = await kirimEmailAktivasi(
-      profile.email, profile.nama, jabatan, tenantNama, linkData.properties.action_link
+      profile.email, profile.nama, jabatan, tenantNama, aktivasiUrl
     )
     if (!emailTerkirim) {
       emailErrorMsg = 'sendResendEmail gagal — cek credential Resend di dashboard SA Providers'
     }
   } else {
-    emailErrorMsg = 'generateLink tidak mengembalikan action_link'
+    emailErrorMsg = 'generateLink tidak mengembalikan hashed_token'
     console.warn('[admin-tenant-create.service] kirimUlangAktivasi:', emailErrorMsg)
   }
 
