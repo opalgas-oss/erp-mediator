@@ -7,6 +7,7 @@
 // Update: Sesi #216 — FIX: bypass cache + dekripsiCredential di testKoneksi + getCredentialPlaintext untuk UI Kelola
 // Update: Sesi #217 — fix getCredentialsByProvider: dekripsiCredential jika DEK ada, fallback dekripsi jika tidak
 // Update: Sesi #248 — ROLLBACK: hapus listFieldDefsAll + toggleFieldDefIsAktif + import terkait
+// Update: Sesi #249 — HUTANG-PROVIDER-INACTIVE: tambah toggleProviderIsAktif
 
 import 'server-only'
 import { unstable_cache } from 'next/cache'
@@ -25,6 +26,7 @@ import {
   getProviderByInstanceId,
   insertProvider,
   insertFieldDef,
+  updateProviderIsAktif,
   type CredentialResult,
 } from '@/lib/repositories/credential.repository'
 import { enkripsiCredential, dekripsi, dekripsiCredential, fingerprint } from '@/lib/credential-crypto'
@@ -382,3 +384,15 @@ export async function tambahProvider(
 }
 
 export { enkripsiCredential, dekripsi, fingerprint }
+
+/**
+ * Toggle is_aktif satu provider — nonaktifkan atau aktifkan kembali.
+ * Provider nonaktif tetap muncul di tabel tapi tidak dibaca sistem runtime.
+ * S#249 — HUTANG-PROVIDER-INACTIVE.
+ */
+export async function toggleProviderIsAktif(
+  providerId: string,
+  isAktif:    boolean
+): Promise<void> {
+  return updateProviderIsAktif(providerId, isAktif)
+}

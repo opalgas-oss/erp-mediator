@@ -7,6 +7,7 @@
 // Update: Sesi #217 — fix getAllByProvider: tambah encrypted_dek untuk backward-compat dekripsi
 // Update: Sesi #218 — tambah insertProvider + insertFieldDef untuk fitur Tambah Provider SA
 // Update: Sesi #248 — ROLLBACK: hapus getFieldDefinitionsAll + updateFieldDefIsAktif + filter is_aktif
+// Update: Sesi #249 — HUTANG-PROVIDER-INACTIVE: tambah updateProviderIsAktif + getProvidersWithStatus ambil semua (aktif+nonaktif)
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -157,7 +158,6 @@ export async function getProvidersWithStatus(): Promise<ServiceProvider[]> {
       tag, is_aktif, sort_order,
       provider_instances(health_status)
     `)
-    .eq('is_aktif', true)
     .order('sort_order')
 
   if (error) throw new Error(`[credential.repository] getProvidersWithStatus: ${error.message}`)
@@ -438,6 +438,25 @@ export async function insertFieldDef(payload: {
     })
 
   if (error) throw new Error(`[credential.repository] insertFieldDef: ${error.message}`)
+}
+
+/**
+ * Update is_aktif satu provider.
+ * Dipakai oleh toggleProviderIsAktif di service layer.
+ * S#249 — HUTANG-PROVIDER-INACTIVE.
+ */
+export async function updateProviderIsAktif(
+  providerId: string,
+  isAktif:    boolean
+): Promise<void> {
+  const db = createServerSupabaseClient()
+
+  const { error } = await db
+    .from('service_providers')
+    .update({ is_aktif: isAktif })
+    .eq('id', providerId)
+
+  if (error) throw new Error(`[credential.repository] updateProviderIsAktif: ${error.message}`)
 }
 
 /**

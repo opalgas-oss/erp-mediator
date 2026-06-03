@@ -50,6 +50,62 @@
 
 :root {
   --background: oklch(1 0 0);
+
+  /* ─── Warna Semantik Platform — SSOT untuk seluruh komponen ─── */
+  /* DILARANG hardcode hex di komponen — wajib pakai variable ini */
+
+  /* Success / Sehat / Aktif */
+  --color-success-bg:     #EAF3DE;
+  --color-success-text:   #3B6D11;
+  --color-success-border: #97C459;
+
+  /* Warning / Peringatan / Pending */
+  --color-warning-bg:     #FAEEDA;
+  --color-warning-text:   #854F0B;
+  --color-warning-border: #EF9F27;
+
+  /* Danger / Gagal / Terminated */
+  --color-danger-bg:     #FCEBEB;
+  --color-danger-text:   #A32D2D;
+  --color-danger-border: #F09595;
+
+  /* Info / Biru / Setup */
+  --color-info-bg:     #E6F1FB;
+  --color-info-text:   #185FA5;
+  --color-info-border: #85B7EB;
+
+  /* Neutral / Abu / Expired */
+  --color-neutral-bg:     #F1EFE8;
+  --color-neutral-text:   #5F5E5A;
+  --color-neutral-border: #B4B2A9;
+
+  /* Internal Tenant (ungu) */
+  --color-internal-bg:     #EEEDFE;
+  --color-internal-text:   #534AB7;
+  --color-internal-border: #AFA9EC;
+
+  /* Eksternal Tenant (coral) */
+  --color-external-bg:     #FAECE7;
+  --color-external-text:   #993C1D;
+  --color-external-border: #F0997B;
+
+  /* Status in_registration (indigo) */
+  --color-in-registration-bg:     #EEF2FF;
+  --color-in-registration-text:   #3730A3;
+  --color-in-registration-border: #A5B4FC;
+
+  /* Surface */
+  --color-surface-hover: #f9f9f8;  /* hover baris tabel */
+
+  /* Text hierarchy */
+  --color-text-primary:   #1a1a1a;
+  --color-text-secondary: #6b7280;  /* minimum untuk teks yang harus dibaca — contrast 4.83:1 */
+  --color-text-tertiary:  #9ca3af;  /* HANYA untuk placeholder/disabled/dekoratif */
+
+  /* Border */
+  --color-border-table-row:       rgba(0,0,0,0.08);   /* border baris tabel — SATU nilai */
+  --color-border-container:       rgba(0,0,0,0.12);   /* border kontainer/card */
+  --color-border-emphasis:        rgba(0,0,0,0.22);   /* hover/emphasis */
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);

@@ -1,35 +1,26 @@
 'use client'
 // app/dashboard/superadmin/providers/ProvidersClient.tsx
 // Halaman API Provider — tabel full-width + tab + progress bar.
-// Dibuat: Sesi #107 — Update: Sesi #151, S#218, S#247, S#249
+// Dibuat: Sesi #107 — Update: Sesi #151, S#218, S#247
 //   S#218a: tombol + Tambah Provider + DialogTambahProvider
-//   S#218b: fix auto-refresh (useEffect sync) + sort kolom via useSortableTable
-//   S#247:  hapus blok h1+deskripsi duplikat
-//   S#249:  HUTANG-PROVIDER-INACTIVE — toggle + dialog konfirmasi + fix Kategori 1 UI
+//   S#218b: fix auto-refresh (useEffect sync) + sort kolom via useSortableTable (konsisten MessageLibrary)
+//   S#247:  hapus blok h1+deskripsi duplikat — judul sudah ada di DashboardHeader via page-meta.constant
 
 import { useState, useCallback, useEffect }   from 'react'
 import { useRouter }                           from 'next/navigation'
-import { toast }                               from 'sonner'
 import { useSortableTable }                    from '@/lib/hooks/useSortableTable'
 import { ProviderTableRow }                    from './ProviderTableRow'
 import { DialogKonfigurasiKoneksi }            from './DialogKonfigurasiKoneksi'
 import { DialogTambahProvider }                from './DialogTambahProvider'
 import { ICON_STATUS }                         from '@/lib/constants/icons.constant'
 import type { ServiceProvider }                from '@/lib/types/provider.types'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 
 const MONITOR_KAT = new Set(['management', 'queue'])
 
+// Kolom header — field null = tampilkan icon ⇅ (visual only, tidak clickable)
+// Aksi: noIcon = true, tidak perlu sort indicator sama sekali
 interface ColHeader {
   label:   string
   field:   keyof ServiceProvider | null
@@ -37,12 +28,13 @@ interface ColHeader {
   right?:  boolean
 }
 
-// S#249: hapus kolom Instance + Terakhir Dites — 4 kolom sesuai STANDAR_UI_PENAMAAN Bagian 3
 const HEADERS: ColHeader[] = [
-  { label: 'Provider',  field: 'nama' },
-  { label: 'Prioritas', field: 'tag' },
-  { label: 'Status',    field: 'health_overall' },
-  { label: 'Aksi',      field: null, noIcon: true, right: true },
+  { label: 'Provider',       field: 'nama' },
+  { label: 'Kategori',       field: 'kategori' },
+  { label: 'Status',         field: 'health_overall' },
+  { label: 'Instance',       field: null },
+  { label: 'Terakhir Dites', field: null },
+  { label: 'Aksi',           field: null, noIcon: true, right: true },
 ]
 
 // ─── Komponen ─────────────────────────────────────────────────────────────────
@@ -52,70 +44,40 @@ interface Props { initialProviders: ServiceProvider[] }
 export function ProvidersClient({ initialProviders }: Props) {
   const router = useRouter()
 
+  // FIX S#218b — sync agar router.refresh() update tampilan tanpa full reload
   const [providers, setProviders] = useState<ServiceProvider[]>(initialProviders)
   useEffect(() => { setProviders(initialProviders) }, [initialProviders])
 
-  const [activeTab, setTab]           = useState<'app' | 'monitor'>('app')
-  const [dialogProv, setDP]           = useState<ServiceProvider | null>(null)
-  const [showTambah, setShowTambah]   = useState(false)
-
-  // S#249 — state toggle provider is_aktif
-  const [toggleTarget, setToggleTarget] = useState<ServiceProvider | null>(null)
-  const [toggling, setToggling]         = useState(false)
+  const [activeTab, setTab]         = useState<'app' | 'monitor'>('app')
+  const [dialogProv, setDP]         = useState<ServiceProvider | null>(null)
+  const [showTambah, setShowTambah] = useState(false)
 
   const onTambahSuccess = useCallback(() => {
     setShowTambah(false)
     router.refresh()
   }, [router])
 
-  // S#249 — hitung progress hanya dari provider AKTIF (nonaktif tidak relevan untuk setup progress)
-  const aktifList    = providers.filter(p =>  p.is_aktif)
+  // Derived lists
   const appList      = providers.filter(p => !MONITOR_KAT.has(p.kategori))
   const monitorList  = providers.filter(p =>  MONITOR_KAT.has(p.kategori))
-  const configured   = aktifList.filter(p => p.health_overall !== 'belum_dites').length
-  const wajibPending = aktifList.filter(p => p.tag === 'wajib' && p.health_overall === 'belum_dites').length
-  const pct          = aktifList.length > 0 ? Math.round((configured / aktifList.length) * 100) : 0
+  const configured   = providers.filter(p => p.health_overall !== 'belum_dites').length
+  const wajibPending = providers.filter(p => p.tag === 'wajib' && p.health_overall === 'belum_dites').length
+  const pct          = Math.round((configured / providers.length) * 100)
 
   const baseList = activeTab === 'app' ? appList : monitorList
 
+  // Sort via useSortableTable — sama persis dengan MessageLibraryClient
   const { sorted: list, handleSort, sortIcon, sortIconClass } = useSortableTable(
     baseList,
     'nama',
     'asc',
   )
 
-  // S#249 — eksekusi toggle setelah konfirmasi dialog
-  const eksekusiToggle = useCallback(async () => {
-    if (!toggleTarget) return
-    setToggling(true)
-    try {
-      const res = await fetch(`/api/superadmin/providers/${toggleTarget.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_aktif: !toggleTarget.is_aktif }),
-      }).then(r => r.json())
-
-      if (!res.success) {
-        toast.error(res.message ?? 'Gagal mengubah status provider')
-      } else {
-        toast.success(toggleTarget.is_aktif
-          ? `${toggleTarget.nama} dinonaktifkan`
-          : `${toggleTarget.nama} diaktifkan kembali`
-        )
-        router.refresh()
-      }
-    } catch {
-      toast.error('Terjadi error jaringan')
-    } finally {
-      setToggling(false)
-      setToggleTarget(null)
-    }
-  }, [toggleTarget, router])
-
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-      {/* Tombol Tambah Provider */}
+      {/* Tombol Tambah Provider — rata kanan, tanpa h1 duplikat (judul sudah di DashboardHeader) */}
+      {/* FIX S#247: hapus blok h1 + deskripsi yang menyebabkan judul double */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button
           onClick={() => setShowTambah(true)}
@@ -125,7 +87,7 @@ export function ProvidersClient({ initialProviders }: Props) {
         </button>
       </div>
 
-      {/* Progress bar — hanya provider AKTIF */}
+      {/* Progress bar */}
       <div style={{ background:'#fff', border:'0.5px solid rgba(0,0,0,0.12)', borderRadius:10, padding:'14px 18px', display:'flex', alignItems:'center', gap:16 }}>
         <div style={{ width:40, height:40, borderRadius:'50%', background:'#EAF3DE', display:'flex', alignItems:'center', justifyContent:'center', color:'#3B6D11', flexShrink:0 }}>
           <ICON_STATUS.success size={20} />
@@ -133,7 +95,7 @@ export function ProvidersClient({ initialProviders }: Props) {
         <div style={{ flex:1 }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
             <span style={{ fontSize:13, fontWeight:500, color:'#1a1a1a' }}>Setup Progress Integrasi</span>
-            <span style={{ fontSize:13, fontWeight:600, color:'#3B6D11' }}>{configured} / {aktifList.length} dikonfigurasi</span>
+            <span style={{ fontSize:13, fontWeight:600, color:'#3B6D11' }}>{configured} / {providers.length} dikonfigurasi</span>
           </div>
           <div style={{ background:'#f3f4f6', borderRadius:100, height:8, overflow:'hidden' }}>
             <div style={{ height:'100%', width:`${pct}%`, background:'#3B6D11', borderRadius:100, transition:'width .3s' }} />
@@ -148,17 +110,11 @@ export function ProvidersClient({ initialProviders }: Props) {
 
       {/* Tabs + Table */}
       <div>
-        {/* Tab bar — S#249 fix: tab aktif #185FA5 bukan #1a1a1a [Kategori 1 INKONSISTENSI 6] */}
+        {/* Tab bar */}
         <div style={{ background:'#fff', borderRadius:'12px 12px 0 0', border:'0.5px solid rgba(0,0,0,0.12)', borderBottom:'none', display:'flex' }}>
           {([['app','Koneksi Aplikasi',appList.length,false],['monitor','Monitoring Platform',monitorList.length,true]] as const).map(([tab, label, count, isMon]) => (
             <button key={tab} onClick={() => setTab(tab as 'app'|'monitor')}
-              style={{
-                padding:'10px 18px', fontSize:13, cursor:'pointer',
-                background:'transparent', border:'none', fontFamily:'inherit', whiteSpace:'nowrap',
-                borderBottom: `2px solid ${activeTab === tab ? '#185FA5' : 'transparent'}`,
-                color:        activeTab === tab ? '#185FA5' : '#6b7280',
-                fontWeight:   activeTab === tab ? 500 : 400,
-              }}
+              style={{ padding:'10px 18px', fontSize:13, cursor:'pointer', background:'transparent', border:'none', borderBottom:`2px solid ${activeTab===tab?'#1a1a1a':'transparent'}`, color:activeTab===tab?'#1a1a1a':'#6b7280', fontWeight:activeTab===tab?500:400, fontFamily:'inherit', whiteSpace:'nowrap' }}
             >
               {label}
               <span style={{ marginLeft:6, fontSize:10, padding:'1px 7px', borderRadius:100, background:isMon&&count?'#E6F1FB':'#f3f4f6', color:isMon&&count?'#185FA5':'#6b7280' }}>
@@ -175,14 +131,13 @@ export function ProvidersClient({ initialProviders }: Props) {
           </div>
         )}
 
-        {/* Table — S#249: 4 kolom sesuai STANDAR_UI_PENAMAAN Bagian 3 */}
+        {/* Table */}
         <div style={{ background:'#fff', borderRadius:'0 0 12px 12px', border:'0.5px solid rgba(0,0,0,0.12)', borderTop:'none', overflow:'hidden' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed', fontSize:13 }}>
             <colgroup>
-              <col style={{ width:'36%' }}/>
-              <col style={{ width:'18%' }}/>
-              <col style={{ width:'22%' }}/>
-              <col style={{ width:'24%' }}/>
+              <col style={{ width:'28%' }}/><col style={{ width:'14%' }}/>
+              <col style={{ width:'16%' }}/><col style={{ width:'13%' }}/>
+              <col style={{ width:'15%' }}/><col style={{ width:'14%' }}/>
             </colgroup>
             <thead>
               <tr style={{ background:'#f9f9f8' }}>
@@ -191,12 +146,18 @@ export function ProvidersClient({ initialProviders }: Props) {
                     key={h.label}
                     onClick={() => h.field && handleSort(h.field)}
                     style={{
-                      padding: '10px 14px', fontSize: 11, fontWeight: 500, color: '#6b7280',
+                      padding: '10px 14px',
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: '#6b7280',
                       textAlign: h.right ? 'right' : 'left',
-                      cursor: h.field ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap',
+                      cursor: h.field ? 'pointer' : 'default',
+                      userSelect: 'none',
+                      whiteSpace: 'nowrap',
                     }}
                   >
                     {h.label}
+                    {/* Icon sort — ⇅/↑/↓ konsisten dengan MessageLibraryClient */}
                     {!h.noIcon && (
                       h.field
                         ? <span className={sortIconClass(h.field)}>{sortIcon(h.field)}</span>
@@ -208,45 +169,12 @@ export function ProvidersClient({ initialProviders }: Props) {
             </thead>
             <tbody>
               {list.map(p => (
-                <ProviderTableRow
-                  key={p.id}
-                  provider={p}
-                  onOpen={setDP}
-                  onToggle={setToggleTarget}
-                  toggling={toggling && toggleTarget?.id === p.id}
-                />
+                <ProviderTableRow key={p.id} provider={p} onOpen={setDP} />
               ))}
             </tbody>
           </table>
         </div>
       </div>
-
-      {/* Dialog konfirmasi toggle is_aktif */}
-      <Dialog open={!!toggleTarget} onOpenChange={o => !o && setToggleTarget(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {toggleTarget?.is_aktif ? 'Nonaktifkan Provider?' : 'Aktifkan Kembali Provider?'}
-            </DialogTitle>
-            <DialogDescription>
-              {toggleTarget?.is_aktif
-                ? `Provider "${toggleTarget?.nama}" akan dinonaktifkan. Provider tidak akan dibaca sistem saat runtime, namun credential tetap tersimpan dan bisa diaktifkan kembali kapan saja.`
-                : `Provider "${toggleTarget?.nama}" akan diaktifkan kembali. Sistem akan kembali menggunakan provider ini saat runtime.`
-              }
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setToggleTarget(null)} disabled={toggling}>Batal</Button>
-            <Button
-              variant={toggleTarget?.is_aktif ? 'destructive' : 'default'}
-              onClick={eksekusiToggle}
-              disabled={toggling}
-            >
-              {toggling ? 'Memproses...' : (toggleTarget?.is_aktif ? 'Nonaktifkan' : 'Aktifkan Kembali')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <DialogKonfigurasiKoneksi
         open={!!dialogProv}

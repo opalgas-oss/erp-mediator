@@ -3,6 +3,12 @@
 // SATU sumber kebenaran untuk semua class Tailwind yang dipakai berulang.
 //
 // Dibuat: Sesi #100 — Sentralisasi UI
+// Update: Sesi #248 — CSS variables semantik dipindah ke globals.css sebagai SSOT
+//
+// SISTEM VISUAL:
+//   Seluruh platform WAJIB pakai Tailwind + shadcn/ui.
+//   Inline style dengan hardcode hex DILARANG — pakai CSS variables dari globals.css.
+//   CSS Variables semantik (warna status, tenant, dll): app/globals.css → :root
 //
 // CARA PAKAI:
 //   import { NAV_CLS, TYPOGRAPHY, BADGE_COLORS } from '@/lib/constants/ui-tokens.constant'
