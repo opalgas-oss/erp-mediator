@@ -6,7 +6,7 @@
 // Update: Sesi #109 — M3 Step 5.2b: testKoneksi() → authenticated test via provider-tester.ts
 // Update: Sesi #216 — FIX: bypass cache + dekripsiCredential di testKoneksi + getCredentialPlaintext untuk UI Kelola
 // Update: Sesi #217 — fix getCredentialsByProvider: dekripsiCredential jika DEK ada, fallback dekripsi jika tidak
-// Update: Sesi #246 — C6 HUTANG-PROVIDER-INACTIVE-TOGGLE: +listFieldDefsAll, +toggleFieldDefIsAktif
+// Update: Sesi #248 — ROLLBACK: hapus listFieldDefsAll + toggleFieldDefIsAktif + import terkait
 
 import 'server-only'
 import { unstable_cache } from 'next/cache'
@@ -18,7 +18,6 @@ import {
   getProvidersWithStatus,
   getInstancesByProvider,
   getFieldDefinitions,
-  getFieldDefinitionsAll,
   getCredentialFingerprints,
   insertInstance,
   upsertCredential,
@@ -26,7 +25,6 @@ import {
   getProviderByInstanceId,
   insertProvider,
   insertFieldDef,
-  updateFieldDefIsAktif,
   type CredentialResult,
 } from '@/lib/repositories/credential.repository'
 import { enkripsiCredential, dekripsi, dekripsiCredential, fingerprint } from '@/lib/credential-crypto'
@@ -193,32 +191,11 @@ export async function listInstances(providerId: string): Promise<ProviderInstanc
 }
 
 /**
- * Ambil field definitions AKTIF saja untuk satu provider.
+ * Ambil field definitions untuk satu provider.
  * Dipakai untuk render form dialog Konfigurasi Koneksi secara dinamis.
  */
 export async function listFieldDefs(providerId: string): Promise<ProviderFieldDef[]> {
   return getFieldDefinitions(providerId)
-}
-
-/**
- * Ambil SEMUA field definitions (aktif + nonaktif) untuk satu provider.
- * Dipakai oleh mode Kelola SA untuk tampilkan toggle is_aktif per field.
- * S#246: fungsi baru HUTANG-PROVIDER-INACTIVE-TOGGLE C6.
- */
-export async function listFieldDefsAll(providerId: string): Promise<ProviderFieldDef[]> {
-  return getFieldDefinitionsAll(providerId)
-}
-
-/**
- * Toggle is_aktif satu field definition.
- * Dipanggil oleh PATCH /api/superadmin/providers/[providerId]/field-defs/[fieldId].
- * S#246: fungsi baru HUTANG-PROVIDER-INACTIVE-TOGGLE C6.
- */
-export async function toggleFieldDefIsAktif(params: {
-  fieldDefId: string
-  isAktif:    boolean
-}): Promise<void> {
-  return updateFieldDefIsAktif(params)
 }
 
 /**

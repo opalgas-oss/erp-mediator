@@ -3,7 +3,6 @@
 // Dipakai oleh: credential.repository.ts, credential.service.ts, ProvidersClient.tsx
 // Dibuat: Sesi #107 — M3 Credential Management
 // Update: Sesi #218 — tambah TambahProviderPayload + TambahFieldDefPayload
-// Update: Sesi #248 — ROLLBACK: hapus is_aktif dari ProviderFieldDef (fitur per-field dihapus)
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
@@ -47,6 +46,7 @@ export interface ProviderFieldDef {
   tipe:              FieldInputType
   is_required:       boolean
   is_secret:         boolean
+  is_aktif:          boolean
   options:           SelectOption[] | null
   placeholder:       string | null
   deskripsi:         string | null

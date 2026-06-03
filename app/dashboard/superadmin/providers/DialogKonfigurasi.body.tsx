@@ -2,14 +2,13 @@
 // app/dashboard/superadmin/providers/DialogKonfigurasi.body.tsx
 // Body + Footer visual untuk DialogKonfigurasiKoneksi — dipecah ATURAN 9
 // Update S#152: hapus panduan prop (sekarang inline per-field di fields.tsx)
-// Update S#246: tambah FieldsSetup (fdsAll + onToggleIsAktif + togglingId) ke BodyProps
-// Update S#247: rename FieldsKelola→FieldsSetup, hapus kondisi isEditMode agar tampil di semua mode
+// Update S#248: ROLLBACK hapus FieldsSetup + props fdsAll/onToggleIsAktif/togglingId
 // Dibuat: Sesi #151
 
 import { ICON_ACTION, ICON_STATUS } from '@/lib/constants/icons.constant'
 import { Input }       from '@/components/ui/input'
 import { HealthBadge } from '@/components/superadmin/HealthBadge'
-import { CredentialFields, FieldsSetup, SaveButtonInfo, groupFields } from './DialogKonfigurasi.fields'
+import { CredentialFields, SaveButtonInfo, groupFields } from './DialogKonfigurasi.fields'
 import type { ServiceProvider, ProviderFieldDef } from '@/lib/types/provider.types'
 
 // ─── TAG_ST (duplikasi dari dialog — agar body bisa berdiri sendiri) ──────────
@@ -65,12 +64,9 @@ interface BodyProps {
   res:             { berhasil: boolean; pesan: string | null; latency_ms: number | null } | null
   loadingCred?:    boolean   // true saat sedang fetch credential dari DB
   isEditMode?:     boolean   // true jika mode Kelola (instance sudah ada)
-  fdsAll?:         ProviderFieldDef[]   // semua field inkl nonaktif — untuk section Kelola Field
-  onToggleIsAktif?:(fieldDefId: string, isAktif: boolean) => void  // S#246
-  togglingId?:     string | null        // S#246
 }
 
-export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, fds, cred, show, onChange, onToggle, res, loadingCred, isEditMode, fdsAll, onToggleIsAktif, togglingId }: BodyProps) {
+export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, fds, cred, show, onChange, onToggle, res, loadingCred, isEditMode }: BodyProps) {
   const warn  = provider ? (WARN[provider.kode] ?? '') : ''
   const rows  = groupFields(fds)
 
@@ -116,15 +112,6 @@ export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, fds, cred, s
               onToggle={onToggle}
               isEditMode={isEditMode}
               loadingCred={loadingCred}
-            />
-          )}
-
-          {/* Pengaturan Field section — tampil di SEMUA mode (Setup baru maupun instance sudah ada) */}
-          {fdsAll && fdsAll.length > 0 && onToggleIsAktif && (
-            <FieldsSetup
-              fdsAll={fdsAll}
-              onToggleIsAktif={onToggleIsAktif}
-              togglingId={togglingId ?? null}
             />
           )}
 

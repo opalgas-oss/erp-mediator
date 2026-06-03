@@ -2,8 +2,7 @@
 // app/dashboard/superadmin/providers/DialogKonfigurasi.fields.tsx
 // Komponen rendering field credential + panduan kontekstual per-field + info box footer
 // Update S#152: panduan inline per-field (collapsible), fix 2-col layout saat ada panduan
-// Update S#246: tambah FieldsSetup untuk toggle is_aktif per field (tampil di dialog Setup maupun saat sudah ada instance)
-// Update S#247: rename FieldsKelola→FieldsSetup, hapus kondisi isEditMode, standarkan penamaan
+// Update S#248: ROLLBACK hapus FieldsSetup + FieldsSetupProps (fitur toggle per-field S#246 dihapus)
 // Dibuat: Sesi #151
 
 import { useState } from 'react'
@@ -320,96 +319,4 @@ export function SaveButtonInfo() {
 // Pengaturan field provider: tampilkan semua field (aktif + nonaktif) + toggle is_aktif per field
 // Tampil di dialog Setup (provider baru) DAN saat instance sudah ada
 // S#246: komponen baru HUTANG-PROVIDER-INACTIVE-TOGGLE C8 | S#247: rename + perbaiki kondisi
-
-interface FieldsSetupProps {
-  fdsAll:          ProviderFieldDef[]   // semua field termasuk nonaktif
-  onToggleIsAktif: (fieldDefId: string, isAktif: boolean) => void
-  togglingId:      string | null        // fieldDefId yang sedang dalam proses toggle
-}
-
-export function FieldsSetup({ fdsAll, onToggleIsAktif, togglingId }: FieldsSetupProps) {
-  if (!fdsAll.length) return null
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-
-      {/* Section header */}
-      <div style={{ borderTop: '0.5px solid rgba(0,0,0,0.08)', paddingTop: 14, marginBottom: 10 }}>
-        <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Pengaturan Field
-        </p>
-      </div>
-
-      {/* Info note */}
-      <div style={{ background: '#EAF3DE', border: '0.5px solid #97C459', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 11, color: '#3B6D11' }}>
-        Field nonaktif tidak muncul di form Isi Credential dan tidak dibaca sistem saat runtime.
-      </div>
-
-      {/* Field list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {fdsAll.map(f => {
-          const isToggling = togglingId === f.id
-          return (
-            <div
-              key={f.id}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '8px 12px', borderRadius: 8,
-                border: '0.5px solid',
-                borderColor: f.is_aktif ? 'rgba(0,0,0,0.08)' : '#F09595',
-                background: f.is_aktif ? '#fafafa' : '#FFF5F5',
-                opacity: isToggling ? 0.6 : 1,
-                transition: 'all 0.15s',
-              }}
-            >
-              {/* Field info kiri */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: f.is_aktif ? '#1a1a1a' : '#A32D2D' }}>
-                    {f.label}
-                  </span>
-                  {f.is_required && (
-                    <span style={{ fontSize: 10, color: '#9ca3af' }}>wajib</span>
-                  )}
-                  {f.is_secret && (
-                    <span style={{ fontSize: 10, color: '#9ca3af' }}>· rahasia</span>
-                  )}
-                  {!f.is_aktif && (
-                    <span style={{
-                      fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 100,
-                      background: '#FCEBEB', color: '#A32D2D', border: '0.5px solid #F09595',
-                    }}>NONAKTIF</span>
-                  )}
-                </div>
-                <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace' }}>{f.field_key}</span>
-              </div>
-
-              {/* Toggle kanan */}
-              <button
-                type="button"
-                disabled={isToggling}
-                onClick={() => onToggleIsAktif(f.id, !f.is_aktif)}
-                style={{
-                  flexShrink: 0, marginLeft: 12,
-                  width: 40, height: 22, borderRadius: 11,
-                  border: 'none', cursor: isToggling ? 'not-allowed' : 'pointer',
-                  background: f.is_aktif ? '#3B6D11' : '#d1d5db',
-                  position: 'relative', transition: 'background 0.2s',
-                  padding: 0,
-                }}
-                title={f.is_aktif ? 'Klik untuk nonaktifkan field ini' : 'Klik untuk aktifkan kembali field ini'}
-              >
-                <span style={{
-                  position: 'absolute', top: 3, width: 16, height: 16, borderRadius: '50%',
-                  background: '#fff', transition: 'left 0.2s',
-                  left: f.is_aktif ? 21 : 3,
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                }} />
-              </button>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+// S#248: ROLLBACK — komponen FieldsSetup dihapus bersama rollback fitur per-field

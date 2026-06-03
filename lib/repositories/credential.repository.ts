@@ -6,7 +6,7 @@
 // Update: Sesi #216 — tambah getCredentialsByInstanceId (fix envelope decrypt di testKoneksi)
 // Update: Sesi #217 — fix getAllByProvider: tambah encrypted_dek untuk backward-compat dekripsi
 // Update: Sesi #218 — tambah insertProvider + insertFieldDef untuk fitur Tambah Provider SA
-// Update: Sesi #246 — C5 HUTANG-PROVIDER-INACTIVE-TOGGLE: +is_aktif di getFieldDefinitions SELECT+filter, +getFieldDefinitionsAll, +updateFieldDefIsAktif
+// Update: Sesi #248 — ROLLBACK: hapus getFieldDefinitionsAll + updateFieldDefIsAktif + filter is_aktif
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -210,9 +210,8 @@ export async function getInstancesByProvider(providerId: string): Promise<Provid
 }
 
 /**
- * Ambil field definitions AKTIF saja untuk satu provider.
- * Dipakai untuk render dialog Isi Credential (user tidak perlu lihat field nonaktif).
- * S#246: tambah is_aktif di SELECT + filter .eq('is_aktif', true).
+ * Ambil field definitions untuk satu provider.
+ * Dipakai untuk render dialog Isi Credential (form isi credential).
  */
 export async function getFieldDefinitions(providerId: string): Promise<ProviderFieldDef[]> {
   const db = createServerSupabaseClient()
@@ -221,58 +220,15 @@ export async function getFieldDefinitions(providerId: string): Promise<ProviderF
     .from('provider_field_definitions')
     .select(`
       id, provider_id, field_key, label, tipe,
-      is_required, is_secret, is_aktif, options, placeholder, deskripsi,
+      is_required, is_secret, options, placeholder, deskripsi,
       panduan_langkah, deep_link_url, prefix_sandbox, prefix_production,
       nilai_default, sort_order
     `)
     .eq('provider_id', providerId)
-    .eq('is_aktif', true)
     .order('sort_order')
 
   if (error) throw new Error(`[credential.repository] getFieldDefinitions: ${error.message}`)
   return (data ?? []) as ProviderFieldDef[]
-}
-
-/**
- * Ambil SEMUA field definitions (aktif + nonaktif) untuk satu provider.
- * Dipakai oleh mode Kelola SA agar SA dapat melihat dan me-toggle field yang nonaktif.
- * S#246: fungsi baru HUTANG-PROVIDER-INACTIVE-TOGGLE C5.
- */
-export async function getFieldDefinitionsAll(providerId: string): Promise<ProviderFieldDef[]> {
-  const db = createServerSupabaseClient()
-
-  const { data, error } = await db
-    .from('provider_field_definitions')
-    .select(`
-      id, provider_id, field_key, label, tipe,
-      is_required, is_secret, is_aktif, options, placeholder, deskripsi,
-      panduan_langkah, deep_link_url, prefix_sandbox, prefix_production,
-      nilai_default, sort_order
-    `)
-    .eq('provider_id', providerId)
-    .order('sort_order')
-
-  if (error) throw new Error(`[credential.repository] getFieldDefinitionsAll: ${error.message}`)
-  return (data ?? []) as ProviderFieldDef[]
-}
-
-/**
- * Toggle is_aktif satu field definition per fieldDefId.
- * Dipakai oleh PATCH /api/superadmin/providers/[providerId]/field-defs/[fieldId].
- * S#246: fungsi baru HUTANG-PROVIDER-INACTIVE-TOGGLE C5.
- */
-export async function updateFieldDefIsAktif(params: {
-  fieldDefId: string
-  isAktif:    boolean
-}): Promise<void> {
-  const db = createServerSupabaseClient()
-
-  const { error } = await db
-    .from('provider_field_definitions')
-    .update({ is_aktif: params.isAktif })
-    .eq('id', params.fieldDefId)
-
-  if (error) throw new Error(`[credential.repository] updateFieldDefIsAktif: ${error.message}`)
 }
 
 /**
