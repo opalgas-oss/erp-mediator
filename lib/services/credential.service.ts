@@ -8,12 +8,13 @@
 // Update: Sesi #217 — fix getCredentialsByProvider: dekripsiCredential jika DEK ada, fallback dekripsi jika tidak
 // Update: Sesi #248 — ROLLBACK: hapus listFieldDefsAll + toggleFieldDefIsAktif + import terkait
 // Update: Sesi #249 — HUTANG-PROVIDER-INACTIVE: tambah toggleProviderIsAktif
+// Update: Sesi #251 — FIX: getCredentialFromDB pakai query langsung + dekripsiCredential (envelope encryption)
 
 import 'server-only'
 import { unstable_cache } from 'next/cache'
 import { getConfigValue, parseConfigNumber } from '@/lib/config-registry'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import {
-  spGetCredential,
   getAllByProvider,
   getCredentialsByInstanceId,
   getProvidersWithStatus,
@@ -27,7 +28,6 @@ import {
   insertProvider,
   insertFieldDef,
   updateProviderIsAktif,
-  type CredentialResult,
 } from '@/lib/repositories/credential.repository'
 import { enkripsiCredential, dekripsi, dekripsiCredential, fingerprint } from '@/lib/credential-crypto'
 import { testProvider }                               from '@/lib/services/provider-tester'
@@ -110,10 +110,47 @@ async function getCredentialFromDB(
     const ttl    = parseConfigNumber(ttlStr, 900)
     const cached = unstable_cache(
       async () => {
-        const result: CredentialResult = await spGetCredential({ providerKode, fieldKey })
-        if (result.status !== 'FOUND' || !result.encrypted_value) return null
-        if (result.is_secret) return dekripsi(result.encrypted_value)
-        return result.encrypted_value
+        // S#251 FIX: query langsung ke instance_credentials dengan encrypted_dek
+        // sp_get_credential hanya return encrypted_value (tanpa DEK) — tidak bisa decode
+        // envelope encryption (simpanCredential pakai enkripsiCredential yang butuh DEK).
+        const db = createServerSupabaseClient()
+
+        const { data: provider } = await db
+          .from('service_providers')
+          .select('id')
+          .eq('kode', providerKode)
+          .eq('is_aktif', true)
+          .single()
+        if (!provider) return null
+
+        const { data: instance } = await db
+          .from('provider_instances')
+          .select('id')
+          .eq('provider_id', provider.id)
+          .eq('is_aktif', true)
+          .eq('is_default', true)
+          .single()
+        if (!instance) return null
+
+        const { data: cred } = await db
+          .from('instance_credentials')
+          .select('encrypted_dek, encrypted_value, provider_field_definitions!inner(field_key, is_secret)')
+          .eq('instance_id', instance.id)
+          .eq('provider_field_definitions.field_key', fieldKey)
+          .single()
+        if (!cred) return null
+
+        // Envelope encryption (format S#107+ — DEK per field)
+        if (cred.encrypted_dek) {
+          return dekripsiCredential(cred.encrypted_dek, cred.encrypted_value)
+        }
+        // Fallback: simple encryption (format lama sebelum S#107 — backward-compat)
+        const def = Array.isArray(cred.provider_field_definitions)
+          ? cred.provider_field_definitions[0]
+          : cred.provider_field_definitions
+        const defTyped = def as { field_key: string; is_secret: boolean } | null
+        if (defTyped?.is_secret) return dekripsi(cred.encrypted_value)
+        return cred.encrypted_value
       },
       [`credential:${providerKode}:${fieldKey}`],
       { revalidate: ttl, tags: ['credentials', `credential:${providerKode}`] }
