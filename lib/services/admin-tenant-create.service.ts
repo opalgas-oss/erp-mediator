@@ -14,6 +14,7 @@
 // C-02: auth.users HANYA via Supabase Auth Admin API, server-only
 // K-01: Gaya A — generateLink untuk link aktivasi, AT buat password sendiri
 // KP-02: kontak denormalized = penanggung_jawab PERTAMA saja
+// Update: Sesi #251 — fix generateLink: tambah redirectTo (camelCase) agar link tidak ke localhost
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -86,6 +87,14 @@ async function kirimEmailAktivasi(
   return result.success
 }
 
+// ─── Helper: Bangun redirectTo URL ───────────────────────────────────────────
+
+function buildRedirectTo(): string {
+  const appUrl = process.env.NEXT_PUBLIC_URL
+    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+  return `${appUrl}/auth/confirm`
+}
+
 // ─── Helper: Update kontak denormalized tenant (KP-02) ───────────────────────
 
 async function updateKontakTenantJikaPerlu(
@@ -155,9 +164,9 @@ export async function tambahAdminTenantBaru(
       email:            emailNormal,
       nama:             namaTrim,
       nomor_wa:         waNormal,
-      role:             'admin_tenant',       // ATURAN 41: lowercase
-      register_status:  'approved',           // KT-02: SA yang create → langsung approved
-      lifecycle_status: 'in_registration',    // KT-02: → 'active' setelah klik link aktivasi
+      role:             'admin_tenant',
+      register_status:  'approved',
+      lifecycle_status: 'in_registration',
     })
 
   if (profileError) {
@@ -172,7 +181,6 @@ export async function tambahAdminTenantBaru(
   try {
     await membershipRepo_upsertActive(userId, payload.tenant_id, 3)
   } catch (membershipErr) {
-    // Rollback: hapus user_profiles + auth.users
     try { await db.from('user_profiles').delete().eq('id', userId) } catch { /* ignore */ }
     await db.auth.admin.deleteUser(userId).catch(() => {})
     return { ok: false, emailTerkirim: false, error: `Gagal assign membership: ${String(membershipErr)}` }
@@ -193,7 +201,6 @@ export async function tambahAdminTenantBaru(
   })
 
   if (spError) {
-    // Fallback: insert manual + update kontak manual
     console.warn('[admin-tenant-create.service] sp_tambah_admintenant gagal, fallback:', spError)
     await insertHistoryAT({
       tenant_id:            payload.tenant_id,
@@ -211,15 +218,11 @@ export async function tambahAdminTenantBaru(
   }
 
   // Step 5: Generate link aktivasi + kirim email (K-01: Gaya A — AT buat password sendiri)
-  // redirect_to wajib diisi agar link mengarah ke URL deployment aktual, bukan localhost
-  const appUrl = process.env.NEXT_PUBLIC_URL
-    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-  const redirectTo = `${appUrl}/auth/confirm`
-
+  // S#251 FIX: redirectTo (camelCase) wajib diisi agar link mengarah ke URL aktual, bukan localhost
   const { data: linkData } = await db.auth.admin.generateLink({
     type:    'recovery',
     email:   emailNormal,
-    options: { redirect_to: redirectTo },
+    options: { redirectTo: buildRedirectTo() },
   })
 
   let emailTerkirim = false
@@ -294,16 +297,11 @@ export async function kirimUlangAktivasi(
 
   const jabatan = (histRow?.jabatan ?? 'lainnya') as AdminTenantJabatan
 
-  // Generate link aktivasi baru
-  // redirect_to wajib diisi agar link mengarah ke URL deployment aktual, bukan localhost
-  const appUrl = process.env.NEXT_PUBLIC_URL
-    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-  const redirectTo = `${appUrl}/auth/confirm`
-
+  // S#251 FIX: redirectTo (camelCase) wajib diisi agar link mengarah ke URL aktual, bukan localhost
   const { data: linkData } = await db.auth.admin.generateLink({
-    type:        'recovery',
-    email:       profile.email,
-    options:     { redirect_to: redirectTo },
+    type:    'recovery',
+    email:   profile.email,
+    options: { redirectTo: buildRedirectTo() },
   })
 
   let emailTerkirim = false
