@@ -5,6 +5,7 @@
 // Update S#152: fix DialogTitle (accessibility), hapus panduan prop (sekarang per-field)
 // Update S#216: mode edit (Kelola) — pre-fill form dari DB + tidak buat instance baru
 // Update S#246: tambah fdsAll state + load getFieldDefinitionsAll + handler onToggleIsAktif
+// Update S#247: FieldsKelola→FieldsSetup, section tampil semua mode bukan hanya isEditMode
 // Dibuat: Sesi #107 — Update: Sesi #151, S#152, S#216
 
 import { useState, useEffect, useCallback } from 'react'

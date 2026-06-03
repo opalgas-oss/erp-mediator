@@ -2,13 +2,14 @@
 // app/dashboard/superadmin/providers/DialogKonfigurasi.body.tsx
 // Body + Footer visual untuk DialogKonfigurasiKoneksi — dipecah ATURAN 9
 // Update S#152: hapus panduan prop (sekarang inline per-field di fields.tsx)
-// Update S#246: tambah FieldsKelola (fdsAll + onToggleIsAktif + togglingId) ke BodyProps
+// Update S#246: tambah FieldsSetup (fdsAll + onToggleIsAktif + togglingId) ke BodyProps
+// Update S#247: rename FieldsKelola→FieldsSetup, hapus kondisi isEditMode agar tampil di semua mode
 // Dibuat: Sesi #151
 
 import { ICON_ACTION, ICON_STATUS } from '@/lib/constants/icons.constant'
 import { Input }       from '@/components/ui/input'
 import { HealthBadge } from '@/components/superadmin/HealthBadge'
-import { CredentialFields, FieldsKelola, SaveButtonInfo, groupFields } from './DialogKonfigurasi.fields'
+import { CredentialFields, FieldsSetup, SaveButtonInfo, groupFields } from './DialogKonfigurasi.fields'
 import type { ServiceProvider, ProviderFieldDef } from '@/lib/types/provider.types'
 
 // ─── TAG_ST (duplikasi dari dialog — agar body bisa berdiri sendiri) ──────────
@@ -118,9 +119,9 @@ export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, fds, cred, s
             />
           )}
 
-          {/* Kelola Field section — hanya tampil di mode Kelola (isEditMode) */}
-          {isEditMode && fdsAll && fdsAll.length > 0 && onToggleIsAktif && (
-            <FieldsKelola
+          {/* Pengaturan Field section — tampil di SEMUA mode (Setup baru maupun instance sudah ada) */}
+          {fdsAll && fdsAll.length > 0 && onToggleIsAktif && (
+            <FieldsSetup
               fdsAll={fdsAll}
               onToggleIsAktif={onToggleIsAktif}
               togglingId={togglingId ?? null}

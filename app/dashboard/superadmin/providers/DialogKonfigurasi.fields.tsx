@@ -2,7 +2,8 @@
 // app/dashboard/superadmin/providers/DialogKonfigurasi.fields.tsx
 // Komponen rendering field credential + panduan kontekstual per-field + info box footer
 // Update S#152: panduan inline per-field (collapsible), fix 2-col layout saat ada panduan
-// Update S#246: tambah FieldsKelola untuk mode Kelola toggle is_aktif per field
+// Update S#246: tambah FieldsSetup untuk toggle is_aktif per field (tampil di dialog Setup maupun saat sudah ada instance)
+// Update S#247: rename FieldsKelola→FieldsSetup, hapus kondisi isEditMode, standarkan penamaan
 // Dibuat: Sesi #151
 
 import { useState } from 'react'
@@ -315,17 +316,18 @@ export function SaveButtonInfo() {
   )
 }
 
-// ─── FieldsKelola ──────────────────────────────────────────────────────────────────────────────
-// Mode Kelola SA: tampilkan semua field (aktif + nonaktif) + toggle is_aktif per field
-// S#246: komponen baru HUTANG-PROVIDER-INACTIVE-TOGGLE C8
+// ─── FieldsSetup ─────────────────────────────────────────────────────────────────────────────
+// Pengaturan field provider: tampilkan semua field (aktif + nonaktif) + toggle is_aktif per field
+// Tampil di dialog Setup (provider baru) DAN saat instance sudah ada
+// S#246: komponen baru HUTANG-PROVIDER-INACTIVE-TOGGLE C8 | S#247: rename + perbaiki kondisi
 
-interface FieldsKelolaProps {
+interface FieldsSetupProps {
   fdsAll:          ProviderFieldDef[]   // semua field termasuk nonaktif
   onToggleIsAktif: (fieldDefId: string, isAktif: boolean) => void
   togglingId:      string | null        // fieldDefId yang sedang dalam proses toggle
 }
 
-export function FieldsKelola({ fdsAll, onToggleIsAktif, togglingId }: FieldsKelolaProps) {
+export function FieldsSetup({ fdsAll, onToggleIsAktif, togglingId }: FieldsSetupProps) {
   if (!fdsAll.length) return null
 
   return (
@@ -334,7 +336,7 @@ export function FieldsKelola({ fdsAll, onToggleIsAktif, togglingId }: FieldsKelo
       {/* Section header */}
       <div style={{ borderTop: '0.5px solid rgba(0,0,0,0.08)', paddingTop: 14, marginBottom: 10 }}>
         <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Kelola Field
+          Pengaturan Field
         </p>
       </div>
 

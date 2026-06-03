@@ -1,0 +1,3 @@
+-- ARSIP PRE-EDIT S#247 fix-kelola-ke-setup
+-- File asli: app/dashboard/superadmin/providers/DialogKonfigurasi.fields.tsx
+-- Alasan: rename FieldsKelola→FieldsSetup + fix kondisi render + bersihkan penamaan "Kelola" yang salah
