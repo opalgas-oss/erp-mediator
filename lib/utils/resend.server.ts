@@ -90,7 +90,7 @@ export async function sendResendEmail(
       console.error(`[resend.server] Resend API error ${response.status}:`, errBody)
       return {
         success: false,
-        message: `Gagal kirim email (Resend error ${response.status})`,
+        message: `Resend error ${response.status}: ${errBody}`,
       }
     }
 
