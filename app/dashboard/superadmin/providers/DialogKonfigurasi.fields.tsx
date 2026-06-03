@@ -3,6 +3,7 @@
 // Komponen rendering field credential + panduan kontekstual per-field + info box footer
 // Update S#152: panduan inline per-field (collapsible), fix 2-col layout saat ada panduan
 // Update S#248: ROLLBACK hapus FieldsSetup + FieldsSetupProps (fitur toggle per-field S#246 dihapus)
+// Update S#249: BUG-033 FIX — tambah visual indicator 'Belum diisi' untuk is_required field kosong saat mode baru
 // Dibuat: Sesi #151
 
 import { useState } from 'react'
@@ -119,9 +120,13 @@ interface SingleFieldProps {
   onChange:       (id: string, val: string) => void
   onToggle:       (id: string) => void
   onTogglePanduan:(id: string) => void
+  isNewMode?:     boolean  // true = mode BARU (instance belum ada) — tampilkan indikator 'Belum diisi'
 }
 
-function SingleField({ f, formCred, showFields, openPanduan, onChange, onToggle, onTogglePanduan }: SingleFieldProps) {
+function SingleField({ f, formCred, showFields, openPanduan, onChange, onToggle, onTogglePanduan, isNewMode }: SingleFieldProps) {
+  // BUG-033 FIX S#249: field is_required + kosong + mode baru = perlu indikator visual
+  const isEmpty    = !formCred[f.id]?.trim()
+  const showAlert  = isNewMode && f.is_required && isEmpty
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       {/* Label */}
@@ -140,7 +145,11 @@ function SingleField({ f, formCred, showFields, openPanduan, onChange, onToggle,
           value={formCred[f.id] ?? ''}
           onChange={e => onChange(f.id, e.target.value)}
           autoComplete="new-password"
-          style={{ flex: 1, height: 40, fontSize: 13 }}
+          style={{
+            flex: 1, height: 40, fontSize: 13,
+            // BUG-033 FIX: border amber jika field wajib kosong saat mode baru
+            ...(showAlert ? { borderColor: 'var(--color-warning-border)', outline: 'none' } : {}),
+          }}
         />
         {f.is_secret && (
           <Button
@@ -153,6 +162,13 @@ function SingleField({ f, formCred, showFields, openPanduan, onChange, onToggle,
           </Button>
         )}
       </div>
+
+      {/* BUG-033 FIX: Label 'Belum diisi' saat mode baru + field wajib + kosong */}
+      {showAlert && (
+        <p style={{ fontSize: 10, fontWeight: 500, color: 'var(--color-warning-text)', marginTop: 2 }}>
+          ⚠ Wajib diisi
+        </p>
+      )}
 
       {/* Deskripsi singkat */}
       {f.deskripsi && (
@@ -233,6 +249,7 @@ export function CredentialFields({ fieldRows, formCred, showFields, onChange, on
                   onChange={onChange}
                   onToggle={onToggle}
                   onTogglePanduan={onTogglePanduan}
+                  isNewMode={!isEditMode}
                 />
               ))}
             </div>

@@ -5,6 +5,7 @@
 // Update S#152: fix DialogTitle (accessibility), hapus panduan prop (sekarang per-field)
 // Update S#216: mode edit (Kelola) — pre-fill form dari DB + tidak buat instance baru
 // Update S#248: ROLLBACK hapus fdsAll state + onToggleIsAktif handler + fetch field-defs/all
+// Update S#249: BUG-033 FIX — validasi is_required fields kosong saat mode baru sebelum save
 // Dibuat: Sesi #107 — Update: Sesi #151, S#152, S#216
 
 import { useState, useEffect, useCallback } from 'react'
@@ -85,8 +86,18 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
   const save = useCallback(async () => {
     if (!provider || !ns.trim()) { toast.error('Nama instance harus diisi'); return }
 
+    // BUG-033 FIX S#249: mode BARU — validasi semua is_required field terisi
+    if (!existingInstanceId) {
+      const missingRequired = fds.filter(f => f.is_required && !cred[f.id]?.trim())
+      if (missingRequired.length > 0) {
+        const labels = missingRequired.map(f => f.label).join(', ')
+        toast.error(`Field wajib belum diisi: ${labels}`)
+        return
+      }
+    }
+
     // Dalam mode EDIT (existingInstanceId ada): field kosong = tidak diubah (skip)
-    // Dalam mode BARU: minimal 1 field harus terisi
+    // Dalam mode BARU: semua is_required sudah divalidasi di atas
     const fields = Object.entries(cred)
       .filter(([, v]) => v.trim())
       .map(([id, v]) => ({ field_def_id: id, field_key: '', nilai: v }))
