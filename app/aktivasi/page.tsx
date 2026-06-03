@@ -44,23 +44,32 @@ function AktivasiForm() {
   const [isLoading, setIsLoading]   = useState(false)
 
   useEffect(() => {
-    async function cekSession() {
-      try {
-        const supabase = createBrowserSupabaseClient()
-        // Supabase JS v2 secara otomatis membaca #access_token dari fragment URL
-        // dan men-set session — cukup panggil getSession()
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session) {
-          setTahap('FORM')
-        } else {
-          setTahap('INVALID')
-        }
-      } catch {
+    const supabase = createBrowserSupabaseClient()
+
+    // Supabase JS v2 memproses #access_token dari fragment URL via onAuthStateChange.
+    // getSession() saja tidak cukup — fragment diproses async oleh Supabase internal.
+    // Harus listen ke event SIGNED_IN yang terpicu setelah fragment diproses.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        setTahap('FORM')
+      } else if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
+        // Abaikan — bukan event yang relevan untuk halaman ini
+      } else if (!session && tahap === 'LOADING') {
+        // Fallback: jika tidak ada session setelah timeout
         setTahap('INVALID')
       }
+    })
+
+    // Fallback timeout: jika setelah 5 detik tidak ada event SIGNED_IN → INVALID
+    const timeout = setTimeout(() => {
+      setTahap(prev => prev === 'LOADING' ? 'INVALID' : prev)
+    }, 5000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timeout)
     }
-    cekSession()
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSimpan() {
     if (!password)               { setError('Password wajib diisi'); return }
