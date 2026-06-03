@@ -1,13 +1,9 @@
-// app/api/superadmin/providers/instances/[instanceId]/credentials/route.ts
-// GET  — Ambil credential plaintext untuk pre-fill form Kelola (SuperAdmin only)
-// POST — Enkripsi dan simpan credential fields untuk satu instance (SuperAdmin only)
-// Enkripsi/dekripsi dilakukan di CredentialService — route TIDAK menyentuh nilai plaintext sendiri
-// Dibuat: Sesi #107 — M3 Credential Management
-// Update: Sesi #216 — tambah GET handler untuk pre-fill form Kelola
-// Update: Sesi #251 — fix: revalidateTag setelah simpan agar cache tidak stale
+// ARSIP SESI #251 — sebelum fix cache invalidation credential
+// Original: app/api/superadmin/providers/instances/[instanceId]/credentials/route.ts
+// Dibuat: Sesi #107. Update: Sesi #216.
+// BUG: POST tidak memanggil revalidateTag setelah simpan — cache stale 15 menit
 
 import { NextRequest, NextResponse }  from 'next/server'
-import { revalidateTag }              from 'next/cache'
 import { requireSuperAdmin }           from '@/lib/auth-server'
 import { simpanCredential, getCredentialPlaintext } from '@/lib/services/credential.service'
 import type { SimpanCredentialPayload } from '@/lib/types/provider.types'
@@ -66,9 +62,6 @@ export async function POST(
       { instance_id: instanceId, fields: body.fields },
       auth.uid
     )
-
-    // Invalidate cache credential agar nilai baru langsung terbaca tanpa tunggu TTL
-    revalidateTag('credentials', 'default')
 
     return NextResponse.json({ success: true })
 
