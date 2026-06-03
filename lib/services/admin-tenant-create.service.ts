@@ -92,7 +92,7 @@ async function kirimEmailAktivasi(
 function buildRedirectTo(): string {
   const appUrl = process.env.NEXT_PUBLIC_URL
     ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-  return `${appUrl}/auth/confirm`
+  return `${appUrl}/api/activate`
 }
 
 // ─── Helper: Update kontak denormalized tenant (KP-02) ───────────────────────
