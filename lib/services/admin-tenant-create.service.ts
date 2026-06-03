@@ -211,9 +211,15 @@ export async function tambahAdminTenantBaru(
   }
 
   // Step 5: Generate link aktivasi + kirim email (K-01: Gaya A — AT buat password sendiri)
+  // redirect_to wajib diisi agar link mengarah ke URL deployment aktual, bukan localhost
+  const appUrl = process.env.NEXT_PUBLIC_URL
+    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+  const redirectTo = `${appUrl}/auth/confirm`
+
   const { data: linkData } = await db.auth.admin.generateLink({
-    type:  'recovery',
-    email: emailNormal,
+    type:    'recovery',
+    email:   emailNormal,
+    options: { redirect_to: redirectTo },
   })
 
   let emailTerkirim = false
@@ -289,9 +295,15 @@ export async function kirimUlangAktivasi(
   const jabatan = (histRow?.jabatan ?? 'lainnya') as AdminTenantJabatan
 
   // Generate link aktivasi baru
+  // redirect_to wajib diisi agar link mengarah ke URL deployment aktual, bukan localhost
+  const appUrl = process.env.NEXT_PUBLIC_URL
+    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+  const redirectTo = `${appUrl}/auth/confirm`
+
   const { data: linkData } = await db.auth.admin.generateLink({
-    type:  'recovery',
-    email: profile.email,
+    type:        'recovery',
+    email:       profile.email,
+    options:     { redirect_to: redirectTo },
   })
 
   let emailTerkirim = false
