@@ -15,7 +15,6 @@
 // K-01: Gaya A — generateLink untuk link aktivasi, AT buat password sendiri
 // KP-02: kontak denormalized = penanggung_jawab PERTAMA saja
 // Update: Sesi #251 — fix generateLink: tambah redirectTo (camelCase) agar link tidak ke localhost
-// Update: Sesi #252 — buildRedirectTo() ganti /reset-password → /aktivasi (halaman khusus AT)
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -93,7 +92,7 @@ async function kirimEmailAktivasi(
 function buildRedirectTo(): string {
   const appUrl = process.env.NEXT_PUBLIC_URL
     ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-  return `${appUrl}/aktivasi`
+  return `${appUrl}/reset-password`
 }
 
 // ─── Helper: Update kontak denormalized tenant (KP-02) ───────────────────────
