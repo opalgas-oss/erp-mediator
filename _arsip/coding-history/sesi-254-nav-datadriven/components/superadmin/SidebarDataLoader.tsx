@@ -12,10 +12,9 @@
 //
 // Skeleton: SidebarSkeleton — matching dimensi sidebar aktual (w-64, h-screen).
 
-import { getBrandName }    from '@/lib/dashboard-data'
-import { getConfigValue }  from '@/lib/config-registry'
-import { getEffectiveMenu } from '@/lib/services/dashboard-menu.service'
-import { SidebarNav }      from '@/components/SidebarNav'
+import { getBrandName }  from '@/lib/dashboard-data'
+import { getConfigValue } from '@/lib/config-registry'
+import { SidebarNav }    from '@/components/SidebarNav'
 
 // ─── Skeleton matching sidebar dimensi ───────────────────────────────────────
 
@@ -60,18 +59,15 @@ export function SidebarSkeleton() {
 interface SidebarDataLoaderProps {
   messages:    Record<string, string>
   featureKeys: string[]
-  // Prop baru S#255: diteruskan dari getEffectiveMenu ke SidebarNav untuk render data-driven
-  // Jika undefined (fallback), SidebarNav masih pakai SA_NAV_GROUPS internal
 }
 
 export default async function SidebarDataLoader({
   messages,
   featureKeys,
 }: SidebarDataLoaderProps) {
-  const [ttlStr, brandName, menuGroups] = await Promise.all([
+  const [ttlStr, brandName] = await Promise.all([
     getConfigValue('platform_general', 'sidebar_cache_ttl_seconds', '1800'),
     getBrandName(),
-    getEffectiveMenu('super_admin'),
   ])
 
   // TTL tersimpan untuk referensi — akan diaktifkan saat unstable_cache diterapkan
@@ -82,7 +78,6 @@ export default async function SidebarDataLoader({
       brandName={brandName}
       messages={messages}
       featureKeys={featureKeys}
-      menuGroups={menuGroups}
     />
   )
 }
