@@ -71,7 +71,6 @@ export function TenantsClient({ initialData, initialTotal, statusTabs, tierOpsi 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 600, color: '#1a1a1a' }}>Manajemen Tenant</h1>
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{total} tenant terdaftar</p>
         </div>
         <button

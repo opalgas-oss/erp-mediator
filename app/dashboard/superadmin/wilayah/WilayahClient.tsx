@@ -373,7 +373,6 @@ export function WilayahClient() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Master Wilayah</h1>
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 3 }}>
             {aktifProv} provinsi aktif · {provinces.reduce((s, p) => s + p.city_count, 0)} kab/kota terdaftar
           </p>

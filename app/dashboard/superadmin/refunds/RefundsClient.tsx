@@ -16,7 +16,7 @@ import {
   Table, TableBody, TableCell, TableHead,
   TableHeader, TableRow,
 }                                               from '@/components/ui/table'
-import { ICON_ACTION, ICON_STATUS, ICON_FINANCE } from '@/lib/constants/icons.constant'
+import { ICON_ACTION, ICON_STATUS } from '@/lib/constants/icons.constant'
 import type {
   RefundListResponse,
   RefundListItem,
@@ -162,10 +162,6 @@ export function RefundsClient({ initialData }: Props) {
       {/* ── Page Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <ICON_FINANCE.refund size={20} className="text-amber-600" />
-            <h1 className="text-xl font-semibold text-slate-900">Approval Refund</h1>
-          </div>
           <p className="text-sm text-slate-500">
             Komplain yang diteruskan AdminTenant dan memerlukan keputusan SuperAdmin
           </p>

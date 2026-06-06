@@ -135,7 +135,6 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
       {/* Header — 2 tombol terpisah (G47) */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 600, color: '#1a1a1a' }}>Master Kategori</h1>
           <p style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
             {stats.total_root} kategori root · {stats.total_sub} sub-kategori
           </p>

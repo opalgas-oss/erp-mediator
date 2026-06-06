@@ -105,8 +105,7 @@ export function MembershipsClient({ initialData }: Props) {
     <div className="p-6 space-y-4">
 
       {/* ── Page Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">User Memberships</h1>
+      <div className="flex items-center justify-end">
         <p className="text-sm text-slate-500">
           Total: <span className="font-medium text-slate-700">{total}</span> membership
         </p>

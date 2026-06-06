@@ -134,8 +134,7 @@ export function PermissionsClient({ initialData }: Props) {
     <div className="p-6 space-y-4">
 
       {/* ── Page Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Permissions</h1>
+      <div className="flex items-center justify-end">
         <Button onClick={() => setAddOpen(true)}>
           <ICON_ACTION.add size={15} className="mr-2" />
           Tambah Permission
