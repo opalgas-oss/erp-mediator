@@ -102,14 +102,19 @@ export const SUPABASE_ERROR_MAP: Record<string, string> = {
 /**
  * Decode JWT access token → AppClaims.
  *
- * STRUKTUR JWT dari inject-custom-claims Edge Function:
- *   payload['app_role']      — top level claim (dari hook)
- *   payload['tenant_id']     — top level claim (dari hook)
- *   payload['nama']          — top level claim (BARU Sesi #075, dari hook)
- *   payload['vendor_status'] — top level claim (BARU Sesi #075, dari hook)
- *   payload['nomor_wa']      — top level claim (BARU Sesi #075, dari hook)
- *   payload['app_metadata']  — nested object dari raw_app_meta_data (fallback)
- *   payload['user_metadata'] — nested object dari raw_user_meta_data (fallback nama)
+ * STRUKTUR JWT dari inject-custom-claims Edge Function v8 (AUTH Normalized):
+ *   payload['is_super_admin'] — true jika SuperAdmin (deteksi SA, bukan app_role)
+ *   payload['memberships']    — array [{tenant_id, role, status}] untuk non-SA
+ *   payload['nama']           — nama user
+ *   payload['vendor_status']  — register_status dari user_profiles (untuk Vendor)
+ *   payload['nomor_wa']       — nomor WhatsApp (untuk OTP non-SA)
+ *
+ * DIHAPUS dari JWT (model flat DEPRECATED sejak v8 — KEPUTUSAN_AUTH_NORMALIZED_v1.md):
+ *   app_role, tenant_id, is_platform_owner
+ *
+ * FIX CASE SESI-13 (8 Juni 2026): baca is_super_admin + memberships[] (v8)
+ *   Sebelumnya baca app_role flat → selalu '' karena v8 tidak inject app_role
+ *   → SA login gagal "Konfigurasi akun belum lengkap"
  */
 export function decodeAppClaims(token: string): AppClaims {
   try {
@@ -118,27 +123,45 @@ export function decodeAppClaims(token: string): AppClaims {
     const padded   = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     const payload  = JSON.parse(Buffer.from(padded, 'base64').toString('utf-8')) as Record<string, unknown>
 
-    // Nested objects sebagai fallback
+    // Nested objects sebagai fallback nama
     const appMeta  = (typeof payload['app_metadata']  === 'object' && payload['app_metadata']  !== null)
                    ? payload['app_metadata']  as Record<string, unknown> : {}
     const userMeta = (typeof payload['user_metadata'] === 'object' && payload['user_metadata'] !== null)
                    ? payload['user_metadata'] as Record<string, unknown> : {}
 
+    // NORMALIZED v8: is_super_admin flag + memberships[]
+    const isSuperAdmin = payload['is_super_admin'] === true
+
+    // Memberships dari JWT (model normalized)
+    interface JwtMembership { tenant_id: string | null; role: string; status: string }
+    const rawMemberships = payload['memberships']
+    const memberships: JwtMembership[] = Array.isArray(rawMemberships) ? rawMemberships as JwtMembership[] : []
+
+    // Tentukan role + tenantId
+    let role     = ''
+    let tenantId = ''
+    if (isSuperAdmin) {
+      // SA tidak ada di memberships — deteksi via flag
+      role     = 'super_admin'
+      tenantId = ''
+    } else if (memberships.length > 0) {
+      // Non-SA: ambil dari memberships[0] (role utama)
+      const first = memberships[0]
+      role     = typeof first.role      === 'string' ? first.role      : ''
+      tenantId = typeof first.tenant_id === 'string' ? first.tenant_id : ''
+    }
+
     return {
-      // app_role: dari top level (hook) atau app_metadata (raw_app_meta_data)
-      role:         typeof payload['app_role']         === 'string' ? payload['app_role']
-                  : typeof appMeta['app_role']          === 'string' ? appMeta['app_role']         : '',
-      // tenant_id: dari top level (hook) atau app_metadata
-      tenantId:     typeof payload['tenant_id']        === 'string' ? payload['tenant_id']
-                  : typeof appMeta['tenant_id']         === 'string' ? appMeta['tenant_id']        : '',
-      // nama: dari top level (hook, Sesi #075) atau app_metadata atau user_metadata (selalu ada)
-      nama:         typeof payload['nama']              === 'string' ? payload['nama']
-                  : typeof appMeta['nama']              === 'string' ? appMeta['nama']
-                  : typeof userMeta['nama']             === 'string' ? userMeta['nama']             : '',
-      // vendor_status: dari top level (hook, Sesi #075) — hanya ada setelah Edge Function v5
-      vendorStatus: typeof payload['vendor_status']    === 'string' ? payload['vendor_status']     : undefined,
-      // nomor_wa: dari top level (hook, Sesi #075) — hanya ada setelah Edge Function v5
-      nomorWa:      typeof payload['nomor_wa']         === 'string' ? payload['nomor_wa']          : undefined,
+      role,
+      tenantId,
+      // nama: dari top level (v8) atau fallback metadata
+      nama:         typeof payload['nama']           === 'string' ? payload['nama']
+                  : typeof appMeta['nama']           === 'string' ? appMeta['nama']
+                  : typeof userMeta['nama']          === 'string' ? userMeta['nama']          : '',
+      // vendor_status: dari JWT (diinjeksi v8 dari register_status)
+      vendorStatus: typeof payload['vendor_status'] === 'string' ? payload['vendor_status']  : undefined,
+      // nomor_wa: dari JWT (diinjeksi v8 untuk flow OTP)
+      nomorWa:      typeof payload['nomor_wa']      === 'string' ? payload['nomor_wa']       : undefined,
     }
   } catch {
     return { role: '', tenantId: '', nama: '' }

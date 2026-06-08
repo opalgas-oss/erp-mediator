@@ -1,0 +1,5 @@
+Arsip pre-fix: app/login/login-action-helpers.ts
+Tanggal: 8 Juni 2026 — CASE SESI-13
+Alasan: Fix decodeAppClaims() — masih baca app_role flat (sudah tidak diinjeksi Edge Function v8)
+Dampak: SA login gagal "Konfigurasi akun belum lengkap" karena role='' dari claims
+Fix yang dilakukan: decodeAppClaims() sekarang baca is_super_admin + memberships[] (JWT v8 normalized)
