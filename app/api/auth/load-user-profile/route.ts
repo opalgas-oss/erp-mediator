@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse }  from 'next/server'
 import { z }                          from 'zod'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { ROLES }                      from '@/lib/constants'
 
 // ─── Skema Validasi Input ─────────────────────────────────────────────────────
 // Regex UUID-format: terima 8-4-4-4-12 hex tanpa cek version/variant bit
@@ -61,17 +62,18 @@ export async function POST(request: NextRequest) {
 
       if (error || !userRow) {
         // SUPERADMIN tetap bisa login meski profil tidak ditemukan — non-critical
-        return NextResponse.json({ success: true, nama: '', nomor_wa: '', role: 'SUPERADMIN', status: '' })
+        return NextResponse.json({ success: true, nama: '', nomor_wa: '', role: ROLES.SUPERADMIN, status: '' })
       }
 
       // nomor_wa di tabel users adalah ARRAY — ambil elemen pertama
       const nomorWaSA = Array.isArray(userRow.nomor_wa) ? (userRow.nomor_wa[0] ?? '') : ''
 
+      // FIX CASE SESI-13: role lowercase (ATURAN 41 + ATURAN 44)
       return NextResponse.json({
         success:  true,
         nama:     userRow.nama || '',
         nomor_wa: nomorWaSA,
-        role:     'SUPERADMIN',
+        role:     ROLES.SUPERADMIN,
         status:   '',
       })
     }

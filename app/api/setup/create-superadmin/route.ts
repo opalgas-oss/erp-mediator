@@ -17,10 +17,11 @@ export async function POST(request: NextRequest) {
     const db = createServerSupabaseClient()
 
     // Cek apakah setup sudah pernah dilakukan
+    // FIX CASE SESI-13: query lowercase 'super_admin' (ATURAN 41)
     const { data: existing } = await db
       .from('users')
       .select('id')
-      .eq('role', 'SUPERADMIN')
+      .eq('role', 'super_admin')
       .limit(1)
 
     if (existing && existing.length > 0) {
@@ -56,14 +57,13 @@ export async function POST(request: NextRequest) {
 
     // Buat user di Supabase Auth via Admin API
     // email_confirm: true → langsung aktif tanpa perlu konfirmasi email
-    // app_metadata.app_role wajib diisi di sini — getUser() di middleware membaca dari database,
-    // bukan dari JWT payload. Edge Function inject-custom-claims hanya menambahkan ke JWT payload.
+    // FIX CASE SESI-13: hapus app_role dari app_metadata — model normalized tidak inject app_role
+    // Edge Function v8 inject is_super_admin + memberships[] dari tabel users, bukan dari app_metadata
     const { data: authData, error: authError } = await db.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
       user_metadata: { nama },
-      app_metadata:  { app_role: 'SUPERADMIN' },
     })
 
     if (authError || !authData.user) {
@@ -79,15 +79,15 @@ export async function POST(request: NextRequest) {
     const userId = authData.user.id
 
     // Simpan data SuperAdmin ke tabel users
-    // Role SUPERADMIN di app_metadata akan diisi otomatis
-    // oleh Edge Function inject-custom-claims saat JWT diterbitkan
+    // is_super_admin dideteksi oleh Edge Function v8 dari keberadaan row di tabel users
+    // FIX CASE SESI-13: role lowercase 'super_admin' (ATURAN 41)
     const { error: insertError } = await db
       .from('users')
       .insert({
         id:               userId,
         email,
         nama,
-        role:             'SUPERADMIN',
+        role:             'super_admin',
         is_platform_owner: true,
         created_at:       new Date().toISOString(),
         updated_at:       new Date().toISOString(),

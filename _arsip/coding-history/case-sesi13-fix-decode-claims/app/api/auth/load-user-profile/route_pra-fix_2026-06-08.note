@@ -1,0 +1,4 @@
+Arsip pre-fix: app/api/auth/load-user-profile/route.ts
+Tanggal: 8 Juni 2026 — CASE SESI-13
+Masalah: Return role: 'SUPERADMIN' uppercase hardcoded (ATURAN 41 — wajib lowercase)
+Fix: Ganti ke ROLES.SUPERADMIN = 'super_admin'

@@ -1,0 +1,6 @@
+Arsip pre-fix: app/api/setup/create-superadmin/route.ts
+Tanggal: 8 Juni 2026 — CASE SESI-13
+Masalah T-X2: Query .eq('role', 'SUPERADMIN') uppercase + INSERT role: 'SUPERADMIN' uppercase
+Masalah T-X3: app_metadata: { app_role: 'SUPERADMIN' } — inject flat model (deprecated v8)
+Fix T-X2: Ganti ke 'super_admin' (ATURAN 41)
+Fix T-X3: Hapus app_role dari app_metadata — model normalized tidak inject app_role
