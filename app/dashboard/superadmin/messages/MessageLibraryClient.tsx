@@ -233,7 +233,25 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
         </Button>
       </div>
 
-      {/* Toolbar — Search + Filter */}
+      {/* Tab Kategori horizontal */}
+      <div className="flex items-center gap-1 overflow-x-auto pb-1 border-b border-slate-200">
+        {['semua', ...kategoriList].map(k => (
+          <button
+            key={k}
+            onClick={() => setKatFilter(k)}
+            className={[
+              'shrink-0 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors whitespace-nowrap',
+              katFilter === k
+                ? 'bg-[#185FA5] text-white'
+                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700',
+            ].join(' ')}
+          >
+            {k === 'semua' ? 'Semua' : k}
+          </button>
+        ))}
+      </div>
+
+      {/* Toolbar — Search + Filter dropdown */}
       <div className="flex flex-wrap items-center gap-2">
         <Input
           placeholder="Cari key atau teks..."
@@ -267,7 +285,7 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
 
       {/* Tabel */}
       <div className="rounded-md border border-slate-200 overflow-x-auto">
-        <Table>
+        <Table className="min-w-[800px]">
           <TableHeader>
             <TableRow className="bg-slate-50">
               <TableHead className={`${TYPOGRAPHY.tableHead} w-56 cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('key')}>
@@ -279,13 +297,13 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
               <TableHead className={`${TYPOGRAPHY.tableHead} w-24 cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('channel')}>
                 Channel <span className={sortIconClass('channel')}>{sortIcon('channel')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('teks')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} max-w-[400px] cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('teks')}>
                 Preview Teks <span className={sortIconClass('teks')}>{sortIcon('teks')}</span>
               </TableHead>
               <TableHead className={`${TYPOGRAPHY.tableHead} w-28 cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('updated_at')}>
                 Diupdate <span className={sortIconClass('updated_at')}>{sortIcon('updated_at')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-24 text-right`}>Aksi</TableHead>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-32 text-center`}>Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -313,7 +331,7 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
                       {msg.channel}
                     </span>
                   </TableCell>
-                  <TableCell className="py-3 px-3.5">
+                  <TableCell className="py-3 px-3.5 max-w-[400px]">
                     <span className="text-[13px] text-slate-600 line-clamp-2 break-all">
                       {msg.teks.length > 80 ? msg.teks.slice(0, 80) + '…' : msg.teks}
                     </span>
@@ -328,8 +346,8 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
                     )}
                   </TableCell>
                   <TableCell className={`py-3 px-3.5 ${TYPOGRAPHY.caption}`}>{formatDateIdShort(msg.updated_at)}</TableCell>
-                  <TableCell className="py-3 px-3.5 text-right">
-                    <div className="flex items-center justify-end gap-1">
+                  <TableCell className="py-3 px-3.5 text-center">
+                    <div className="flex items-center justify-center gap-1">
                       <Button
                         variant="ghost"
                         size="sm"

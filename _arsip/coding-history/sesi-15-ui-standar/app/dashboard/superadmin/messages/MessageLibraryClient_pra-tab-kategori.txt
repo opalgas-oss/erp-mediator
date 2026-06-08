@@ -1,0 +1,3 @@
+// ARSIP pra-sesi-15-tab-kategori — MessageLibraryClient.tsx
+// File aktif: app/dashboard/superadmin/messages/MessageLibraryClient.tsx
+// Alasan arsip: tambah tab kategori horizontal + fix kolom Aksi terpotong
