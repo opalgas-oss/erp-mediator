@@ -224,79 +224,79 @@ export function RefundsClient({ initialData }: Props) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Komplain</TableHead>
-                  <TableHead className="w-36">Tenant</TableHead>
-                  <TableHead className="w-36">Customer</TableHead>
-                  <TableHead className="w-28 text-right">Nominal</TableHead>
-                  <TableHead className="w-32">Batas Waktu SA</TableHead>
-                  <TableHead className="w-36 text-center">Aksi</TableHead>
+                  <TableHead className="text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Komplain</TableHead>
+                  <TableHead className="w-36 text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Tenant</TableHead>
+                  <TableHead className="w-36 text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Customer</TableHead>
+                  <TableHead className="w-28 text-right text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Nominal</TableHead>
+                  <TableHead className="w-32 text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Batas Waktu SA</TableHead>
+                  <TableHead className="w-36 text-center text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {data.map(row => (
-                  <TableRow key={row.id}>
-                    {/* Kolom Komplain */}
-                    <TableCell>
-                      <p className="text-sm font-medium text-slate-800 line-clamp-1">
-                        {row.subject}
-                      </p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {COMPLAINT_TYPE_LABEL[row.complaint_type] ?? row.complaint_type}
-                        {' · '}
-                        Eskalasi: {formatDate(row.escalated_at)}
-                      </p>
-                      {row.escalation_reason && (
-                        <p className="text-xs text-amber-700 mt-0.5 italic line-clamp-1">
-                          "{row.escalation_reason}"
-                        </p>
-                      )}
-                    </TableCell>
+                <TableRow key={row.id} className="border-b border-[rgba(0,0,0,0.08)] hover:bg-[#f9f9f8]">
+                {/* Kolom Komplain */}
+                <TableCell className="py-3 px-3.5">
+                <p className="text-[13px] font-medium text-[#1a1a1a] line-clamp-1">
+                {row.subject}
+                </p>
+                <p className="text-[11px] text-[#6b7280] mt-0.5">
+                {COMPLAINT_TYPE_LABEL[row.complaint_type] ?? row.complaint_type}
+                {' · '}
+                Eskalasi: {formatDate(row.escalated_at)}
+                </p>
+                {row.escalation_reason && (
+                <p className="text-[11px] text-amber-700 mt-0.5 italic line-clamp-1">
+                "{row.escalation_reason}"
+                </p>
+                )}
+                </TableCell>
 
-                    {/* Kolom Tenant */}
-                    <TableCell className="text-sm text-slate-600">
-                      {row.tenant_nama}
-                    </TableCell>
+                {/* Kolom Tenant */}
+                <TableCell className="py-3 px-3.5 text-[13px] text-[#1a1a1a]">
+                {row.tenant_nama}
+                </TableCell>
 
-                    {/* Kolom Customer */}
-                    <TableCell>
-                      <p className="text-sm text-slate-700">{row.customer_nama || '—'}</p>
-                      <p className="text-xs text-slate-400">{row.customer_email || '—'}</p>
-                    </TableCell>
+                {/* Kolom Customer */}
+                <TableCell className="py-3 px-3.5">
+                <p className="text-[13px] text-[#1a1a1a]">{row.customer_nama || '—'}</p>
+                <p className="text-[11px] text-[#6b7280]">{row.customer_email || '—'}</p>
+                </TableCell>
 
-                    {/* Kolom Nominal */}
-                    <TableCell className="text-sm font-medium text-slate-800 text-right">
-                      {formatRupiah(row.refund_amount)}
-                    </TableCell>
+                {/* Kolom Nominal */}
+                <TableCell className="py-3 px-3.5 text-[13px] font-medium text-[#1a1a1a] text-right">
+                {formatRupiah(row.refund_amount)}
+                </TableCell>
 
-                    {/* Kolom Batas Waktu */}
-                    <TableCell>
-                      <DeadlineBadge deadline={row.super_admin_deadline_at} />
-                    </TableCell>
+                {/* Kolom Batas Waktu */}
+                <TableCell className="py-3 px-3.5">
+                <DeadlineBadge deadline={row.super_admin_deadline_at} />
+                </TableCell>
 
-                    {/* Kolom Aksi */}
-                    <TableCell>
-                      <div className="flex gap-1.5 justify-center">
-                        <Button
-                          variant="default"
-                          size="sm"
-                          className="h-7 px-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-                          onClick={() => setApproveTarget(row)}
-                        >
-                          <ICON_STATUS.success size={12} className="mr-1" />
-                          Setujui
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-2 text-xs border-destructive text-destructive hover:bg-destructive/10"
-                          onClick={() => setRejectTarget(row)}
-                        >
-                          <ICON_STATUS.failed size={12} className="mr-1" />
-                          Tolak
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                {/* Kolom Aksi */}
+                <TableCell className="py-3 px-3.5">
+                <div className="flex gap-1.5 justify-center">
+                <Button
+                variant="default"
+                size="sm"
+                className="h-7 px-2 text-[12px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => setApproveTarget(row)}
+                >
+                <ICON_STATUS.success size={12} className="mr-1" />
+                Setujui
+                </Button>
+                <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-[12px] border-destructive text-destructive hover:bg-destructive/10"
+                onClick={() => setRejectTarget(row)}
+                >
+                <ICON_STATUS.failed size={12} className="mr-1" />
+                Tolak
+                </Button>
+                </div>
+                </TableCell>
+                </TableRow>
                 ))}
               </TableBody>
             </Table>

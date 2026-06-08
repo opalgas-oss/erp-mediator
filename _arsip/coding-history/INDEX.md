@@ -77,3 +77,4 @@
 | **16 Mei 2026** | **#161** | **Snapshot `sesi-161-*` dibuat (3 snapshot).** |
 | **16 Mei 2026** | **#160** | **Snapshot `sesi-160-t005-monitoring-policy-key` dibuat.** |
 | **12 Mei 2026** | **#133–#137** | **Snapshot berbagai sesi M6 dibuat. Beberapa dengan catatan ATURAN 12 violation (lihat entri panjang di versi INDEX sebelumnya).** |
+| **8 Juni 2026** | **CASE SESI-17** | **Snapshot `sesi-17-ui-standar` dibuat. Fix standar UI/UX: WilayahClient (tab #1a1a1a→#185FA5), MembershipsClient (TableHead/Cell override), RefundsClient (TableHead/Cell override), MonitoringClient (h1 text-xl→text-[20px], desc text-sm→text-[12px]).** |

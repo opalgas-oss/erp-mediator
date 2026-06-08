@@ -410,7 +410,7 @@ export function WilayahClient() {
       <div style={{ borderBottom: '0.5px solid rgba(0,0,0,0.12)', marginBottom: 16, display: 'flex', gap: 0 }}>
         {(['provinsi', 'kabkota'] as const).map(tab => (
           <button key={tab} onClick={() => { setActiveTab(tab); setFilterStatus('semua'); setFilterType('semua') }}
-            style={{ padding: '10px 18px', fontSize: 13, fontWeight: 500, border: 'none', background: 'none', cursor: 'pointer', color: activeTab === tab ? '#1a1a1a' : '#6b7280', borderBottom: activeTab === tab ? '2px solid #1a1a1a' : '2px solid transparent', marginBottom: -1 }}>
+            style={{ padding: '10px 18px', fontSize: 13, fontWeight: 500, border: 'none', background: 'none', cursor: 'pointer', color: activeTab === tab ? '#185FA5' : '#6b7280', borderBottom: activeTab === tab ? '2px solid #185FA5' : '2px solid transparent', marginBottom: -1 }}>
             {tab === 'provinsi' ? 'Provinsi' : 'Kab/Kota'}
           </button>
         ))}

@@ -158,12 +158,12 @@ export function MembershipsClient({ initialData }: Props) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Nama User</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Tenant</TableHead>
-                <TableHead className="w-32">Role</TableHead>
-                <TableHead className="w-28 text-center">Status</TableHead>
-                <TableHead className="w-36 text-right">Aksi</TableHead>
+                <TableHead className="text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Nama User</TableHead>
+                <TableHead className="text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Email</TableHead>
+                <TableHead className="text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Tenant</TableHead>
+                <TableHead className="w-32 text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Role</TableHead>
+                <TableHead className="w-28 text-center text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Status</TableHead>
+                <TableHead className="w-36 text-right text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -175,28 +175,29 @@ export function MembershipsClient({ initialData }: Props) {
                 </TableRow>
               ) : (
                 data.map(row => (
-                  <TableRow key={row.id}>
-                    <TableCell className="text-sm font-medium text-slate-800">
+                  <TableRow key={row.id} className="border-b border-[rgba(0,0,0,0.08)] hover:bg-[#f9f9f8]">
+                    <TableCell className="py-3 px-3.5 text-[13px] font-medium text-[#1a1a1a]">
                       {row.user_nama}
                     </TableCell>
-                    <TableCell className="text-sm text-slate-500">
+                    <TableCell className="py-3 px-3.5 text-[13px] text-[#6b7280]">
                       {row.user_email}
                     </TableCell>
-                    <TableCell className="text-sm text-slate-600">
+                    <TableCell className="py-3 px-3.5 text-[13px] text-[#1a1a1a]">
                       {row.tenant_nama}
                     </TableCell>
-                    <TableCell>
-                      <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">
+                    <TableCell className="py-3 px-3.5">
+                      <code className="text-[12px] bg-slate-100 px-1.5 py-0.5 rounded">
                         {row.role_code}
                       </code>
                     </TableCell>
-                    <TableCell className="text-center">
+                    <TableCell className="py-3 px-3.5 text-center">
                       <StatusBadge status={row.status} />
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="py-3 px-3.5 text-right">
                       <Button
                         variant="outline"
                         size="sm"
+                        className="text-[12px]"
                         onClick={() => router.push(`/dashboard/superadmin/memberships/${row.user_id}`)}
                       >
                         Detail User →

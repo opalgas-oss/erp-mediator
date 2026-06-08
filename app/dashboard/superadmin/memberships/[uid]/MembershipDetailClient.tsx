@@ -193,7 +193,7 @@ export function MembershipDetailClient({ initialData, userId }: Props) {
           <ICON_NAV.chevronLeft size={14} className="mr-1" />
           Kembali
         </Button>
-        <h1 className="text-xl font-semibold text-slate-900">
+        <h1 className="text-[20px] font-semibold text-[#1a1a1a]">
           Detail User — {user.nama}
         </h1>
       </div>
@@ -201,27 +201,27 @@ export function MembershipDetailClient({ initialData, userId }: Props) {
       {/* ── Card Info User ──────────────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium text-slate-500 uppercase tracking-wide">
+          <CardTitle className="text-[14px] font-semibold text-[#1a1a1a]">
             Informasi User
           </CardTitle>
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
             <div>
-              <dt className="text-xs text-slate-400 mb-0.5">Nama</dt>
-              <dd className="text-sm font-medium text-slate-800">{user.nama}</dd>
+              <dt className="text-[12px] text-[#6b7280] mb-0.5">Nama</dt>
+              <dd className="text-[13px] font-medium text-[#1a1a1a]">{user.nama}</dd>
             </div>
             <div>
-              <dt className="text-xs text-slate-400 mb-0.5">Email</dt>
-              <dd className="text-sm text-slate-700">{user.email}</dd>
+              <dt className="text-[12px] text-[#6b7280] mb-0.5">Email</dt>
+              <dd className="text-[13px] text-[#1a1a1a]">{user.email}</dd>
             </div>
             <div>
-              <dt className="text-xs text-slate-400 mb-0.5">Nomor WA</dt>
-              <dd className="text-sm text-slate-700">{user.nomor_wa ?? '—'}</dd>
+              <dt className="text-[12px] text-[#6b7280] mb-0.5">Nomor WA</dt>
+              <dd className="text-[13px] text-[#1a1a1a]">{user.nomor_wa ?? '—'}</dd>
             </div>
             <div>
-              <dt className="text-xs text-slate-400 mb-0.5">Terdaftar</dt>
-              <dd className="text-sm text-slate-700">{fmtDate(user.created_at)}</dd>
+              <dt className="text-[12px] text-[#6b7280] mb-0.5">Terdaftar</dt>
+              <dd className="text-[13px] text-[#1a1a1a]">{fmtDate(user.created_at)}</dd>
             </div>
           </dl>
         </CardContent>
@@ -230,7 +230,7 @@ export function MembershipDetailClient({ initialData, userId }: Props) {
       {/* ── Tabel Memberships ────────────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-medium text-slate-500 uppercase tracking-wide">
+          <CardTitle className="text-[14px] font-semibold text-[#1a1a1a]">
             Daftar Membership ({memberships.length})
           </CardTitle>
           <Button size="sm" onClick={handleAssignOpen}>
@@ -242,41 +242,41 @@ export function MembershipDetailClient({ initialData, userId }: Props) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Tenant</TableHead>
-                <TableHead className="w-36">Role</TableHead>
-                <TableHead className="w-28 text-center">Status</TableHead>
-                <TableHead className="w-36">Dibuat</TableHead>
-                <TableHead className="w-28 text-right">Aksi</TableHead>
+                <TableHead className="text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Tenant</TableHead>
+                <TableHead className="w-36 text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Role</TableHead>
+                <TableHead className="w-28 text-center text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Status</TableHead>
+                <TableHead className="w-36 text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Dibuat</TableHead>
+                <TableHead className="w-28 text-right text-[12px] font-medium text-[#6b7280] py-2.5 px-3.5">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {memberships.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-sm text-slate-400">
+                  <TableCell colSpan={5} className="text-center py-10 text-[13px] text-[#6b7280]">
                     User belum memiliki membership
                   </TableCell>
                 </TableRow>
               ) : (
                 memberships.map(row => (
-                  <TableRow key={row.id}>
-                    <TableCell className="text-sm text-slate-700">{row.tenant_nama}</TableCell>
-                    <TableCell>
-                      <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">
+                  <TableRow key={row.id} className="border-b border-[rgba(0,0,0,0.08)] hover:bg-[#f9f9f8]">
+                    <TableCell className="py-3 px-3.5 text-[13px] text-[#1a1a1a]">{row.tenant_nama}</TableCell>
+                    <TableCell className="py-3 px-3.5">
+                      <code className="text-[12px] bg-slate-100 px-1.5 py-0.5 rounded">
                         {row.role_code}
                       </code>
                     </TableCell>
-                    <TableCell className="text-center">
+                    <TableCell className="py-3 px-3.5 text-center">
                       <StatusBadge status={row.status} />
                     </TableCell>
-                    <TableCell className="text-xs text-slate-400">
+                    <TableCell className="py-3 px-3.5 text-[11px] text-[#6b7280]">
                       {fmtDate(row.created_at)}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="py-3 px-3.5 text-right">
                       {row.status === 'active' && (
                         <Button
                           variant="outline"
                           size="sm"
-                          className="text-destructive hover:text-destructive"
+                          className="text-[12px] text-destructive hover:text-destructive"
                           onClick={() => setRevokeTarget(row)}
                         >
                           Revoke
