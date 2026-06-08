@@ -1,0 +1,7 @@
+Arsip pre-fix: lib/hooks/useLoginFlow.ts
+Tanggal: 8 Juni 2026 — CASE SESI-13
+Alasan: Fix prosesSetelahAuthBerhasil() — baca app_role/tenant_id flat dari decodeJwtPayload()
+        Path fallback (runFlowLama) masih bergantung pada format JWT lama yang sudah dihapus v8
+Fix: ganti baca claims['app_role']/claims['tenant_id'] flat
+     → baca is_super_admin + memberships[] (JWT v8 normalized)
+Ref: KEPUTUSAN_AUTH_NORMALIZED_v1.md ATURAN 44

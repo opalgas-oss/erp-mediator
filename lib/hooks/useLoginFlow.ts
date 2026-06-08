@@ -478,9 +478,15 @@ export function useLoginFlow(): LoginFlowState {
     authData:    { user: { id: string; email?: string | null }; session: { access_token: string } },
     hadAttempts: boolean,
   ) {
+    // FIX CASE SESI-13 (8 Juni 2026): baca is_super_admin + memberships[] (JWT v8 normalized)
+    // Sebelumnya baca app_role/tenant_id flat — tidak diinjeksi lagi oleh Edge Function v8
+    // Ref: KEPUTUSAN_AUTH_NORMALIZED_v1.md ATURAN 44
     const claims        = decodeJwtPayload(authData.session.access_token)
-    const claimRole     = claims['app_role']  as string || ''
-    const claimTenantId = claims['tenant_id'] as string || ''
+    const isSuperAdmin  = claims['is_super_admin'] === true
+    const rawMemberships = claims['memberships']
+    const memberships   = Array.isArray(rawMemberships) ? rawMemberships as Array<{ tenant_id: string | null; role: string; status: string }> : []
+    const claimRole     = isSuperAdmin ? ROLES.SUPERADMIN : (memberships[0]?.role ?? '')
+    const claimTenantId = isSuperAdmin ? '' : (memberships[0]?.tenant_id ?? '')
 
     if (claimRole === ROLES.SUPERADMIN) {
       const otpModeSA = parseRequireOtpForRole(configLogin[getRequireOtpConfigKey('super_admin')] ?? 'required', 'super_admin')
