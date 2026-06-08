@@ -40,35 +40,3 @@ export interface MenuGroup {
   iconKey:  string | null
   items:    MenuItem[]
 }
-
-// ─── FASE 2: Tipe resolver akses AT ──────────────────────────────────────────
-// Dipakai oleh AtAksesService_resolveMenusForMembership + getEffectiveMenu AT path.
-
-/** Baris ceiling: menu yang SA tetapkan untuk tenant ini */
-export interface CeilingRow {
-  menuId:   string
-  isActive: boolean
-}
-
-/** Baris akses menu individu: menu yang PJ/SA grant ke non-PJ ini */
-export interface MembershipMenuAccessRow {
-  menuId:   string
-  isActive: boolean
-}
-
-/** Baris akses assignment individu: area+kategori yang boleh diakses non-PJ ini */
-export interface MembershipAssignmentAccessRow {
-  tenantCategoryAssignmentId: string
-  isActive:                   boolean
-}
-
-/**
- * Parameter untuk resolver akses AT di getEffectiveMenu FASE 2.
- * Opsional — hanya diisi saat role_scope = 'admin_tenant'.
- */
-export interface AtAccessContext {
-  tenantId:     string
-  membershipId: string
-  /** Jabatan AT dari JWT/DB: penanggung_jawab | operator | finance | warehouse | sales | lainnya */
-  jabatan:      string
-}
