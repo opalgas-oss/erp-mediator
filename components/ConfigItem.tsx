@@ -2,23 +2,12 @@
 
 // components/ConfigItem.tsx
 // Komponen satu baris item konfigurasi di dashboard SuperAdmin.
-// Mendukung 6 tipe render: toggle, number-unit, select-only, timing, json-per-role, text-field.
+// Mendukung 6 tipe: toggle, number-unit, select-only, timing, json-per-role, text-field.
 //
-// PERUBAHAN Sesi #097 — PL-S08 M1:
-//   - Tambah type 'timing'        → render <TimingInput /> untuk field waktu
-//   - Tambah type 'json-per-role' → render <PerRoleJsonEditor /> untuk field JSON per role
-//   - Update interface ConfigItemData: tambah field fieldName, valueType, perRoleOptions
-//
-// PERUBAHAN Sesi #163 — Fix T-027:
-//   - Tambah type 'text-field' → render <Input type="text" /> untuk tipe_data='text'
-//   - Contoh: vendor_blocked_statuses (comma-separated string seperti 'PENDING,REVIEW')
-//   - Sebelum fix: tipe_data='text' fallthrough ke 'number-unit' → render input number (salah)
-//
-// PERUBAHAN Sesi #184 — Fix HUTANG-SA-CONFIG-SEPARATION:
-//   - Tambah allowedRoles ke ConfigItemData (filter role yang tampil di PerRoleJsonEditor)
-//   - Tambah hideTenantOverrideToggle ke ConfigItemData
-//     Jika true → sembunyikan "Tenant Admin boleh ubah" toggle
-//     Dipakai untuk config SA-only yang tidak pernah bisa didelegasikan ke Tenant Admin
+// Sesi #097 — tambah timing + json-per-role
+// Sesi #163 — tambah text-field
+// Sesi #184 — allowedRoles + hideTenantOverrideToggle
+// CASE SESI-14 (8 Juni 2026): font Inter 13px (label + input) sesuai STANDAR_UI_UX_MOCKUP_RULES
 
 import type { JSX }          from 'react'
 import { Input }             from '@/components/ui/input'
@@ -27,21 +16,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { TimingInput }       from '@/components/TimingInput'
 import { PerRoleJsonEditor } from '@/components/PerRoleJsonEditor'
 
-// ─── Tipe ────────────────────────────────────────────────────────────────────
-
 export interface ConfigItemData {
   id:              string
   label:           string
-  fieldName?:      string   // nama kolom DB — wajib untuk type 'timing' dan 'json-per-role'
+  fieldName?:      string
   type:            'toggle' | 'number-unit' | 'select-only' | 'timing' | 'json-per-role' | 'text-field'
   value:           number | boolean | string
   unit?:           string
   units?:          string[]
-  options?:        string[] // untuk type 'select-only'
-  valueType?:      'boolean' | 'number' | 'select' // untuk type 'json-per-role'
-  perRoleOptions?: string[] // opsi select per role jika valueType='select'
-  allowedRoles?:   ReadonlyArray<'customer' | 'vendor' | 'admin_tenant' | 'super_admin'> // filter role yang ditampilkan
-  hideTenantOverrideToggle?: boolean  // true → sembunyikan "Tenant Admin boleh ubah" (untuk config SA-only)
+  options?:        string[]
+  valueType?:      'boolean' | 'number' | 'select'
+  perRoleOptions?: string[]
+  allowedRoles?:   ReadonlyArray<'customer' | 'vendor' | 'admin_tenant' | 'super_admin'>
+  hideTenantOverrideToggle?: boolean
   option_group_id?: string | null
   adminCanChange:  boolean
   enabled:         boolean
@@ -55,38 +42,44 @@ interface ConfigItemProps {
   onEnabledToggle:        (value: boolean) => void
 }
 
-// ─── Sub-komponen baris bawah (Tenant Admin boleh ubah) ──────────────────────
+// ─── Sub-komponen: Tenant Admin boleh ubah ───────────────────────────────────
 
-function AdminCanChangeRow({
-  checked,
-  onToggle,
-}: {
-  checked: boolean
-  onToggle: (v: boolean) => void
-}): JSX.Element {
+function AdminCanChangeRow({ checked, onToggle }: { checked: boolean; onToggle: (v: boolean) => void }): JSX.Element {
   return (
     <div className="flex items-center justify-between py-0.5 gap-1">
-      <span className="text-xs text-slate-500 flex-1">Tenant Admin boleh ubah</span>
+      {/* STANDAR BAB 1: label 12px */}
+      <span className="text-[12px] text-[#6b7280] flex-1">Tenant Admin boleh ubah</span>
       <Switch
         checked={checked}
         onCheckedChange={onToggle}
-        className="h-3 w-6 sm:h-4 sm:w-7 data-[state=checked]:bg-green-500 flex-shrink-0"
+        className="h-4 w-7 data-[state=checked]:bg-green-500 flex-shrink-0"
       />
     </div>
   )
 }
 
+// ─── Label item — 13px medium sesuai STANDAR BAB 1 ───────────────────────────
+
+function ItemLabel({ label, enabled }: { label: string; enabled: boolean }) {
+  return (
+    <span className={`flex-1 min-w-0 text-[13px] font-medium ${enabled ? 'text-[#374151]' : 'text-[#9ca3af]'}`}>
+      {label}
+    </span>
+  )
+}
+
+// ─── Status text: Aktif / Tidak Aktif ────────────────────────────────────────
+
+function StatusText({ enabled }: { enabled: boolean }) {
+  return (
+    <span className="text-[12px] text-[#6b7280]">{enabled ? 'Aktif' : 'Tidak Aktif'}</span>
+  )
+}
+
 // ─── Komponen utama ───────────────────────────────────────────────────────────
 
-export function ConfigItem({
-  item,
-  onValueChange,
-  onUnitChange,
-  onAdminCanChangeToggle,
-  onEnabledToggle,
-}: ConfigItemProps): JSX.Element | null {
+export function ConfigItem({ item, onValueChange, onUnitChange, onAdminCanChangeToggle, onEnabledToggle }: ConfigItemProps): JSX.Element | null {
 
-  // Toggle "Tenant Admin boleh ubah" disembunyikan untuk config SA-only
   const showAdminToggle = !item.hideTenantOverrideToggle
 
   // ── toggle ────────────────────────────────────────────────────────────────
@@ -94,20 +87,13 @@ export function ConfigItem({
     return (
       <div className="space-y-0.5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1">
-          <span className="flex-1 min-w-0 text-xs sm:text-sm font-medium text-slate-700">
-            {item.label}
-          </span>
+          <ItemLabel label={item.label} enabled={item.enabled} />
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            <span className="text-xs text-slate-500">
-              {item.value ? 'Aktif' : 'Tidak Aktif'}
-            </span>
+            <StatusText enabled={Boolean(item.value)} />
             <Switch
               checked={Boolean(item.value)}
-              onCheckedChange={(checked) => {
-                onEnabledToggle(checked)
-                onValueChange(checked)
-              }}
-              className="h-4 w-8 sm:h-5 sm:w-9 data-[state=checked]:bg-blue-600"
+              onCheckedChange={(checked) => { onEnabledToggle(checked); onValueChange(checked) }}
+              className="h-4 w-8 data-[state=checked]:bg-blue-600"
             />
           </div>
         </div>
@@ -122,38 +108,31 @@ export function ConfigItem({
     return (
       <div className="space-y-0.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
-          <span className="flex-1 min-w-0 text-xs sm:text-sm font-medium text-slate-700">
-            {item.label}
-          </span>
-          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-            <span className="text-xs text-slate-500">
-              {item.enabled ? 'Aktif' : 'Tidak Aktif'}
-            </span>
-            <Switch
-              checked={item.enabled}
-              onCheckedChange={onEnabledToggle}
-              className="h-4 w-8 sm:h-5 sm:w-9 data-[state=checked]:bg-blue-600 flex-shrink-0"
-            />
+          <ItemLabel label={item.label} enabled={item.enabled} />
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <StatusText enabled={item.enabled} />
+            <Switch checked={item.enabled} onCheckedChange={onEnabledToggle} className="h-4 w-8 data-[state=checked]:bg-blue-600 flex-shrink-0" />
+            {/* STANDAR BAB 2.2: input h-9 py-2 px-3 text-[13px] */}
             <Input
               type="number"
               value={typeof item.value === 'number' ? item.value : 0}
               onChange={(e) => onValueChange(Number(e.target.value))}
               disabled={!item.enabled}
-              className="w-12 h-7 px-1 text-center text-xs disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+              className="w-14 h-8 px-2 text-center text-[13px] disabled:bg-[#f9f9f8] disabled:text-[#9ca3af] disabled:cursor-not-allowed"
             />
             {hasUnitDropdown ? (
               <Select value={item.unit ?? ''} onValueChange={onUnitChange} disabled={!item.enabled}>
-                <SelectTrigger className="h-7 w-auto min-w-fit px-2 text-xs disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed">
+                <SelectTrigger className="h-8 w-auto min-w-fit px-2 text-[13px] disabled:bg-[#f9f9f8] disabled:cursor-not-allowed">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {item.units?.map((u) => (
-                    <SelectItem key={u} value={u} className="text-xs">{u}</SelectItem>
+                    <SelectItem key={u} value={u} className="text-[13px]">{u}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             ) : (
-              <span className={`text-xs w-8 flex-shrink-0 ${item.enabled ? 'text-slate-600' : 'text-slate-400'}`}>
+              <span className={`text-[13px] w-8 flex-shrink-0 ${item.enabled ? 'text-[#6b7280]' : 'text-[#9ca3af]'}`}>
                 {item.unit}
               </span>
             )}
@@ -169,25 +148,17 @@ export function ConfigItem({
     return (
       <div className="space-y-0.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
-          <span className="flex-1 min-w-0 text-xs sm:text-sm font-medium text-slate-700">
-            {item.label}
-          </span>
-          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-            <span className="text-xs text-slate-500">
-              {item.enabled ? 'Aktif' : 'Tidak Aktif'}
-            </span>
-            <Switch
-              checked={item.enabled}
-              onCheckedChange={onEnabledToggle}
-              className="h-4 w-8 sm:h-5 sm:w-9 data-[state=checked]:bg-blue-600 flex-shrink-0"
-            />
+          <ItemLabel label={item.label} enabled={item.enabled} />
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <StatusText enabled={item.enabled} />
+            <Switch checked={item.enabled} onCheckedChange={onEnabledToggle} className="h-4 w-8 data-[state=checked]:bg-blue-600 flex-shrink-0" />
             <Select value={String(item.value)} onValueChange={onValueChange} disabled={!item.enabled}>
-              <SelectTrigger className="h-7 w-auto min-w-fit px-2 text-xs disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed">
+              <SelectTrigger className="h-8 w-auto min-w-fit px-2 text-[13px] disabled:bg-[#f9f9f8] disabled:cursor-not-allowed">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {item.options?.map((opt) => (
-                  <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                  <SelectItem key={opt} value={opt} className="text-[13px]">{opt}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -198,17 +169,14 @@ export function ConfigItem({
     )
   }
 
-  // ── timing — input angka + dropdown unit dengan auto-convert ──────────────
+  // ── timing ────────────────────────────────────────────────────────────────
   if (item.type === 'timing') {
-    const fieldName = item.fieldName ?? item.id
     return (
       <div className="space-y-0.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
-          <span className="flex-1 min-w-0 text-xs sm:text-sm font-medium text-slate-700">
-            {item.label}
-          </span>
+          <ItemLabel label={item.label} enabled={item.enabled} />
           <TimingInput
-            fieldName={fieldName}
+            fieldName={item.fieldName ?? item.id}
             value={typeof item.value === 'number' ? item.value : Number(item.value)}
             onChange={(canonicalVal) => onValueChange(canonicalVal)}
             disabled={!item.enabled}
@@ -219,13 +187,11 @@ export function ConfigItem({
     )
   }
 
-  // ── json-per-role — editor nilai per role ─────────────────────────────────
+  // ── json-per-role ─────────────────────────────────────────────────────────
   if (item.type === 'json-per-role') {
     return (
       <div className="space-y-0.5 py-1">
-        <span className="text-xs sm:text-sm font-medium text-slate-700 block mb-1">
-          {item.label}
-        </span>
+        <ItemLabel label={item.label} enabled={item.enabled} />
         <PerRoleJsonEditor
           fieldName={item.fieldName ?? item.id}
           value={String(item.value)}
@@ -240,29 +206,21 @@ export function ConfigItem({
     )
   }
 
-  // ── text-field — input teks bebas untuk tipe_data='text' ─────────────────
+  // ── text-field ────────────────────────────────────────────────────────────
   if (item.type === 'text-field') {
     return (
       <div className="space-y-0.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
-          <span className="flex-1 min-w-0 text-xs sm:text-sm font-medium text-slate-700">
-            {item.label}
-          </span>
-          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-            <span className="text-xs text-slate-500">
-              {item.enabled ? 'Aktif' : 'Tidak Aktif'}
-            </span>
-            <Switch
-              checked={item.enabled}
-              onCheckedChange={onEnabledToggle}
-              className="h-4 w-8 sm:h-5 sm:w-9 data-[state=checked]:bg-blue-600 flex-shrink-0"
-            />
+          <ItemLabel label={item.label} enabled={item.enabled} />
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <StatusText enabled={item.enabled} />
+            <Switch checked={item.enabled} onCheckedChange={onEnabledToggle} className="h-4 w-8 data-[state=checked]:bg-blue-600 flex-shrink-0" />
             <Input
               type="text"
               value={String(item.value)}
               onChange={(e) => onValueChange(e.target.value)}
               disabled={!item.enabled}
-              className="w-48 h-7 px-2 text-xs disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+              className="w-48 h-8 px-3 text-[13px] placeholder:text-[#9ca3af] disabled:bg-[#f9f9f8] disabled:text-[#9ca3af] disabled:cursor-not-allowed"
               placeholder="contoh: PENDING,REVIEW"
             />
           </div>

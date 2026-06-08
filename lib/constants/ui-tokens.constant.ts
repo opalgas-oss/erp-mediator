@@ -4,11 +4,9 @@
 //
 // Dibuat: Sesi #100 — Sentralisasi UI
 // Update: Sesi #248 — CSS variables semantik dipindah ke globals.css sebagai SSOT
-//
-// SISTEM VISUAL:
-//   Seluruh platform WAJIB pakai Tailwind + shadcn/ui.
-//   Inline style dengan hardcode hex DILARANG — pakai CSS variables dari globals.css.
-//   CSS Variables semantik (warna status, tenant, dll): app/globals.css → :root
+// Update: CASE SESI-14 (8 Juni 2026) — Font Inter + Sidebar gelap + font size standar baru
+//   → Keputusan Philips: Inter, sidebar #1a1a1a, font sidebar light (rgba putih)
+//   → Referensi standar lengkap: STANDAR_UI_UX_MOCKUP_RULES.md (04_Mockup_UI/)
 //
 // CARA PAKAI:
 //   import { NAV_CLS, TYPOGRAPHY, BADGE_COLORS } from '@/lib/constants/ui-tokens.constant'
@@ -17,31 +15,36 @@
 //   Cukup ubah di file ini → semua komponen ikut berubah otomatis.
 
 // ─── Navigasi Sidebar ─────────────────────────────────────────────────────────
+// Sidebar gelap (#1a1a1a) — font light/terang agar mudah dibaca semua umur
+// Referensi: STANDAR_UI_UX_MOCKUP_RULES.md BAB 4
 
 export const NAV_CLS = {
-  /** Container nav element di sidebar — scroll otomatis vertikal, potong horizontal */
+  /** Container nav element di sidebar */
   nav: 'flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 flex flex-col gap-0.5 md:px-0 md:items-center lg:px-2 lg:items-stretch',
+
+  /** Section label (DASHBOARD, KONFIGURASI, dll) */
+  sectionLabel: 'px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-white/45',
 
   /** Parent button (grup/section) — base class semua breakpoint */
   parentBase:
-    'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium ' +
+    'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium ' +
     'transition-colors md:justify-center md:px-0 md:w-[36px] md:h-[36px] ' +
     'lg:justify-start lg:px-3 lg:w-full lg:h-auto',
 
-  /** Parent — tidak aktif */
-  parentInactive: 'text-slate-600 hover:bg-slate-100 hover:text-slate-800',
+  /** Parent — tidak aktif: rgba putih 85% agar terbaca jelas */
+  parentInactive: 'text-white/85 hover:bg-white/[0.07] hover:text-white/95',
 
-  /** Parent — aktif (halaman saat ini ada di dalam grup ini) */
-  parentActive: 'bg-blue-50 text-blue-700',
+  /** Parent — aktif */
+  parentActive: 'bg-white/[0.12] text-white',
 
   /** Sub-menu item — base class */
-  subBase: 'block py-1.5 pl-9 pr-3 text-xs rounded-md my-px transition-colors whitespace-nowrap',
+  subBase: 'block py-1.5 pl-9 pr-3 text-[12px] rounded-md my-px transition-colors whitespace-nowrap',
 
   /** Sub-menu — aktif */
-  subActive: 'bg-blue-50 text-blue-700 font-medium',
+  subActive: 'bg-white/[0.12] text-white font-medium',
 
-  /** Sub-menu — tidak aktif */
-  subInactive: 'text-slate-500 hover:bg-slate-50 hover:text-slate-700',
+  /** Sub-menu — tidak aktif: rgba putih 65% */
+  subInactive: 'text-white/65 hover:bg-white/[0.07] hover:text-white/85',
 
   /** Chevron icon — wrapper class */
   chevron: 'ml-auto shrink-0 transition-transform duration-200 md:hidden lg:block',
@@ -51,40 +54,45 @@ export const NAV_CLS = {
 } as const
 
 // ─── Typography ───────────────────────────────────────────────────────────────
+// Font: Inter — keputusan Philips CASE SESI-14
+// Referensi lengkap: STANDAR_UI_UX_MOCKUP_RULES.md BAB 1
 
 export const TYPOGRAPHY = {
-  /** Judul halaman di header — responsive */
-  pageTitle:   'text-base sm:text-xl font-bold text-slate-900 truncate',
+  /** Judul halaman di header bar — 20px semibold */
+  pageTitle:   'text-[20px] font-semibold text-[#1a1a1a] truncate',
 
-  /** Deskripsi halaman di header */
-  pageDesc:    'text-xs text-slate-400 truncate hidden sm:inline',
+  /** Deskripsi halaman di header bar — 12px */
+  pageDesc:    'text-[12px] text-[#6b7280] truncate hidden sm:inline',
 
   /** Separator antara judul dan deskripsi */
-  pageSep:     'text-slate-300 shrink-0 select-none hidden sm:inline',
+  pageSep:     'text-[#d1d5db] shrink-0 select-none hidden sm:inline',
 
-  /** Heading level 2 — judul section dalam halaman */
-  h2:          'text-lg font-bold text-slate-900',
+  /** Heading level 2 — 16px semibold */
+  h2:          'text-[16px] font-semibold text-[#1a1a1a]',
 
-  /** Teks muted / sekunder — keterangan pendukung, kosong state */
-  muted:       'text-sm text-slate-400',
+  /** Card title — 14px semibold */
+  cardTitle:   'text-[14px] font-semibold text-[#1a1a1a]',
 
-  /** Label kecil berbobot — label form, header panel */
-  label:       'text-xs font-medium text-slate-600',
+  /** Teks muted / sekunder */
+  muted:       'text-[13px] text-[#6b7280]',
 
-  /** Judul kartu konfigurasi */
-  cardTitle:   'text-sm font-semibold text-slate-900',
+  /** Label form — 12px medium */
+  label:       'text-[12px] font-medium text-[#374151]',
 
-  /** Header kolom tabel */
-  tableHead:   'text-xs font-semibold text-slate-600',
+  /** Header kolom tabel — 12px medium */
+  tableHead:   'text-[12px] font-medium text-[#6b7280]',
 
-  /** Isi sel tabel */
-  tableCell:   'text-xs text-slate-600',
+  /** Isi sel tabel utama — 13px */
+  tableCell:   'text-[13px] text-[#1a1a1a]',
 
-  /** Label kecil / caption */
-  caption:     'text-xs text-slate-400',
+  /** Sub-teks sel tabel (di bawah nama) — 11px */
+  tableCellSub: 'text-[11px] text-[#6b7280]',
 
-  /** Teks error */
-  error:       'text-xs text-red-600',
+  /** Caption / keterangan kecil — 11px */
+  caption:     'text-[11px] text-[#6b7280]',
+
+  /** Teks error — 11px */
+  error:       'text-[11px] text-[#A32D2D]',
 } as const
 
 // ─── Scroll — DashboardShell ──────────────────────────────────────────────────
@@ -161,16 +169,10 @@ export const LIFECYCLE_LABEL: Record<string, string> = {
   TIDAK_DIPAKAI: 'Tidak Dipakai',
 }
 
-/**
- * Resolve warna badge lifecycle_status.
- */
 export function resolveLifecycleColor(status: string): string {
   return BADGE_LIFECYCLE[status] ?? BADGE_LIFECYCLE._default
 }
 
-/**
- * Resolve label lifecycle_status dalam bahasa Indonesia.
- */
 export function resolveLifecycleLabel(status: string): string {
   return LIFECYCLE_LABEL[status] ?? status
 }
@@ -209,9 +211,7 @@ export const VERDICT_STYLE: Record<string, {
 }
 
 // ─── Badge Health Status Provider ─────────────────────────────────────────────
-// Dibuat: Sesi #107 — M3 Credential Management
 
-/** Warna badge berdasarkan health_status provider_instances */
 export const BADGE_HEALTH: Record<string, string> = {
   sehat:       'bg-green-100 text-green-700 border-green-200',
   peringatan:  'bg-yellow-100 text-yellow-700 border-yellow-200',
@@ -220,7 +220,6 @@ export const BADGE_HEALTH: Record<string, string> = {
   _default:    'bg-slate-100 text-slate-500 border-slate-200',
 }
 
-/** Label tampil untuk health_status — versi lengkap dengan keterangan */
 export const HEALTH_LABEL: Record<string, string> = {
   sehat:       'Sehat (server & auth OK)',
   peringatan:  'Peringatan (server OK, auth gagal)',
@@ -228,16 +227,10 @@ export const HEALTH_LABEL: Record<string, string> = {
   belum_dites: 'Belum Dites',
 }
 
-/**
- * Resolve warna badge health status.
- */
 export function resolveHealthColor(status: string): string {
   return BADGE_HEALTH[status] ?? BADGE_HEALTH._default
 }
 
-/**
- * Resolve label health status.
- */
 export function resolveHealthLabel(status: string): string {
   return HEALTH_LABEL[status] ?? status
 }
