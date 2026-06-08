@@ -75,7 +75,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const body = await request.json() as BuatTenantPayload
 
-    const required = ['nama_brand', 'nama_legal', 'slug', 'tipe', 'npwp', 'admintenant_name', 'admintenant_email', 'admintenant_wa']
+    const required = ['nama_brand', 'nama_legal', 'slug', 'tipe', 'npwp', 'pic_name', 'pic_email', 'pic_wa']
     const missing  = required.filter(f => !body[f as keyof BuatTenantPayload])
     if (missing.length > 0) {
       return NextResponse.json(

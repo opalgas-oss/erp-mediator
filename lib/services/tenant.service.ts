@@ -85,12 +85,12 @@ export async function TenantService_create(
 ): Promise<{ tenant_id: string; display_id: string }> {
   validateSlug(input.slug)
   validateNpwp(input.npwp)
-  validateNomorWa(input.pic_wa)
+  validateNomorWa(input.admintenant_wa)
 
   if (!input.nama_brand.trim()) throw new Error('Nama brand wajib diisi')
   if (!input.nama_legal.trim()) throw new Error('Nama legal wajib diisi')
-  if (!input.pic_name.trim())   throw new Error('Nama PIC wajib diisi')
-  if (!input.pic_email.trim())  throw new Error('Email PIC wajib diisi')
+  if (!input.admintenant_name.trim())   throw new Error('Nama AdminTenant wajib diisi')
+  if (!input.admintenant_email.trim())  throw new Error('Email AdminTenant wajib diisi')
 
   const existing = await tenantRepo_findBySlug(input.slug)
   if (existing) {

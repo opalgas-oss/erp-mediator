@@ -164,22 +164,29 @@ export async function tenantRepo_createWithPIC(
   payload:   BuatTenantPayload,
   createdBy: string
 ): Promise<string> {
-  const db = createServerSupabaseClient()
-  const { data, error } = await db.rpc('sp_create_tenant_with_pic', {
-    p_nama_brand:  payload.nama_brand.trim(),
-    p_nama_legal:  payload.nama_legal.trim(),
-    p_slug:        payload.slug,
-    p_tipe:        payload.tipe,
-    p_tier:        payload.tier ?? 'starter',
-    p_npwp:        payload.npwp.replace(/\D/g, ''),
-    p_pic_name:    payload.pic_name.trim(),
-    p_pic_email:   payload.pic_email.trim().toLowerCase(),
-    p_pic_wa:      payload.pic_wa.replace(/\D/g, ''),
-    p_created_by:  createdBy,
-  })
+  // Step 1: Insert tenant record (lifecycle_status='in_registration', register_status='pending')
+  // sp_create_tenant_with_pic TIDAK DIPAKAI — SP tersebut BROKEN (referensi kolom status/pic_*/tipe_pic
+  // yang sudah di-DROP/RENAMED di S#212+S#238). SP di-queue DROP setelah TC-AT selesai (BUG-028).
+  const tenant = await tenantRepo_create(payload, createdBy)
+  if (!tenant) throw new Error('Gagal membuat tenant')
 
-  if (error) throw new Error(`Gagal membuat tenant: ${error.message}`)
-  return data as string
+  // Step 2: Insert AT awal ke tenant_admintenant_history + update denormalized admintenant_* di tenants
+  // p_user_id=NULL karena akun Supabase Auth AT belum dibuat saat ini — dibuat saat AT klik aktivasi
+  const db = createServerSupabaseClient()
+  const { error } = await db.rpc('sp_tambah_admintenant', {
+    p_tenant_id:     tenant.id,
+    p_user_id:       null,
+    p_user_name:     payload.admintenant_name.trim(),
+    p_user_email:    payload.admintenant_email.trim().toLowerCase(),
+    p_user_wa:       payload.admintenant_wa.replace(/\D/g, ''),
+    p_jabatan:       'penanggung_jawab',   // AT awal selalu Penanggung Jawab
+    p_relasi:        null,                  // diisi saat onboarding lengkap
+    p_assigned_by:   createdBy,
+    p_update_kontak: true,                 // update admintenant_* di tenants row
+  })
+  if (error) throw new Error(`Gagal mendaftarkan AdminTenant awal: ${error.message}`)
+
+  return tenant.id
 }
 
 // ─── M6: tenantRepo_create ────────────────────────────────────────────────────
@@ -200,12 +207,10 @@ export async function tenantRepo_create(
       slug:        payload.slug,
       tipe:        payload.tipe,
       npwp:        payload.npwp,
-      pic_name:    payload.pic_name,    // TEMP: BuatTenantPayload belum direname (SP lama masih aktif, BUG-028). Rename saat SP di-DROP.
-      pic_email:   payload.pic_email,
-      pic_wa:      payload.pic_wa,
-      lifecycle_status: 'pending',   // STATUS-REDESIGN S#212 (was: status: 'pending')
-      register_status: 'pending',    // STATUS-REDESIGN S#212 (baru — default untuk tenant baru)
-      tier:        'starter',
+      // admintenant_* fields tidak diset di sini — diupdate oleh sp_tambah_admintenant via p_update_kontak=TRUE
+      lifecycle_status: 'in_registration',   // FIX TEN-1 (CASE SESI-11): nilai awal saat tenant submit register
+      register_status: 'pending',             // nilai awal saat submit — belum di-review SA
+      tier:        payload.tier ?? 'starter',
       created_by:  createdBy,
       updated_by:  createdBy,
     })

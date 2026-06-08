@@ -28,7 +28,7 @@ interface Props {
 const INIT: BuatTenantPayload = {
   nama_brand: '', nama_legal: '', slug: '',
   tipe: 'eksternal', tier: 'starter', npwp: '',
-  pic_name: '', pic_email: '', pic_wa: '',
+  admintenant_name: '', admintenant_email: '', admintenant_wa: '',
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ export function DialogTambahTenant({ open, onClose, onSuccess, tierOpsi }: Props
 
   // Auto-correct WA onBlur (G11)
   const handleWaBlur = () => {
-    set('pic_wa', autoCorrectWA(form.pic_wa))
+    set('admintenant_wa', autoCorrectWA(form.admintenant_wa))
   }
 
   const canSubmit =
@@ -125,9 +125,9 @@ export function DialogTambahTenant({ open, onClose, onSuccess, tierOpsi }: Props
     !!form.slug &&
     !!form.npwp &&
     validateNPWP(form.npwp).ok &&
-    !!form.pic_name &&
-    !!form.pic_wa &&
-    !!form.pic_email
+    !!form.admintenant_name &&
+    !!form.admintenant_wa &&
+    !!form.admintenant_email
 
   const handleSubmit = async () => {
     if (!canSubmit) return
@@ -249,27 +249,27 @@ export function DialogTambahTenant({ open, onClose, onSuccess, tierOpsi }: Props
             <div style={{ width: 22, height: 22, borderRadius: 8, background: '#EAF3DE', color: '#3B6D11', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>
               <i className="ti ti-user" />
             </div>
-            PIC pertama (Penanggung jawab)
+            AdminTenant pertama (Penanggung Jawab)
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {/* G09 — Urutan: Nama → WA → Email */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label style={S.label}>Nama lengkap PIC *</label>
-                <input value={form.pic_name} onChange={e => set('pic_name', e.target.value)} placeholder="Nama lengkap" style={S.input} />
+                <label style={S.label}>Nama lengkap AdminTenant *</label>
+                <input value={form.admintenant_name} onChange={e => set('admintenant_name', e.target.value)} placeholder="Nama lengkap" style={S.input} />
               </div>
-              {/* G10 — Label "Nomor WA PIC", G11 auto-correct */}
+              {/* G10 — Label WA, G11 auto-correct */}
               <div>
-                <label style={S.label}>Nomor WA PIC *</label>
-                <input value={form.pic_wa} onChange={e => set('pic_wa', e.target.value)} onBlur={handleWaBlur} placeholder="628xxxxxxxxxx" style={S.input} />
+                <label style={S.label}>Nomor WA AdminTenant *</label>
+                <input value={form.admintenant_wa} onChange={e => set('admintenant_wa', e.target.value)} onBlur={handleWaBlur} placeholder="628xxxxxxxxxx" style={S.input} />
                 <span style={S.help}>Format: 62 + nomor. Tautan aktivasi dikirim ke nomor ini.</span>
               </div>
             </div>
             <div>
-              <label style={S.label}>Email PIC *</label>
-              <input type="email" value={form.pic_email} onChange={e => set('pic_email', e.target.value)} placeholder="pic@perusahaan.com" style={S.input} />
-              <span style={S.help}>Email personal PIC — berbeda dari email resmi perusahaan.</span>
+              <label style={S.label}>Email AdminTenant *</label>
+              <input type="email" value={form.admintenant_email} onChange={e => set('admintenant_email', e.target.value)} placeholder="admintenant@perusahaan.com" style={S.input} />
+              <span style={S.help}>Email personal AdminTenant — berbeda dari email resmi perusahaan.</span>
             </div>
           </div>
 

@@ -161,10 +161,10 @@ export interface BuatTenantPayload {
   tipe:        TenantTipe
   tier:        TenantTier   // paket billing tenant — dari M4 tenant_tipe (starter/growth/enterprise)
   npwp:        string
-  // PIC awal
-  pic_name:    string
-  pic_email:   string
-  pic_wa:      string
+  // AdminTenant awal — K-18 rename dari pic_* S#238
+  admintenant_name:  string
+  admintenant_email: string
+  admintenant_wa:    string
 }
 
 // ─── Payload: Update Tab Info Umum ────────────────────────────────────────────
