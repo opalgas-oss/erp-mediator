@@ -42,7 +42,8 @@ const getVendorMessages = unstable_cache(
 
 export default async function VendorLayout({ children }: { children: React.ReactNode }) {
   const payload = await verifyJWT()
-  if (!payload || payload.role !== 'VENDOR') redirect('/login')
+  // NORMALIZED (8 Juni 2026 CASE SESI-12): cek role dari memberships atau isSuperAdmin
+  if (!payload || payload.role !== ROLES.VENDOR) redirect('/login')
 
   // Status vendor: utamakan dari JWT (Edge Function v5), fallback ke DB query.
   const fetchStatusVendor = async (): Promise<string> => {
@@ -64,8 +65,9 @@ export default async function VendorLayout({ children }: { children: React.React
     cekSesiParalel(payload.uid, payload.tenantId, ROLES.VENDOR),
   ])
 
-  const statusVendor = (statusRaw || '').toUpperCase()
-  if (!VENDOR_LOGIN_ALLOWED.map(s => s.toUpperCase()).includes(statusVendor)) {
+  // Status vendor: lowercase langsung (VENDOR_STATUS sudah lowercase sejak CASE SESI-12)
+  const statusVendor = (statusRaw || '').toLowerCase()
+  if (!(VENDOR_LOGIN_ALLOWED as string[]).includes(statusVendor)) {
     redirect('/login?error=vendor_not_approved')
   }
 

@@ -88,6 +88,8 @@ export async function findByEmail(email: string): Promise<UserLookupResult | nul
         email:     authUser.email ?? email,
         nama:      (authUser.user_metadata?.nama as string) ?? email,
         nomor_wa:  (authUser.user_metadata?.nomor_wa as string) ?? '',
+        // CATATAN: app_role flat tidak dipakai lagi di JWT baru (v8, normalized)
+        // Fallback path ini hanya untuk auth.users yang tokennya belum di-refresh
         role:      (authUser.app_metadata?.app_role as string) ?? '',
         tenant_id: (authUser.app_metadata?.tenant_id as string) ?? null,
         source:    'auth',

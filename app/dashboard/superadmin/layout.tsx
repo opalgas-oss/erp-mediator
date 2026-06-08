@@ -74,8 +74,9 @@ async function fetchSidebarData(): Promise<{
 
 export default async function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   // Auth gate — wajib di layout body, JANGAN dipindah ke Suspense
+  // NORMALIZED (8 Juni 2026 CASE SESI-12): cek isSuperAdmin flag, BUKAN role string
   const payload = await verifyJWT()
-  if (!payload || payload.role !== 'SUPERADMIN') redirect('/login')
+  if (!payload || !payload.isSuperAdmin) redirect('/login')
 
   // Fetch HANYA yang dibutuhkan layout body secara langsung:
   //   fetchSidebarData → messages (DashboardHeader + SidebarNav) + featureKeys

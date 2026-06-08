@@ -11,6 +11,12 @@
 //   - verifyJWT() baca x-user-* headers dari middleware dulu
 //   - Jika header tersedia → skip getUser() ke Supabase (~100-150ms hemat)
 //   - Fallback ke getUser() tetap ada untuk request non-dashboard
+//
+// PERUBAHAN 8 Juni 2026 CASE SESI-12 (AUTH Normalized — keputusan Philips):
+//   - requireSuperAdmin() ganti cek role string → cek isSuperAdmin flag dari JWT
+//   - isSuperAdmin dibaca dari header x-is-super-admin (diset middleware)
+//   - JWTPayload ditambah field isSuperAdmin + memberships
+//   - Ref: KEPUTUSAN_AUTH_NORMALIZED_v1.md
 
 import 'server-only'
 import { cache } from 'react'
@@ -21,13 +27,11 @@ import { NextResponse } from 'next/server'
 // ─── Tipe Hasil verifyJWT ──────────────────────────────────────────────────────
 export interface JWTPayload {
   uid:           string
-  role:          string
-  tenantId:      string
+  role:          string       // role utama: dari memberships[0] atau 'super_admin'
+  tenantId:      string       // tenant utama: dari memberships[0] atau ''
   displayName:   string
-  // BARU Sesi #077: status vendor dari JWT (Edge Function v5).
-  // Vendor layout pakai value ini untuk skip query DB user_profiles.status.
-  // Optional karena hanya ada di JWT vendor (SA/AT/Customer = undefined).
-  // Optional juga karena JWT lama (sebelum hook v5) belum punya field ini.
+  isSuperAdmin:  boolean      // NORMALIZED: dari x-is-super-admin (bukan cek role string)
+  memberships:   Array<{ tenant_id: string | null; role: string; status: string }>
   vendorStatus?: string
 }
 
@@ -44,12 +48,21 @@ export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
     const xVendorStatus = headerStore.get('x-vendor-status')
 
     if (xUserId && xUserRole) {
+      const xIsSuperAdmin = headerStore.get('x-is-super-admin')
+      const xMemberships  = headerStore.get('x-user-memberships')
+      let memberships: Array<{ tenant_id: string | null; role: string; status: string }> = []
+      try {
+        if (xMemberships) memberships = JSON.parse(xMemberships)
+      } catch { /* abaikan */ }
+
       return {
-        uid:           xUserId,
-        role:          xUserRole,
-        tenantId:      xTenantId    ?? '',
-        displayName:   xDisplayName ?? xUserId,
-        vendorStatus:  xVendorStatus ?? undefined,
+        uid:          xUserId,
+        role:         xUserRole,
+        tenantId:     xTenantId    ?? '',
+        displayName:  xDisplayName ?? xUserId,
+        isSuperAdmin: xIsSuperAdmin === 'true',
+        memberships,
+        vendorStatus: xVendorStatus ?? undefined,
       }
     }
 
@@ -98,6 +111,8 @@ export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
       displayName: typeof user.user_metadata?.['nama'] === 'string'
         ? user.user_metadata['nama']
         : user.email ?? user.id,
+      isSuperAdmin: false,  // fallback: tidak bisa verifikasi is_super_admin tanpa header
+      memberships:  [],
       vendorStatus,
     }
   } catch {
@@ -117,6 +132,10 @@ export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
 //
 // DIBUAT: Sesi #101 — DRY fix. Menggantikan authSuperAdmin() lokal di setiap route.
 
+// UPDATE 8 Juni 2026 CASE SESI-12 (AUTH Normalized):
+//   Cek isSuperAdmin flag — BUKAN lagi role string === 'SUPERADMIN'
+//   Ref: KEPUTUSAN_AUTH_NORMALIZED_v1.md ATURAN 44
+
 export type RequireSuperAdminResult =
   | { ok: true;  uid: string }
   | { ok: false; res: NextResponse }
@@ -129,7 +148,8 @@ export async function requireSuperAdmin(): Promise<RequireSuperAdminResult> {
       res: NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 }),
     }
   }
-  if (decoded.role !== 'SUPERADMIN') {
+  // NORMALIZED: cek isSuperAdmin flag, BUKAN decoded.role !== 'SUPERADMIN'
+  if (!decoded.isSuperAdmin) {
     return {
       ok:  false,
       res: NextResponse.json({ success: false, message: 'Akses ditolak' }, { status: 403 }),

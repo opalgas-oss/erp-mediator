@@ -8,17 +8,20 @@
 //   - Semua file yang pakai string role literal wajib import dari sini
 //
 // Dibuat: Sesi #049 — Step 6 ANALISIS v3
+// Update: 8 Juni 2026 CASE SESI-12 — nilai diubah ke LOWERCASE (ATURAN 41 + ATURAN 44)
+//   Keputusan Philips: AUTH = Normalized, ROLES = lowercase menyeluruh
+//   Ref: KEPUTUSAN_AUTH_NORMALIZED_v1.md
 
-/** Role yang tersedia di platform */
+/** Role yang tersedia di platform — nilai WAJIB lowercase (ATURAN 41) */
 export const ROLES = {
-  SUPERADMIN:    'SUPERADMIN',
-  ADMIN_TENANT:  'ADMIN_TENANT',
-  VENDOR:        'VENDOR',
-  CUSTOMER:      'CUSTOMER',
-  DISPATCHER:    'DISPATCHER',
-  FINANCE:       'FINANCE',
-  SUPPORT:       'SUPPORT',
-  PLATFORM_OWNER:'PLATFORM_OWNER',
+  SUPERADMIN:    'super_admin',
+  ADMIN_TENANT:  'admin_tenant',
+  VENDOR:        'vendor',
+  CUSTOMER:      'customer',
+  DISPATCHER:    'dispatcher',
+  FINANCE:       'finance',
+  SUPPORT:       'support',
+  PLATFORM_OWNER:'platform_owner',
 } as const
 
 /** Tipe union dari semua role yang valid */

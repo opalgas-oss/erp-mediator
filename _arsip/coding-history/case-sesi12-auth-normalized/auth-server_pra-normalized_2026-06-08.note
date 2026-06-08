@@ -1,0 +1,3 @@
+// ARSIP: lib/auth-server.ts — sebelum fix normalized auth (CASE SESI-12, 8 Juni 2026)
+// Masalah: requireSuperAdmin cek role !== 'SUPERADMIN' (uppercase, flat)
+// Fix: cek isSuperAdmin flag dari JWT (normalized)

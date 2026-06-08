@@ -1,0 +1,6 @@
+// ARSIP: app/dashboard/vendor/layout.tsx — sebelum fix normalized auth
+// Disimpan: 8 Juni 2026 — CASE SESI-12
+// Masalah 1: payload.role !== 'VENDOR' (uppercase flat)
+// Masalah 2: statusVendor.toUpperCase() + VENDOR_LOGIN_ALLOWED.map(s=>s.toUpperCase())
+//            setelah VENDOR_STATUS → lowercase, compare harus lowercase juga
+// Fix: role → cek dari memberships; status compare → lowercase langsung

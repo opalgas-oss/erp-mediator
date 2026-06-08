@@ -1,0 +1,5 @@
+// ARSIP: app/dashboard/superadmin/layout.tsx — sebelum fix normalized auth
+// Disimpan: 8 Juni 2026 — CASE SESI-12
+// Masalah: payload.role !== 'SUPERADMIN' (uppercase, flat)
+// Fix: ganti ke !payload.isSuperAdmin (normalized)
+// Baris kritis: if (!payload || payload.role !== 'SUPERADMIN') redirect('/login')

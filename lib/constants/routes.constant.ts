@@ -35,5 +35,6 @@ export const ROLE_TO_DASHBOARD: Record<string, string> = {
   [ROLES.FINANCE]:        '/dashboard/admin',
   [ROLES.SUPPORT]:        '/dashboard/admin',
   [ROLES.PLATFORM_OWNER]: '/dashboard/owner',
-  'SUPER_ADMIN':          '/dashboard/admin',   // legacy key — backward compat JWT lama
+  // Legacy key 'SUPER_ADMIN' DIHAPUS (8 Juni 2026 CASE SESI-12)
+  // Model normalized: SA dideteksi via is_super_admin flag, bukan string role lama
 }

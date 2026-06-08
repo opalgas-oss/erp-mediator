@@ -11,6 +11,13 @@
 //      Mencegah SA bypass OTP via Supabase JWT yang masih valid (set oleh signInWithPassword)
 //   loginUnifiedAction set otp_pending=1 untuk SA OTP=required
 //   selesaiLogin() hapus otp_pending (document.cookie) setelah OTP diverifikasi
+//
+// PERUBAHAN 8 Juni 2026 CASE SESI-12 (AUTH Normalized — keputusan Philips):
+//   - extractRoleFromAppMeta() (baca app_role flat) DIHAPUS sebagai jalur utama
+//   - Prioritas: is_super_admin flag + memberships[] sebagai sumber utama
+//   - app_role flat dihapus dari semua jalur baca
+//   - Perbandingan role menggunakan ROLES.* (lowercase via roles.constant.ts)
+//   - Ref: KEPUTUSAN_AUTH_NORMALIZED_v1.md ATURAN 44
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse }        from 'next/server'
@@ -47,15 +54,7 @@ interface JwtMembership {
   status:    string
 }
 
-// Helper: extract role + tenantId dari claims/user
-function extractRoleFromAppMeta(appMeta: Record<string, unknown>): { role?: string; tenantId?: string } {
-  return {
-    role:     typeof appMeta['app_role']  === 'string' ? appMeta['app_role']  : undefined,
-    tenantId: typeof appMeta['tenant_id'] === 'string' ? appMeta['tenant_id'] : undefined,
-  }
-}
-
-// Helper: extract memberships + is_super_admin dari JWT payload (S#096)
+// Helper: extract memberships + is_super_admin dari JWT payload
 function extractMembershipsFromPayload(payload: Record<string, unknown>): {
   memberships:  JwtMembership[]
   isSuperAdmin: boolean
@@ -64,6 +63,17 @@ function extractMembershipsFromPayload(payload: Record<string, unknown>): {
   const memberships: JwtMembership[] = Array.isArray(raw) ? (raw as JwtMembership[]) : []
   const isSuperAdmin = payload['is_super_admin'] === true
   return { memberships, isSuperAdmin }
+}
+
+// Helper: tentukan role utama dari memberships (first active)
+// SA tidak ada di memberships — dideteksi via isSuperAdmin flag
+function resolveRoleFromMemberships(memberships: JwtMembership[]): { role?: string; tenantId?: string } {
+  if (memberships.length === 0) return {}
+  const first = memberships[0]
+  return {
+    role:     first.role ?? undefined,
+    tenantId: first.tenant_id ?? undefined,
+  }
 }
 
 // Middleware Utama
@@ -102,18 +112,23 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       )
       const { data: { user: loginUser } } = await supabaseLogin.auth.getUser()
       if (loginUser) {
-        let loginRole = loginUser.app_metadata?.['app_role'] as string | undefined
-        if (!loginRole) {
-          const { data: { session: loginSession } } = await supabaseLogin.auth.getSession()
-          if (loginSession?.access_token) {
-            try {
-              const parts = loginSession.access_token.split('.')
-              if (parts.length === 3) {
-                const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
-                loginRole = payload['app_role'] as string | undefined
+        // NORMALIZED: baca dari JWT memberships + is_super_admin
+        let loginRole: string | undefined
+        const { data: { session: loginSession } } = await supabaseLogin.auth.getSession()
+        if (loginSession?.access_token) {
+          try {
+            const parts = loginSession.access_token.split('.')
+            if (parts.length === 3) {
+              const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+              const { isSuperAdmin, memberships } = extractMembershipsFromPayload(payload)
+              if (isSuperAdmin) {
+                loginRole = ROLES.SUPERADMIN
+              } else {
+                const resolved = resolveRoleFromMemberships(memberships)
+                loginRole = resolved.role
               }
-            } catch { /* abaikan */ }
-          }
+            }
+          } catch { /* abaikan */ }
         }
         if (loginRole === ROLES.VENDOR) return loginResponse
         if (loginRole && ROLE_TO_DASHBOARD[loginRole]) {
@@ -186,28 +201,27 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
           const umeta   = (typeof c['user_metadata'] === 'object' && c['user_metadata'] !== null)
                         ? c['user_metadata'] as Record<string, unknown> : {}
 
-          const extracted = extractRoleFromAppMeta(appMeta)
-          userRole    = extracted.role
-          tenantId    = extracted.tenantId
+          // NORMALIZED: is_super_admin + memberships sebagai jalur utama
+          // app_role flat DIHAPUS
           userId      = typeof c['sub'] === 'string' ? c['sub'] : undefined
           displayName = typeof appMeta['nama']  === 'string' ? appMeta['nama']
                       : typeof umeta['nama']    === 'string' ? umeta['nama']
                       : typeof c['email']       === 'string' ? c['email'] : userId
-          vendorStatus = typeof c['vendor_status']      === 'string' ? c['vendor_status']
-                       : typeof appMeta['vendor_status'] === 'string' ? appMeta['vendor_status'] : undefined
-
           const extracted2 = extractMembershipsFromPayload(c)
           memberships  = extracted2.memberships
           isSuperAdmin = extracted2.isSuperAdmin
 
           if (isSuperAdmin) {
             userRole = ROLES.SUPERADMIN
-          } else if (!userRole && memberships.length > 0) {
-            userRole = memberships[0].role
-            if (!tenantId && memberships[0].tenant_id) {
-              tenantId = memberships[0].tenant_id
-            }
+          } else if (memberships.length > 0) {
+            const resolved = resolveRoleFromMemberships(memberships)
+            userRole  = resolved.role
+            tenantId  = resolved.tenantId ?? tenantId
           }
+
+          // vendorStatus dari claims (bukan role flat)
+          vendorStatus = typeof c['vendor_status']      === 'string' ? c['vendor_status']
+                       : typeof appMeta['vendor_status'] === 'string' ? appMeta['vendor_status'] : undefined
         }
       } catch { /* getClaims() belum tersedia atau RS256 belum aktif -- lanjut ke fallback */ }
 
@@ -220,42 +234,40 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
         }
 
         userId      = user.id
-        userRole    = user.app_metadata?.['app_role'] as string | undefined
-        tenantId    = user.app_metadata?.['tenant_id'] as string | undefined
+        // DEPRECATED: tidak baca app_role flat lagi
+        // app_role = user.app_metadata?.['app_role'] — DIHAPUS
         displayName = typeof user.user_metadata?.['nama'] === 'string'
                     ? user.user_metadata['nama']
                     : user.email ?? user.id
-        vendorStatus = typeof user.app_metadata?.['vendor_status'] === 'string'
-                     ? user.app_metadata['vendor_status'] : undefined
         tokenRefreshNeeded = true
 
-        if (!userRole || !vendorStatus) {
-          const { data: { session } } = await supabase.auth.getSession()
-          if (session?.access_token) {
-            try {
-              const parts = session.access_token.split('.')
-              if (parts.length === 3) {
-                const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
+        // Baca dari JWT payload — normalized
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.access_token) {
+          try {
+            const parts = session.access_token.split('.')
+            if (parts.length === 3) {
+              const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')))
 
-                if (!userRole     && typeof payload['app_role']      === 'string') userRole     = payload['app_role']
-                if (!tenantId     && typeof payload['tenant_id']     === 'string') tenantId     = payload['tenant_id']
-                if (!vendorStatus && typeof payload['vendor_status'] === 'string') vendorStatus = payload['vendor_status']
+              // NORMALIZED: baca memberships + is_super_admin
+              const extracted2 = extractMembershipsFromPayload(payload)
+              memberships  = extracted2.memberships
+              isSuperAdmin = extracted2.isSuperAdmin
 
-                const extracted2 = extractMembershipsFromPayload(payload)
-                memberships  = extracted2.memberships
-                isSuperAdmin = extracted2.isSuperAdmin
-
-                if (isSuperAdmin) {
-                  userRole = ROLES.SUPERADMIN
-                } else if (!userRole && memberships.length > 0) {
-                  userRole = memberships[0].role
-                  if (!tenantId && memberships[0].tenant_id) {
-                    tenantId = memberships[0].tenant_id
-                  }
-                }
+              if (isSuperAdmin) {
+                userRole = ROLES.SUPERADMIN
+              } else if (memberships.length > 0) {
+                const resolved = resolveRoleFromMemberships(memberships)
+                userRole = resolved.role
+                tenantId = resolved.tenantId ?? ''
               }
-            } catch { /* abaikan */ }
-          }
+
+              // vendorStatus dari JWT vendor_status (bukan status yang di-DROP)
+              if (!vendorStatus && typeof payload['vendor_status'] === 'string') {
+                vendorStatus = payload['vendor_status']
+              }
+            }
+          } catch { /* abaikan */ }
         }
       }
 
@@ -264,8 +276,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       }
 
       // Guard B1-04: Vendor blocked status check
+      // vendorStatus = register_status dari user_profiles (diinjeksi v8)
       if (userRole === ROLES.VENDOR && pathname.startsWith('/dashboard/vendor')) {
-        if (vendorStatus && !(VENDOR_LOGIN_ALLOWED as string[]).includes(vendorStatus.toUpperCase())) {
+        if (vendorStatus && !(VENDOR_LOGIN_ALLOWED as string[]).includes(vendorStatus.toLowerCase())) {
           return NextResponse.redirect(new URL('/pending-approval', request.url))
         }
       }
