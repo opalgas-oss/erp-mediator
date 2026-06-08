@@ -107,30 +107,30 @@ export function RolesClient({ initialData }: Props) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-12 text-[12px]">ID</TableHead>
-                <TableHead className="w-36 text-[12px]">Role Code</TableHead>
-                <TableHead className="text-[12px]">Deskripsi</TableHead>
-                <TableHead className="w-40 text-center text-[12px]">Jumlah Permissions</TableHead>
-                <TableHead className="w-44 text-right text-[12px]">Aksi</TableHead>
+                <TableHead className="w-12">ID</TableHead>
+                <TableHead className="w-36">Role Code</TableHead>
+                <TableHead>Deskripsi</TableHead>
+                <TableHead className="w-40 text-center">Jumlah Permissions</TableHead>
+                <TableHead className="w-44 text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {initialData.map(role => (
                 <TableRow key={role.id}>
-                  <TableCell className="text-[13px] text-slate-400">{role.id}</TableCell>
+                  <TableCell className="text-xs text-slate-400">{role.id}</TableCell>
                   <TableCell>
-                    <code className="text-[13px] font-medium bg-slate-100 px-1.5 py-0.5 rounded">
+                    <code className="text-sm font-medium bg-slate-100 px-1.5 py-0.5 rounded">
                       {role.code}
                     </code>
                   </TableCell>
-                  <TableCell className="text-[13px] text-slate-600">
+                  <TableCell className="text-sm text-slate-600">
                     {ROLE_LABEL[role.code] ?? role.code}
                     {role.description && (
                       <span className="text-slate-400"> — {role.description}</span>
                     )}
                   </TableCell>
                   <TableCell className="text-center">
-                    <Badge variant="secondary" className="text-[13px]">
+                    <Badge variant="secondary">
                       {role.permission_count} permissions
                     </Badge>
                   </TableCell>
@@ -165,7 +165,7 @@ export function RolesClient({ initialData }: Props) {
                 placeholder="contoh: order.refund"
                 value={codeInput}
                 onChange={e => setCodeInput(e.target.value)}
-                className="font-mono h-9 py-2 px-3 text-[13px]"
+                className="font-mono"
               />
               <p className="text-xs text-slate-400">
                 Format: {'{resource}.{action}'} — huruf kecil, titik sebagai pemisah.
@@ -180,7 +180,6 @@ export function RolesClient({ initialData }: Props) {
                 placeholder="contoh: Proses refund pesanan"
                 value={descInput}
                 onChange={e => setDescInput(e.target.value)}
-                className="h-9 py-2 px-3 text-[13px]"
               />
             </div>
           </div>

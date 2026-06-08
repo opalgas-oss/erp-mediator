@@ -166,10 +166,10 @@ export function PermissionsClient({ initialData }: Props) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-48">Code</TableHead>
-                <TableHead>Deskripsi</TableHead>
-                <TableHead className="w-56">Dipakai Oleh</TableHead>
-                <TableHead className="w-20 text-right">Aksi</TableHead>
+                <TableHead className="w-48 text-[12px]">Code</TableHead>
+                <TableHead className="text-[12px]">Deskripsi</TableHead>
+                <TableHead className="w-56 text-[12px]">Dipakai Oleh</TableHead>
+                <TableHead className="w-20 text-right text-[12px]">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -183,11 +183,11 @@ export function PermissionsClient({ initialData }: Props) {
                 filtered.map(p => (
                   <TableRow key={p.id}>
                     <TableCell>
-                      <code className="text-xs font-medium text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded">
+                      <code className="text-[13px] font-medium text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded">
                         {p.code}
                       </code>
                     </TableCell>
-                    <TableCell className="text-sm text-slate-600">
+                    <TableCell className="text-[13px] text-slate-600">
                       {p.description ?? <span className="text-slate-300 italic">—</span>}
                     </TableCell>
                     <TableCell>
@@ -198,7 +198,7 @@ export function PermissionsClient({ initialData }: Props) {
                           p.roles.map(r => (
                             <span
                               key={r.id}
-                              className={`text-xs px-1.5 py-0.5 rounded font-medium ${ROLE_BADGE_CLASS[r.code] ?? 'bg-slate-100 text-slate-600'}`}
+                              className={`text-[13px] px-1.5 py-0.5 rounded font-medium ${ROLE_BADGE_CLASS[r.code] ?? 'bg-slate-100 text-slate-600'}`}
                             >
                               {r.code}
                             </span>
@@ -238,7 +238,7 @@ export function PermissionsClient({ initialData }: Props) {
                 placeholder="contoh: order.refund"
                 value={addCode}
                 onChange={e => setAddCode(e.target.value)}
-                className="font-mono"
+                className="font-mono h-9 py-2 px-3 text-[13px]"
               />
               <p className="text-xs text-slate-400">
                 Format: {'{resource}.{action}'} — huruf kecil, titik sebagai pemisah.
@@ -251,6 +251,7 @@ export function PermissionsClient({ initialData }: Props) {
                 placeholder="contoh: Proses refund pesanan"
                 value={addDesc}
                 onChange={e => setAddDesc(e.target.value)}
+                className="h-9 py-2 px-3 text-[13px]"
               />
             </div>
           </div>

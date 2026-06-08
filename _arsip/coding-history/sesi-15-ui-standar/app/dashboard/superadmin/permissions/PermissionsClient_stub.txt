@@ -1,0 +1,2 @@
+// ARSIP pra-sesi-15-ui-standar — PermissionsClient.tsx
+// File aktif: app/dashboard/superadmin/permissions/PermissionsClient.tsx

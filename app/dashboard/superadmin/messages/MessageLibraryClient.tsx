@@ -239,10 +239,10 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
           placeholder="Cari key atau teks..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="h-8 text-sm w-full sm:w-64"
+          className="h-9 py-2 px-3 text-[13px] w-full sm:w-64"
         />
         <Select value={katFilter} onValueChange={setKatFilter}>
-          <SelectTrigger className="h-8 text-sm w-full sm:w-48">
+          <SelectTrigger className="h-9 text-[13px] w-full sm:w-48">
             <SelectValue placeholder="Semua Kategori" />
           </SelectTrigger>
           <SelectContent>
@@ -300,21 +300,21 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
             ) : (
               sorted.map(msg => (
                 <TableRow key={msg.id} className="hover:bg-slate-50/50">
-                  <TableCell className="py-2">
-                    <span className="font-mono text-xs text-slate-700 break-all">{msg.key}</span>
+                  <TableCell className="py-3 px-3.5">
+                    <span className="font-mono text-[13px] text-slate-700 break-all">{msg.key}</span>
                   </TableCell>
-                  <TableCell className="py-2">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${resolveKategoriColor(msg.kategori)}`}>
+                  <TableCell className="py-3 px-3.5">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[13px] font-medium ${resolveKategoriColor(msg.kategori)}`}>
                       {msg.kategori}
                     </span>
                   </TableCell>
-                  <TableCell className="py-2">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${resolveChannelColor(msg.channel)}`}>
+                  <TableCell className="py-3 px-3.5">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[13px] font-medium ${resolveChannelColor(msg.channel)}`}>
                       {msg.channel}
                     </span>
                   </TableCell>
-                  <TableCell className="py-2">
-                    <span className="text-xs text-slate-600 line-clamp-2 break-all">
+                  <TableCell className="py-3 px-3.5">
+                    <span className="text-[13px] text-slate-600 line-clamp-2 break-all">
                       {msg.teks.length > 80 ? msg.teks.slice(0, 80) + '…' : msg.teks}
                     </span>
                     {msg.variabel.length > 0 && (
@@ -327,8 +327,8 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className={`py-2 ${TYPOGRAPHY.caption}`}>{formatDateIdShort(msg.updated_at)}</TableCell>
-                  <TableCell className="py-2 text-right">
+                  <TableCell className={`py-3 px-3.5 ${TYPOGRAPHY.caption}`}>{formatDateIdShort(msg.updated_at)}</TableCell>
+                  <TableCell className="py-3 px-3.5 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Button
                         variant="ghost"
