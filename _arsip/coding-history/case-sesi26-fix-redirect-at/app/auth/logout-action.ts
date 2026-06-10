@@ -26,22 +26,10 @@ import { after }                 from 'next/server'
 import { buatSupabaseSSR }       from '@/app/login/login-action-helpers'
 import { markLogout }            from '@/lib/services/session.service'
 import { SESSION_COOKIE_NAMES }  from '@/lib/constants/session.constant'
-import { ROLES }                 from '@/lib/constants'
 import {
   setUserOffline,
   writeActivityLog,
 } from '@/lib/services/activity.service'
-
-// Mapping role → pintu login masing-masing (sesuai BLUEPRINT_LOGIN_4_PINTU)
-const ROLE_LOGIN_PATH: Record<string, string> = {
-  [ROLES.SUPERADMIN]:   '/sa/masuk',
-  [ROLES.ADMIN_TENANT]: '/kelola/masuk',
-  [ROLES.VENDOR]:       '/login',
-  [ROLES.CUSTOMER]:     '/login',
-}
-function tujuanLogout(role: string): string {
-  return ROLE_LOGIN_PATH[role] ?? '/login'
-}
 
 export async function logoutAction(): Promise<void> {
   const { supabase, cookieStore } = await buatSupabaseSSR()
@@ -91,7 +79,6 @@ export async function logoutAction(): Promise<void> {
     })
   }
 
-  // Full page navigation ke pintu login per role — aman dari Supabase client cache issue
-  // SA → /sa/masuk | AT → /kelola/masuk | Vendor/Customer → /login
-  redirect(tujuanLogout(role))
+  // Full page navigation ke login — aman dari Supabase client cache issue
+  redirect('/login')
 }

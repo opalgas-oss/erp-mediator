@@ -195,7 +195,7 @@ export function hitungTujuanRedirectServer(role: string, redirectTo?: string): s
   const ROLE_DASHBOARD: Record<string, string> = {
     [ROLES.SUPERADMIN]:   '/dashboard/superadmin',
     [ROLES.VENDOR]:       '/dashboard/vendor',
-    [ROLES.ADMIN_TENANT]: '/dashboard/admintenant',
+    [ROLES.ADMIN_TENANT]: '/dashboard/admin',
     [ROLES.CUSTOMER]:     '/dashboard/customer',
   }
   return ROLE_DASHBOARD[role] ?? '/dashboard'
