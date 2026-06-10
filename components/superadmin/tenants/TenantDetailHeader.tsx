@@ -202,14 +202,16 @@ export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, 
         </div>
 
         {/* Tab navigation — bagian dari card, borderTop sebagai pemisah */}
-        <div style={{
-          display: 'flex',
-          overflowX: 'auto',
-          borderTopWidth: '0.5px',
-          borderTopStyle: 'solid',
-          borderTopColor: 'rgba(0,0,0,0.12)',
-          padding: '0 1.25rem',
-        }}>
+        <div
+          className="hide-scrollbar"
+          style={{
+            display: 'flex',
+            overflowX: 'auto',
+            borderTopWidth: '0.5px',
+            borderTopStyle: 'solid',
+            borderTopColor: 'rgba(0,0,0,0.12)',
+            padding: '0 1.25rem',
+          }}>
           {TABS.map(tab => {
             const isActive = activeTab === tab.id
             return (
