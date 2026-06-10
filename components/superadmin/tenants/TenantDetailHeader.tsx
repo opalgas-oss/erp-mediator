@@ -37,15 +37,16 @@ const TIER_STYLE: Record<TenantTier, { bg: string; text: string; border: string;
 
 // ─── Tipe tab ─────────────────────────────────────────────────────────────────
 
-export type TenantTabId = 'info' | 'kontrak' | 'kategori' | 'admintenant' | 'user' | 'config'
+export type TenantTabId = 'info' | 'kontrak' | 'kategori' | 'admintenant' | 'user' | 'config' | 'aksesmenu'
 
 const TABS: { id: TenantTabId; label: string }[] = [
-  { id: 'info',     label: 'Info Umum' },
-  { id: 'kontrak',  label: 'Kontrak Sewa' },
-  { id: 'kategori', label: 'Kategori' },
-  { id: 'admintenant', label: 'AdminTenant' },
-  { id: 'user',     label: 'User Tenant' },
-  { id: 'config',   label: 'Override Config' },
+  { id: 'info',       label: 'Info Umum' },
+  { id: 'kontrak',    label: 'Kontrak Sewa' },
+  { id: 'kategori',   label: 'Kategori' },
+  { id: 'admintenant',label: 'AdminTenant' },
+  { id: 'user',       label: 'User Tenant' },
+  { id: 'config',     label: 'Override Config' },
+  { id: 'aksesmenu',  label: 'Akses Menu AT' },
 ]
 
 // ─── Props ────────────────────────────────────────────────────────────────────

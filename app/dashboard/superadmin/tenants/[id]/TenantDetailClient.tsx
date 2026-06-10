@@ -14,6 +14,7 @@ import { TabKategori }       from './TabKategori'
 import { TabAdminTenantHistory } from './TabAdminTenantHistory'
 import { TabUserTenant }     from './TabUserTenant'
 import { TabOverrideConfig } from './TabOverrideConfig'
+import { TabAksesMenuAT }    from './TabAksesMenuAT'
 import type { Tenant }       from '@/lib/types/tenant.types'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ export function TenantDetailClient({ tenant: initialTenant }: Props) {
         {activeTab === 'admintenant' && <TabAdminTenantHistory tenantId={tenant.id} tenantNama={tenant.nama_brand ?? ''} />}
         {activeTab === 'user'     && <TabUserTenant    tenantId={tenant.id} tier={tenant.tier} />}
         {activeTab === 'config'   && <TabOverrideConfig tenantId={tenant.id} />}
+        {activeTab === 'aksesmenu' && <TabAksesMenuAT  tenantId={tenant.id} tenantNama={tenant.nama_brand ?? ''} />}
       </div>
     </div>
   )
