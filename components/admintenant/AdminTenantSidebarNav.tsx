@@ -16,6 +16,8 @@ import { usePathname }            from 'next/navigation'
 import { useState }               from 'react'
 import { logoutAction }           from '@/app/auth/logout-action'
 import { useMobileSidebar }       from '@/components/DashboardShell'
+import { useGpsInfo }             from '@/lib/hooks/useGpsInfo'
+import { ICON_NAV }               from '@/lib/constants/icons.constant'
 
 // ─── Tipe Menu ────────────────────────────────────────────────────────────────
 
@@ -86,6 +88,7 @@ export function AdminTenantSidebarNav({
   const pathname  = usePathname()
   const { mobileOpen, onMobileClose } = useMobileSidebar()
   const [loading, setLoading] = useState(false)
+  const gpsInfo = useGpsInfo('Lokasi tidak tersedia')
 
   async function handleLogout() {
     setLoading(true)
@@ -168,6 +171,24 @@ export function AdminTenantSidebarNav({
             </div>
           ))}
         </nav>
+
+        {/* Footer — GPS info */}
+        <div className="px-4 py-3 shrink-0"
+          style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="flex items-start gap-1.5">
+            <ICON_NAV.gps size={12} className="shrink-0 mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }} />
+            <div>
+              <p className="text-[11px] leading-tight" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                {gpsInfo.kota}
+              </p>
+              {gpsInfo.loginAt && (
+                <p className="text-[11px] leading-tight mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                  Login {gpsInfo.loginAt}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* Footer — info user + tombol keluar */}
         <div className="shrink-0 p-3"
