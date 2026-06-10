@@ -1,18 +1,17 @@
-// app/kelola/masuk/page.tsx
+// app/at/masuk/page.tsx
 // Pintu Login AdminTenant — BLUEPRINT_LOGIN_4_PINTU_v1 Langkah 2d
 // Dibuat: CASE SESI-25 — 10 Juni 2026
+// Renamed: CASE SESI-26 — /kelola/masuk → /at/masuk (lebih singkat, konsisten SA=/sa/masuk)
 //
 // Pintu ini KHUSUS untuk AdminTenant.
 // Tidak ditautkan dari homepage publik (BR-03 — keamanan).
-// URL Opsi A: /kelola/masuk
+// URL: /at/masuk
 //
 // Clone verbatim dari app/login/page.tsx dengan perbedaan:
 //   1. Header komentar + identitas pintu
 //   2. useLoginFlow menerima doorRole='admin_tenant' (saat hook siap)
 //      Saat ini hook belum diupdate — akan dikerjakan saat HUTANG-SPLIT-USELOGINFLOW
 //   3. Setelah login berhasil → redirect ke /dashboard/admintenant (via hitungTujuanRedirectServer)
-//      CATATAN: hitungTujuanRedirectServer masih redirect ke /dashboard/admin (salah).
-//      Fix redirect path dikerjakan bersama middleware update (BLUEPRINT-LOGIN-4-PINTU Langkah 2f).
 //
 // Komponen UI sepenuhnya reuse dari app/login/components/ (TDD Bagian 5.1 + 5.3)
 
@@ -33,8 +32,6 @@ import { StatusRegistrasiModal } from '@/app/login/components/StatusRegistrasiMo
 function LoginOrchestrator() {
   const flow = useLoginFlow()
 
-  // Tentukan konten stage aktif sebagai variabel — modal harus bisa tampil di semua tahap
-  // HUTANG-LOGIN-STATUS-POPUP S#213: StatusRegistrasiModal dirender di luar conditional stage
   let konten: React.ReactNode
 
   if (flow.tahap === 'LOADING' || flow.tahap === 'SELESAI') {
@@ -60,7 +57,6 @@ function LoginOrchestrator() {
       onOtpChange={flow.setOtpInput} onVerifikasi={flow.handleVerifikasiOTP} onKirimUlang={flow.handleKirimUlangOTP}
       m={flow.m} />
   } else if (flow.isOtpOnlyMode && flow.tahap === 'KREDENSIAL') {
-    // otp_only mode: tampilkan form nomor HP sebagai pengganti password (S#209)
     konten = <LoginFormOtpOnly
       nomorHp={flow.nomorHp}
       isLoading={flow.isLoading}
@@ -71,7 +67,6 @@ function LoginOrchestrator() {
       m={flow.m}
     />
   } else {
-    // Default: KREDENSIAL — form email + password
     konten = <LoginFormStage email={flow.email} password={flow.password} tampilPassword={flow.tampilPassword}
       errorEmail={flow.errorEmail} errorPassword={flow.errorPassword} isLoading={flow.isLoading}
       error={flow.error} akunDikunci={flow.akunDikunci} waktuKunci={flow.waktuKunci} gpsKota={flow.gpsKota}

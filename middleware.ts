@@ -47,7 +47,7 @@ const PUBLIC_PATHS: string[] = [
   '/auth/verify',
   // BLUEPRINT_LOGIN_4_PINTU_v1 — pintu terpisah SA + AT (Opsi A path-based)
   '/sa/masuk',
-  '/kelola/masuk',
+  '/at/masuk',
 ]
 
 const STATIC_EXTENSIONS = /\.(png|jpg|jpeg|svg|ico|css|js|webp|woff|woff2|ttf)$/i
@@ -200,7 +200,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     }
 
     // Guard 1B -- Pintu AT: cek apakah user sudah authenticated
-    if (pathname === '/kelola/masuk') {
+    if (pathname === '/at/masuk') {
       if (request.cookies.get('otp_pending')?.value === '1') {
         return NextResponse.next()
       }

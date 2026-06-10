@@ -35,7 +35,7 @@ import {
 // Mapping role → pintu login masing-masing (sesuai BLUEPRINT_LOGIN_4_PINTU)
 const ROLE_LOGIN_PATH: Record<string, string> = {
   [ROLES.SUPERADMIN]:   '/sa/masuk',
-  [ROLES.ADMIN_TENANT]: '/kelola/masuk',
+  [ROLES.ADMIN_TENANT]: '/at/masuk',
   [ROLES.VENDOR]:       '/login',
   [ROLES.CUSTOMER]:     '/login',
 }
