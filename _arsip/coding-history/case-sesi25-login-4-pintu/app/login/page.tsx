@@ -1,18 +1,21 @@
+// ARSIP — app/login/page.tsx
+// Snapshot sebelum pemisahan login 4 pintu (CASE SESI-25, 10 Juni 2026)
+// Alasan arsip: app/login/page.tsx diarsipkan setelah pintu SA (app/sa/masuk/)
+// dan pintu AT (app/kelola/masuk/) dibuat. File asli diganti placeholder redirect.
+// ─────────────────────────────────────────────────────────────────────────────
+
 // app/login/page.tsx
-// Pintu Login Customer + Vendor — via homepage publik
-// BLUEPRINT_LOGIN_4_PINTU_v1 (FSD Bagian 2 + 3)
-// Diupdate: CASE SESI-25 — 10 Juni 2026
+// Orchestrator halaman login — < 50 baris
+// Semua logic ada di lib/hooks/useLoginFlow.ts
+// Semua UI ada di app/login/components/*.tsx
 //
-// Pintu SA dan AT sudah dipisah:
-//   - SuperAdmin  → /sa/masuk      (app/sa/masuk/page.tsx)
-//   - AdminTenant → /kelola/masuk  (app/kelola/masuk/page.tsx)
+// REFACTOR Sesi #049 — Step 5 ANALISIS v3:
+//   Sebelumnya: 39.27 KB monolith (700+ baris)
+//   Sekarang:   orchestrator yang import hook + render stage component
 //
-// Halaman ini sekarang khusus untuk Customer + Vendor (publik).
-// Sementara homepage belum dibangun, /login tetap bisa diakses langsung.
-// Semua komponen reuse dari app/login/components/ — tidak ada perubahan UI.
-//
-// File asli (sebelum pemisahan) diarsipkan di:
-//   _arsip/coding-history/case-sesi25-login-4-pintu/app/login/page.tsx
+// REFACTOR Sesi #062:
+//   BiometricStage dihapus dari login flow (keputusan Philips Sesi #061).
+//   Login post-OTP langsung masuk dashboard via selesaiLogin() di hook.
 
 'use client'
 
@@ -31,8 +34,6 @@ import { StatusRegistrasiModal } from './components/StatusRegistrasiModal'
 function LoginOrchestrator() {
   const flow = useLoginFlow()
 
-  // Tentukan konten stage aktif sebagai variabel — modal harus bisa tampil di semua tahap
-  // HUTANG-LOGIN-STATUS-POPUP S#213: StatusRegistrasiModal dirender di luar conditional stage
   let konten: React.ReactNode
 
   if (flow.tahap === 'LOADING' || flow.tahap === 'SELESAI') {
@@ -58,7 +59,6 @@ function LoginOrchestrator() {
       onOtpChange={flow.setOtpInput} onVerifikasi={flow.handleVerifikasiOTP} onKirimUlang={flow.handleKirimUlangOTP}
       m={flow.m} />
   } else if (flow.isOtpOnlyMode && flow.tahap === 'KREDENSIAL') {
-    // otp_only mode: tampilkan form nomor HP sebagai pengganti password (S#209)
     konten = <LoginFormOtpOnly
       nomorHp={flow.nomorHp}
       isLoading={flow.isLoading}
@@ -69,7 +69,6 @@ function LoginOrchestrator() {
       m={flow.m}
     />
   } else {
-    // Default: KREDENSIAL — form email + password
     konten = <LoginFormStage email={flow.email} password={flow.password} tampilPassword={flow.tampilPassword}
       errorEmail={flow.errorEmail} errorPassword={flow.errorPassword} isLoading={flow.isLoading}
       error={flow.error} akunDikunci={flow.akunDikunci} waktuKunci={flow.waktuKunci} gpsKota={flow.gpsKota}

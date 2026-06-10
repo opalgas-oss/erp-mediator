@@ -1,32 +1,32 @@
-// app/login/page.tsx
-// Pintu Login Customer + Vendor — via homepage publik
-// BLUEPRINT_LOGIN_4_PINTU_v1 (FSD Bagian 2 + 3)
-// Diupdate: CASE SESI-25 — 10 Juni 2026
+// app/sa/masuk/page.tsx
+// Pintu Login SuperAdmin — BLUEPRINT_LOGIN_4_PINTU_v1 Langkah 2e
+// Dibuat: CASE SESI-25 — 10 Juni 2026
 //
-// Pintu SA dan AT sudah dipisah:
-//   - SuperAdmin  → /sa/masuk      (app/sa/masuk/page.tsx)
-//   - AdminTenant → /kelola/masuk  (app/kelola/masuk/page.tsx)
+// Pintu ini KHUSUS untuk SuperAdmin.
+// Tidak ditautkan dari homepage publik (BR-03 — keamanan).
+// URL Opsi A: /sa/masuk
 //
-// Halaman ini sekarang khusus untuk Customer + Vendor (publik).
-// Sementara homepage belum dibangun, /login tetap bisa diakses langsung.
-// Semua komponen reuse dari app/login/components/ — tidak ada perubahan UI.
+// Clone verbatim dari app/login/page.tsx dengan perbedaan:
+//   1. Header komentar + identitas pintu
+//   2. useLoginFlow menerima doorRole='super_admin' (saat hook siap)
+//      Saat ini hook belum diupdate — akan dikerjakan saat HUTANG-SPLIT-USELOGINFLOW
+//   3. File ini adalah pintu tetap — app/login/page.tsx diarsipkan setelah ini selesai
 //
-// File asli (sebelum pemisahan) diarsipkan di:
-//   _arsip/coding-history/case-sesi25-login-4-pintu/app/login/page.tsx
+// Komponen UI sepenuhnya reuse dari app/login/components/ (TDD Bagian 5.1 + 5.3)
 
 'use client'
 
 import { Suspense }           from 'react'
 import React                  from 'react'
 import { useLoginFlow }       from '@/lib/hooks/useLoginFlow'
-import { Wrapper, SpinnerBiru } from './components/shared'
+import { Wrapper, SpinnerBiru } from '@/app/login/components/shared'
 import { CardContent }        from '@/components/ui/card'
-import { LoginFormStage }     from './components/LoginFormStage'
-import { SesiParalelStage }   from './components/SesiParalelStage'
-import { RoleSelectorStage }  from './components/RoleSelectorStage'
-import { OTPStage }           from './components/OTPStage'
-import { LoginFormOtpOnly }   from './components/LoginFormOtpOnly'
-import { StatusRegistrasiModal } from './components/StatusRegistrasiModal'
+import { LoginFormStage }     from '@/app/login/components/LoginFormStage'
+import { SesiParalelStage }   from '@/app/login/components/SesiParalelStage'
+import { RoleSelectorStage }  from '@/app/login/components/RoleSelectorStage'
+import { OTPStage }           from '@/app/login/components/OTPStage'
+import { LoginFormOtpOnly }   from '@/app/login/components/LoginFormOtpOnly'
+import { StatusRegistrasiModal } from '@/app/login/components/StatusRegistrasiModal'
 
 function LoginOrchestrator() {
   const flow = useLoginFlow()
@@ -91,7 +91,7 @@ function LoginOrchestrator() {
   )
 }
 
-export default function LoginPage() {
+export default function LoginSuperAdminPage() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
       <LoginOrchestrator />

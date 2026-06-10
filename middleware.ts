@@ -23,6 +23,11 @@
 //   - Guard 5 hanya cover /dashboard — API route tidak dapat header x-is-super-admin
 //   - requireSuperAdmin() di semua API route SA selalu return 401 karena header kosong
 //   - Fix: Guard 6 inject auth headers ke /api/superadmin/* dan /api/admintenant/*
+//
+// TAMBAH 10 Juni 2026 CASE SESI-25 — Pintu login 4 pintu (BLUEPRINT_LOGIN_4_PINTU_v1):
+//   - /sa/masuk     → pintu SuperAdmin (tidak dari homepage)
+//   - /kelola/masuk → pintu AdminTenant (tidak dari homepage)
+//   - PUBLIC_PATHS + Guard 1B diperluas untuk 2 path baru ini
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse }        from 'next/server'
@@ -40,6 +45,9 @@ const PUBLIC_PATHS: string[] = [
   '/reset-password',
   '/auth/confirm',
   '/auth/verify',
+  // BLUEPRINT_LOGIN_4_PINTU_v1 — pintu terpisah SA + AT (Opsi A path-based)
+  '/sa/masuk',
+  '/kelola/masuk',
 ]
 
 const STATIC_EXTENSIONS = /\.(png|jpg|jpeg|svg|ico|css|js|webp|woff|woff2|ttf)$/i
@@ -155,7 +163,72 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     const { pathname } = request.nextUrl
 
     // Guard 1 -- Route publik eksak langsung izinkan
-    if (PUBLIC_PATHS.includes(pathname) && pathname !== '/login') return NextResponse.next()
+    if (PUBLIC_PATHS.includes(pathname) && pathname !== '/login'
+        && pathname !== '/sa/masuk' && pathname !== '/kelola/masuk') return NextResponse.next()
+
+    // Guard 1B -- Pintu SA: cek apakah user sudah authenticated
+    if (pathname === '/sa/masuk') {
+      if (request.cookies.get('otp_pending')?.value === '1') {
+        return NextResponse.next()
+      }
+      let saMasukResponse = NextResponse.next({ request })
+      const supabaseSA = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            getAll() { return request.cookies.getAll() },
+            setAll(cookiesToSet) {
+              cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+              saMasukResponse = NextResponse.next({ request })
+              cookiesToSet.forEach(({ name, value, options }) =>
+                saMasukResponse.cookies.set(name, value, options)
+              )
+            },
+          },
+        }
+      )
+      const { data: { user: saMasukUser } } = await supabaseSA.auth.getUser()
+      if (saMasukUser) {
+        const { role: saMasukRole } = await decodeJwtFromSession(supabaseSA)
+        if (saMasukRole === ROLES.SUPERADMIN && ROLE_TO_DASHBOARD[ROLES.SUPERADMIN]) {
+          return NextResponse.redirect(new URL(ROLE_TO_DASHBOARD[ROLES.SUPERADMIN], request.url))
+        }
+      }
+      return saMasukResponse
+    }
+
+    // Guard 1B -- Pintu AT: cek apakah user sudah authenticated
+    if (pathname === '/kelola/masuk') {
+      if (request.cookies.get('otp_pending')?.value === '1') {
+        return NextResponse.next()
+      }
+      let atMasukResponse = NextResponse.next({ request })
+      const supabaseAT = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            getAll() { return request.cookies.getAll() },
+            setAll(cookiesToSet) {
+              cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+              atMasukResponse = NextResponse.next({ request })
+              cookiesToSet.forEach(({ name, value, options }) =>
+                atMasukResponse.cookies.set(name, value, options)
+              )
+            },
+          },
+        }
+      )
+      const { data: { user: atMasukUser } } = await supabaseAT.auth.getUser()
+      if (atMasukUser) {
+        const { role: atMasukRole } = await decodeJwtFromSession(supabaseAT)
+        if (atMasukRole === ROLES.ADMIN_TENANT && ROLE_TO_DASHBOARD[ROLES.ADMIN_TENANT]) {
+          return NextResponse.redirect(new URL(ROLE_TO_DASHBOARD[ROLES.ADMIN_TENANT], request.url))
+        }
+      }
+      return atMasukResponse
+    }
 
     // Guard 1B -- /login khusus: cek apakah user sudah authenticated
     if (pathname === '/login') {
