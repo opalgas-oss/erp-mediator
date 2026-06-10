@@ -276,10 +276,15 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     // Guard 4 -- Favicon
     if (pathname === '/favicon.ico') return NextResponse.next()
 
-    // Guard 6 -- /api/superadmin/* dan /api/admintenant/* — inject auth headers
+    // Guard 6 -- /api/superadmin/* + /api/admintenant/* + /api/config/* — inject auth headers
     // FIX: tanpa guard ini, requireSuperAdmin() di semua API route SA return 401
     // karena header x-is-super-admin tidak pernah di-set (hanya Guard 5 /dashboard yang set)
-    if (pathname.startsWith('/api/superadmin/') || pathname.startsWith('/api/admintenant/')) {
+    // /api/config/* ditambahkan CASE SESI-27: route ini juga butuh requireSuperAdmin()
+    if (
+      pathname.startsWith('/api/superadmin/') ||
+      pathname.startsWith('/api/admintenant/') ||
+      pathname.startsWith('/api/config/')
+    ) {
       const supabaseApi = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
