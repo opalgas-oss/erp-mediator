@@ -28,12 +28,12 @@ import { ROLES } from './roles.constant'
  */
 export const ROLE_TO_DASHBOARD: Record<string, string> = {
   [ROLES.SUPERADMIN]:     '/dashboard/superadmin',
-  [ROLES.ADMIN_TENANT]:   '/dashboard/admintenant',
+  [ROLES.ADMIN_TENANT]:   '/dashboard/admin',
   [ROLES.VENDOR]:         '/dashboard/vendor',
   [ROLES.CUSTOMER]:       '/dashboard/customer',
-  [ROLES.DISPATCHER]:     '/dashboard/admintenant',
-  [ROLES.FINANCE]:        '/dashboard/admintenant',
-  [ROLES.SUPPORT]:        '/dashboard/admintenant',
+  [ROLES.DISPATCHER]:     '/dashboard/admin',
+  [ROLES.FINANCE]:        '/dashboard/admin',
+  [ROLES.SUPPORT]:        '/dashboard/admin',
   [ROLES.PLATFORM_OWNER]: '/dashboard/owner',
   // Legacy key 'SUPER_ADMIN' DIHAPUS (8 Juni 2026 CASE SESI-12)
   // Model normalized: SA dideteksi via is_super_admin flag, bukan string role lama

@@ -54,10 +54,11 @@ const STATIC_EXTENSIONS = /\.(png|jpg|jpeg|svg|ico|css|js|webp|woff|woff2|ttf)$/
 
 // Pemetaan Dashboard per Role
 const DASHBOARD_ROLE_MAP: Record<string, string> = {
-  '/dashboard/customer':   ROLES.CUSTOMER,
-  '/dashboard/vendor':     ROLES.VENDOR,
-  '/dashboard/admin':      ROLES.ADMIN_TENANT,
-  '/dashboard/superadmin': ROLES.SUPERADMIN,
+  '/dashboard/customer':    ROLES.CUSTOMER,
+  '/dashboard/vendor':      ROLES.VENDOR,
+  '/dashboard/admin':       ROLES.ADMIN_TENANT,
+  '/dashboard/admintenant': ROLES.ADMIN_TENANT,
+  '/dashboard/superadmin':  ROLES.SUPERADMIN,
 }
 
 // Tipe membership dari JWT baru (Edge Function v7)
