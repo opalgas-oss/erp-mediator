@@ -19,7 +19,7 @@
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { revalidateTag }              from 'next/cache'
-import { verifyJWT }                  from '@/lib/auth-server'
+import { requireSuperAdmin }          from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getConfigValue, invalidateConfigCache } from '@/lib/config-registry'
 import { getRedisClient, REDIS_TTL }  from '@/lib/redis'
@@ -103,15 +103,9 @@ export async function PATCH(
   { params }: { params: Promise<{ feature_key: string }> }
 ) {
   try {
-    const decoded = await verifyJWT()
-    if (!decoded) {
-      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
-    }
-
-    const role = decoded.role
-    if (role !== 'SUPERADMIN' && role !== 'ADMIN_TENANT') {
-      return NextResponse.json({ success: false, message: 'Akses ditolak' }, { status: 403 })
-    }
+    const auth = await requireSuperAdmin()
+    if (!auth.ok) return auth.res
+    const uid = auth.uid
 
     const { feature_key } = await params
     const payload = await request.json()
@@ -120,13 +114,13 @@ export async function PATCH(
       return NextResponse.json({ success: false, message: 'Field id dan nilai wajib ada' }, { status: 400 })
     }
 
-    const db = createServerSupabaseClient()
+    const db = await createServerSupabaseClient()
     const { error } = await db
       .from('config_registry')
       .update({
         nilai:      String(payload.nilai),
         updated_at: new Date().toISOString(),
-        updated_by: decoded.uid,
+        updated_by: uid,
       })
       .eq('id', payload.id)
       .eq('feature_key', feature_key)

@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { revalidateTag }              from 'next/cache'
-import { verifyJWT }                  from '@/lib/auth-server'
+import { requireSuperAdmin }          from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { invalidateConfigCache }      from '@/lib/config-registry'
 import { getRedisClient }             from '@/lib/redis'
@@ -26,14 +26,10 @@ interface UpdateItem {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    // Autentikasi — hanya SUPERADMIN
-    const decoded = await verifyJWT()
-    if (!decoded) {
-      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
-    }
-    if (decoded.role !== 'SUPERADMIN') {
-      return NextResponse.json({ success: false, message: 'Akses ditolak' }, { status: 403 })
-    }
+    // Autentikasi — hanya SUPERADMIN (pakai requireSuperAdmin, FIX: role lowercase ATURAN 41)
+    const auth = await requireSuperAdmin()
+    if (!auth.ok) return auth.res
+    const uid = auth.uid
 
     // Validasi payload
     const payload = await request.json() as { updates?: unknown }
@@ -63,10 +59,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Panggil sp_bulk_update_config — atomic: rollback semua kalau ada yang gagal
-    const db = createServerSupabaseClient()
+    const db = await createServerSupabaseClient()
     const { data, error } = await db.rpc('sp_bulk_update_config', {
       p_updates:  updates,
-      p_oleh_uid: decoded.uid,
+      p_oleh_uid: uid,
     })
 
     if (error) {
