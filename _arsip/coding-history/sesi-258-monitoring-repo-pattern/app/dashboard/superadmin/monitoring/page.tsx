@@ -9,20 +9,13 @@
 //   - Format sebagai ConfigGroup[] dengan mapTipe + mapValue
 //   - Pass sebagai prop initialMonitoringConfig ke MonitoringClient
 //   - SA bisa edit threshold, interval, WA/email alert langsung dari halaman ini
-// Fix S#258 — T-S258-02 (Repository Pattern):
-//   - Hapus direct db.from('config_registry') di RSC page (pelanggaran identik PV-09/PV-10
-//     yang sudah difix S#177 di settings pages, tapi monitoring TERLEWAT)
-//   - Ganti dengan getConfigPageItems('monitoring') dari lib/config-registry
-//   - Hapus import createServerSupabaseClient (tidak dipakai lagi)
-//   - getConfigPageItems sudah ber-cache (unstable_cache TTL 300s tag 'config') + tidak
-//     filter is_active (SA lihat semua, pola S#110) — konsisten dgn 3 settings pages
 
 export const dynamic = 'force-dynamic'
 
 import { getMonitoringSnapshot } from '@/lib/services/monitoring.service'
 import { getRecentAlertLogs }    from '@/lib/services/monitoring.service'
 import { getAlertRules }         from '@/lib/services/monitoring.service'
-import { getConfigPageItems }    from '@/lib/config-registry'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { mapTipe, mapValue }     from '@/lib/utils/config-page.utils'
 import { MonitoringClient }      from './MonitoringClient'
 import type { ConfigItemData }   from '@/components/ConfigItem'
@@ -39,28 +32,34 @@ interface ConfigGroup {
 
 export default async function MonitoringPage() {
   try {
-    const [snapshot, alertLogs, alertRules, configRows] = await Promise.all([
+    const db = createServerSupabaseClient()
+
+    const [snapshot, alertLogs, alertRules, configResult] = await Promise.all([
       getMonitoringSnapshot(),
       getRecentAlertLogs(20),
       getAlertRules(),
-      // T-032 (fix S#258 T-S258-02): fetch 10 config monitoring via repository layer
-      getConfigPageItems('monitoring'),
+      // T-032: fetch 10 config monitoring untuk form edit
+      db
+        .from('config_registry')
+        .select('*')
+        .eq('feature_key', 'monitoring')
+        .is('tenant_id', null)
+        .order('label', { ascending: true }),
     ])
 
     // Format config_registry rows → ConfigGroup[] untuk ConfigPageClient
-    // configRows bertipe ConfigRegistryFullItem[] — kolom sudah ber-tipe, tanpa casting
-    const configItems: ConfigItemData[] = configRows.map(row => ({
-      id:              row.id,
-      label:           row.label,
-      fieldName:       row.policy_key ?? row.feature_key,
-      type:            mapTipe(row.tipe_data, row.policy_key ?? undefined),
-      value:           mapValue(row.nilai, row.tipe_data),
-      options:         row.nilai_enum ?? undefined,
+    const configItems: ConfigItemData[] = (configResult.data ?? []).map(row => ({
+      id:              row.id       as string,
+      label:           row.label    as string,
+      fieldName:       (row.policy_key as string | null) ?? (row.feature_key as string),
+      type:            mapTipe(row.tipe_data as string, (row.policy_key as string | null) ?? undefined),
+      value:           mapValue(row.nilai as string, row.tipe_data as string),
+      options:         (row.nilai_enum as string[] | null) ?? undefined,
       valueType:       undefined,
       perRoleOptions:  undefined,
       option_group_id: null,
       adminCanChange:  false, // monitoring config = platform-only, tidak bisa di-override tenant
-      enabled:         row.is_active,
+      enabled:         row.is_active as boolean,
     }))
 
     const initialMonitoringConfig: ConfigGroup[] = configItems.length > 0

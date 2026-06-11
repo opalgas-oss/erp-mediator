@@ -32,6 +32,7 @@
   ],
   "exclude": [
     "node_modules",
-    "_arsip"
+    "_arsip",
+    "Backup_erp-mediator"
   ]
 }
