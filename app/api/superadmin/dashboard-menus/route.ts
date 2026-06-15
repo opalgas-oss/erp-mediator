@@ -66,7 +66,7 @@ export async function PATCH(_request: NextRequest): Promise<NextResponse> {
     const auth = await requireSuperAdmin()
     if (!auth.ok) return auth.res
 
-    revalidateTag('dashboard-menus:super_admin')
+    revalidateTag('dashboard-menus:super_admin', 'default')
 
     return NextResponse.json({
       success: true,
