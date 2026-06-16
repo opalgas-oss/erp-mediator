@@ -3,6 +3,11 @@
 //
 // Dibuat: Sesi #163 — Fix T-028 (DRY) + T-027 (tipe 'text' tidak terhandle)
 // Updated: Sesi #164 — T-029: tambah case tipeData='string' → 'text-field'
+// Updated: Sesi #285 — Fix anomali gps_mode:
+//   tipe_data='toggle' di DB tidak punya case di mapTipe → fallthrough ke 'number-unit'
+//   → mapValue('true', 'toggle') return string 'true' → Number('true') = NaN → tampil 0
+//   Fix: tambah case 'toggle' di mapTipe → return 'toggle'
+//         tambah case 'toggle' di mapValue → return boolean (sama dengan 'boolean')
 //
 // SEBELUM: mapTipe() + mapValue() + JsonFieldConfig terduplikat identik di:
 //   - app/dashboard/superadmin/settings/security-login/page.tsx
@@ -70,6 +75,7 @@ export function isTimingField(policyKey: string): boolean {
  */
 export function mapTipe(tipeData: string, policyKey?: string): ConfigItemType {
   if (tipeData === 'boolean')                                         return 'toggle'
+  if (tipeData === 'toggle')                                          return 'toggle'   // S#285: gps_mode pakai tipe_data='toggle' di DB
   if (tipeData === 'select')                                          return 'select-only'
   if (tipeData === 'json')                                            return 'json-per-role'
   if (tipeData === 'text')                                            return 'text-field'
@@ -89,6 +95,7 @@ export function mapTipe(tipeData: string, policyKey?: string): ConfigItemType {
  */
 export function mapValue(nilai: string, tipeData: string): number | boolean | string {
   if (tipeData === 'boolean') return nilai === 'true'
+  if (tipeData === 'toggle')  return nilai === 'true'  // S#285: sama dengan boolean, nilai 'true'/'false'
   if (tipeData === 'number')  return Number(nilai)
   return nilai  // json, text, select → tetap string
 }
