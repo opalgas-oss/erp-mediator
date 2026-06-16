@@ -17,6 +17,10 @@
 //   - Hapus direct db.from('config_registry') di RSC page
 //   - Ganti dengan getConfigPageItems('security_login') dari lib/config-registry
 //   - Hapus import createServerSupabaseClient (tidak dipakai lagi)
+// PERUBAHAN Sesi #285 — B-03 mapping AT toggle:
+//   - Tambah HIDE_AT_TOGGLE: set 8 policy_key yang toggle AT-nya WAJIB dihapus dari UI
+//   - Alasan: item keamanan platform — AT tidak boleh kontrol sama sekali
+//   - Referensi: SA_Testing_dan_Hutang.md B-03, CONFIG_REGISTRY_CORE_v1.md BAB 1
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +28,20 @@ import { getConfigPageItems }                      from '@/lib/config-registry'
 import { ConfigPageClient }                        from './ConfigPageClient'
 import { mapTipe, mapValue, type JsonFieldConfig } from '@/lib/utils/config-page.utils'
 import type { ConfigItemData }                     from '@/components/ConfigItem'
+
+// ─── Policy key yang TIDAK BOLEH ditampilkan toggle AT sama sekali ─────────────
+// Dasar keputusan: item keamanan platform — AT tidak punya otoritas mengontrol ini
+// Sumber: CONFIG_REGISTRY_CORE_v1.md BAB 1 (kolom Tenant Admin = ❌)
+const HIDE_AT_TOGGLE = new Set([
+  'notify_superadmin_on_lock',   // AT tidak boleh kontrol notif ke atasnya
+  'progressive_lockout_enabled', // mekanisme keamanan platform, SA-only
+  'vendor_blocked_statuses',     // kriteria blokir login Vendor = keamanan platform
+  'gps_mode',                    // GPS on/off = keamanan platform
+  'otp_expiry_seconds',          // validity OTP = keamanan platform
+  'max_otp_attempts',            // anti-brute-force = keamanan platform
+  'otp_digits',                  // standar keamanan platform
+  'max_otp_resend',              // anti-spam OTP = keamanan platform
+])
 
 // ─── Konfigurasi tipe per field JSON per-role ─────────────────────────────────
 
@@ -71,7 +89,7 @@ export default async function LoginSettingsPage() {
       valueType:                jsonCfg?.valueType,
       perRoleOptions:              jsonCfg?.options,
       allowedRoles:                jsonCfg?.allowedRoles,
-      hideTenantOverrideToggle:    jsonCfg?.allowedRoles?.length === 1 && jsonCfg.allowedRoles[0] === 'super_admin',
+      hideTenantOverrideToggle:    HIDE_AT_TOGGLE.has(policyKey) || (jsonCfg?.allowedRoles?.length === 1 && jsonCfg.allowedRoles[0] === 'super_admin'),
       option_group_id: null,
       adminCanChange:  row.tenant_can_override ?? false,
       enabled:         row.is_active ?? true,
