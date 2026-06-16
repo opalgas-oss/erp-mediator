@@ -170,8 +170,7 @@ export async function getProvidersWithStatus(): Promise<ServiceProvider[]> {
     let health_overall: HealthStatus = 'belum_dites'
     if (statuses.includes('gagal'))           health_overall = 'gagal'
     else if (statuses.includes('peringatan')) health_overall = 'peringatan'
-    else if (statuses.length > 0 && statuses.every(s => s === 'sehat'))
-      health_overall = 'sehat'
+    else if (statuses.includes('sehat'))      health_overall = 'sehat'
 
     return {
       id:             p.id,
