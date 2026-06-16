@@ -78,10 +78,10 @@ export function DropdownOptionsPanel({
   // jadi setiap kali user buka grup baru, useState initializer fresh dengan grup.opsi.
   // Refresh data dilakukan via fetchOpsi() lokal saat add/edit/setDefault/deactivate.
 
-  // ── Dialog konfirmasi delete opsi (hook tipis, tanpa fetch verdict) ──────
-  // CATATAN: delete opsi sebenarnya = nonaktifkan (PATCH is_active=false), bukan hard delete.
-  // Ini preserve behavior existing dari S#122 — opsi tidak pernah di-hard-delete
-  // karena referensi mungkin masih ada di data lain.
+  // ── Dialog konfirmasi delete opsi ─────────────────────────────────────────
+  // S#284: "Hapus" di kebab opsi nonaktif = HARD DELETE via DELETE ?mode=hard
+  // (sebelumnya S#122 salah implementasi sebagai soft delete via PATCH is_active=false)
+  // Nonaktifkan (opsi aktif) tetap via handleDeactivate langsung tanpa dialog ini.
 
   const {
     openDialog:    openOptionDeleteDialog,
@@ -89,14 +89,9 @@ export function DropdownOptionsPanel({
     confirmDelete: confirmOptionDelete,
     cancelDelete:  cancelOptionDelete,
   } = useDeleteConfirmDialog({
-    getDeleteUrl:  (id) => `/api/superadmin/dropdowns/options/${id}`,
-    getDeleteInit: () => ({
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_active: false }),
-    }),
-    confirmTitle: (name) => `Nonaktifkan opsi "${name}"?`,
-    confirmDesc:  'Opsi ini disembunyikan dari pilihan baru. Data lama tetap aman.',
+    getDeleteUrl:  (id) => `/api/superadmin/dropdowns/options/${id}?mode=hard`,
+    confirmTitle: (name) => `Hapus opsi "${name}"?`,
+    confirmDesc:  'Opsi ini akan dihapus permanen dari sistem. Tindakan ini tidak bisa dibatalkan.',
     onDeleted:    () => refresh(),
   })
 

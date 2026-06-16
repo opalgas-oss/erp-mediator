@@ -23,6 +23,7 @@ import {
   dropdownRepo_insertOption,
   dropdownRepo_updateOption,
   dropdownRepo_setDefaultOption,
+  dropdownRepo_destroyOption,
 } from '@/lib/repositories/master-dropdown-option.repository'
 import { dropdownRepo_findGroupById } from '@/lib/repositories/master-dropdown-group.repository'
 import { validateDropdownSlug, validateSortOrder } from '@/lib/utils/validation.server'
@@ -115,6 +116,17 @@ export async function MasterDropdownService_updateOption(
   if (payload.sort_order !== undefined) validateSortOrder(payload.sort_order)
 
   return dropdownRepo_updateOption(id, payload, olehUid)
+}
+
+/**
+ * Hard delete opsi — hapus permanen dari DB.
+ * Guard verdict HARUS sudah dicek di route sebelum memanggil fungsi ini.
+ * Ditambahkan: Sesi #284
+ */
+export async function MasterDropdownService_destroyOption(
+  id: string
+): Promise<{ berhasil: boolean; option_id: string }> {
+  return dropdownRepo_destroyOption(id)
 }
 
 /**

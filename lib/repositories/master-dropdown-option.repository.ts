@@ -134,6 +134,26 @@ export async function dropdownRepo_updateOption(
 }
 
 /**
+ * Hard delete opsi — hapus permanen dari DB.
+ * Dipakai oleh route DELETE options/[id]?mode=hard setelah verdict AMAN diverifikasi di route.
+ * Tidak ada cascade khusus — opsi tidak punya tabel anak.
+ * Ditambahkan: Sesi #284 — fix hard delete opsi (sebelumnya hanya soft delete via PATCH)
+ */
+export async function dropdownRepo_destroyOption(
+  id: string
+): Promise<{ berhasil: boolean; option_id: string }> {
+  const db = createServerSupabaseClient()
+
+  const { error } = await db
+    .from('master_dropdown_options')
+    .delete()
+    .eq('id', id)
+
+  if (error) throw new Error(`[master-dropdown-option.repository] destroyOption: ${error.message}`)
+  return { berhasil: true, option_id: id }
+}
+
+/**
  * Set satu opsi sebagai default di grup, unset opsi default lain — via stored procedure.
  * SP `sp_dropdown_set_default_option` atomic dengan validasi opsi platform-level (tenant_id IS NULL).
  */
