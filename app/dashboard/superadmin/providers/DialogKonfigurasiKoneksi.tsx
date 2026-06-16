@@ -132,7 +132,8 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
       const r3 = await (await fetch(`/api/superadmin/providers/instances/${iid}/test`, { method: 'POST' })).json()
       const d = r3.data ?? {}
       setRes({ berhasil: d.berhasil ?? false, pesan: d.pesan ?? null, latency_ms: d.latency_ms ?? null })
-      if (d.berhasil) setTimeout(onSuccess, 1500)
+      // Refresh list terlepas berhasil atau gagal — credential & status sudah tersimpan di DB
+      setTimeout(onSuccess, 1500)
     } catch { toast.error('Terjadi error jaringan') }
     finally { setSaving(false) }
   }, [provider, ns, cred, existingInstanceId, onSuccess])
