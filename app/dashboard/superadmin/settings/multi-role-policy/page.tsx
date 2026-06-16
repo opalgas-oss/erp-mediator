@@ -13,6 +13,10 @@
 //   - Hapus .eq('is_active', true) yang salah — SA wajib lihat semua item (pola S#110)
 //   - Ganti dengan getConfigPageItems('multi_role_policy') dari lib/config-registry
 //   - Hapus import createServerSupabaseClient (tidak dipakai lagi)
+// PERUBAHAN Sesi #285 — B-03 hide AT toggle:
+//   - Tambah hideTenantOverrideToggle: true untuk semua item
+//   - multi_role_policy = platform-only, AT tidak punya otoritas mengontrol apapun di sini
+//   - adminCanChange sudah false sejak dibuat — ini melengkapi dengan hide UI toggle-nya
 
 export const dynamic = 'force-dynamic'
 
@@ -65,6 +69,7 @@ export default async function MultiRolePolicyPage() {
       perRoleOptions:  jsonCfg?.options,
       option_group_id: null,
       adminCanChange:  false, // multi_role_policy = platform-only, tidak bisa di-override tenant
+      hideTenantOverrideToggle: true, // S#285: semua item SA-only, toggle AT tidak relevan ditampilkan
       enabled:         row.is_active,
     }
 

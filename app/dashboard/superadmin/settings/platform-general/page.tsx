@@ -17,6 +17,10 @@
 //   - Hapus direct db.from('config_registry') di RSC page
 //   - Ganti dengan getConfigPageItems('platform_general') dari lib/config-registry
 //   - Hapus import createServerSupabaseClient (tidak dipakai lagi)
+// PERUBAHAN Sesi #285 — B-03 hide AT toggle:
+//   - Tambah hideTenantOverrideToggle: true untuk semua item
+//   - platform_general = infrastruktur platform, AT tidak punya otoritas mengontrol apapun
+//   - Fix Supabase: sidebar_cache_ttl_seconds tenant_can_override dikoreksi false
 
 export const dynamic = 'force-dynamic'
 
@@ -59,6 +63,7 @@ export default async function PlatformGeneralPage() {
       perRoleOptions:  undefined,
       option_group_id: null,
       adminCanChange:  false, // platform_general = platform-only, tidak bisa di-override tenant
+      hideTenantOverrideToggle: true, // S#285: semua item SA-only, toggle AT tidak relevan ditampilkan
       enabled:         row.is_active,
     }
 
