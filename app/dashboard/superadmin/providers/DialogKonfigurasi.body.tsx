@@ -3,12 +3,14 @@
 // Body + Footer visual untuk DialogKonfigurasiKoneksi — dipecah ATURAN 9
 // Update S#152: hapus panduan prop (sekarang inline per-field di fields.tsx)
 // Update S#248: ROLLBACK hapus FieldsSetup + props fdsAll/onToggleIsAktif/togglingId
+// Update S#288: tambah props useCases/onUseCasesChange + section Use Case
 // Dibuat: Sesi #151
 
 import { ICON_ACTION, ICON_STATUS } from '@/lib/constants/icons.constant'
 import { Input }       from '@/components/ui/input'
 import { HealthBadge } from '@/components/superadmin/HealthBadge'
 import { CredentialFields, SaveButtonInfo, groupFields } from './DialogKonfigurasi.fields'
+import { USE_CASE_OPTIONS } from '@/lib/constants/ui-tokens.constant'
 import type { ServiceProvider, ProviderFieldDef } from '@/lib/types/provider.types'
 
 // ─── TAG_ST (duplikasi dari dialog — agar body bisa berdiri sendiri) ──────────
@@ -57,6 +59,8 @@ interface BodyProps {
   provider:        ServiceProvider | null
   isQS:            boolean; isMon: boolean
   ns:              string; onNs: (v: string) => void
+  useCases:        string[]
+  onUseCasesChange:(v: string[]) => void
   fds:             ProviderFieldDef[]
   cred:            Record<string, string>; show: Record<string, boolean>
   onChange:        (id: string, v: string) => void
@@ -66,7 +70,7 @@ interface BodyProps {
   isEditMode?:     boolean   // true jika mode Kelola (instance sudah ada)
 }
 
-export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, fds, cred, show, onChange, onToggle, res, loadingCred, isEditMode }: BodyProps) {
+export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, useCases, onUseCasesChange, fds, cred, show, onChange, onToggle, res, loadingCred, isEditMode }: BodyProps) {
   const warn  = provider ? (WARN[provider.kode] ?? '') : ''
   const rows  = groupFields(fds)
 
@@ -100,6 +104,38 @@ export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, fds, cred, s
               <label htmlFor="ns" style={{ fontSize: 12, fontWeight: 500, color: '#1a1a1a' }}>Nama Instance <span style={{ color: '#A32D2D' }}>*</span></label>
               <Input id="ns" placeholder={`${provider?.nama ?? 'Provider'} Production`} value={ns} onChange={e => onNs(e.target.value)} style={{ height: 40, fontSize: 13 }} />
             </div>
+          </div>
+
+          {/* Use Case */}
+          <div>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Use Case <span style={{ color: '#A32D2D' }}>*</span></p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {USE_CASE_OPTIONS.map(opt => {
+                const checked = useCases.includes(opt.value)
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      if (checked) onUseCasesChange(useCases.filter(v => v !== opt.value))
+                      else onUseCasesChange([...useCases, opt.value])
+                    }}
+                    style={{
+                      padding: '5px 12px', borderRadius: 100, fontSize: 12, fontWeight: checked ? 600 : 400,
+                      cursor: 'pointer', transition: 'all 0.15s',
+                      background: checked ? opt.bg : '#f9f9f8',
+                      color: checked ? opt.color : '#6b7280',
+                      border: checked ? `1.5px solid ${opt.color}` : '1px solid rgba(0,0,0,0.15)',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+            {useCases.length === 0 && (
+              <p style={{ fontSize: 11, color: '#A32D2D', marginTop: 6 }}>Pilih minimal satu use case</p>
+            )}
           </div>
 
           {/* Credential fields — panduan kini inline per-field di dalam CredentialFields */}

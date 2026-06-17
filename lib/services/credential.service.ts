@@ -28,6 +28,7 @@ import {
   insertProvider,
   insertFieldDef,
   updateProviderIsAktif,
+  updateInstanceUseCases,
 } from '@/lib/repositories/credential.repository'
 import { enkripsiCredential, dekripsi, dekripsiCredential, fingerprint } from '@/lib/credential-crypto'
 import { testProvider }                               from '@/lib/services/provider-tester'
@@ -84,12 +85,15 @@ const ENV_FALLBACK: Record<string, Record<string, string>> = {
 
 /**
  * Ambil satu credential field — dari DB via SP + cache 15 menit, atau env fallback.
+ * useCase opsional: jika diisi, prioritaskan instance yang punya use_case tsb.
+ * Fallback ke is_default=true jika tidak ada instance dengan use_case spesifik.
  */
 export async function getCredential(
   providerKode: string,
-  fieldKey:     string
+  fieldKey:     string,
+  useCase?:     string
 ): Promise<string | null> {
-  const fromDB = await getCredentialFromDB(providerKode, fieldKey)
+  const fromDB = await getCredentialFromDB(providerKode, fieldKey, useCase)
   if (fromDB !== null) return fromDB
 
   const envKey = ENV_FALLBACK[providerKode]?.[fieldKey]
@@ -103,16 +107,19 @@ export async function getCredential(
 
 async function getCredentialFromDB(
   providerKode: string,
-  fieldKey:     string
+  fieldKey:     string,
+  useCase?:     string
 ): Promise<string | null> {
   try {
     const ttlStr = await getConfigValue('platform_general', 'redis_ttl_credentials_seconds', '900')
     const ttl    = parseConfigNumber(ttlStr, 900)
+    const cacheKey = useCase
+      ? [`credential:${providerKode}:${fieldKey}:uc:${useCase}`]
+      : [`credential:${providerKode}:${fieldKey}`]
     const cached = unstable_cache(
       async () => {
         // S#251 FIX: query langsung ke instance_credentials dengan encrypted_dek
-        // sp_get_credential hanya return encrypted_value (tanpa DEK) — tidak bisa decode
-        // envelope encryption (simpanCredential pakai enkripsiCredential yang butuh DEK).
+        // S#288: tambah routing by use_case
         const db = createServerSupabaseClient()
 
         const { data: provider } = await db
@@ -123,13 +130,33 @@ async function getCredentialFromDB(
           .single()
         if (!provider) return null
 
-        const { data: instance } = await db
-          .from('provider_instances')
-          .select('id')
-          .eq('provider_id', provider.id)
-          .eq('is_aktif', true)
-          .eq('is_default', true)
-          .single()
+        // Cari instance: prioritas use_case spesifik, fallback ke is_default
+        let instance: { id: string } | null = null
+
+        if (useCase) {
+          const { data: ucInstance } = await db
+            .from('provider_instances')
+            .select('id')
+            .eq('provider_id', provider.id)
+            .eq('is_aktif', true)
+            .contains('use_cases', [useCase])
+            .limit(1)
+            .single()
+          instance = ucInstance ?? null
+        }
+
+        // Fallback: ambil instance is_default
+        if (!instance) {
+          const { data: defInstance } = await db
+            .from('provider_instances')
+            .select('id')
+            .eq('provider_id', provider.id)
+            .eq('is_aktif', true)
+            .eq('is_default', true)
+            .single()
+          instance = defInstance ?? null
+        }
+
         if (!instance) return null
 
         const { data: cred } = await db
@@ -152,7 +179,7 @@ async function getCredentialFromDB(
         if (defTyped?.is_secret) return dekripsi(cred.encrypted_value)
         return cred.encrypted_value
       },
-      [`credential:${providerKode}:${fieldKey}`],
+      cacheKey,
       { revalidate: ttl, tags: ['credentials', `credential:${providerKode}`] }
     )
     return await cached()
@@ -432,4 +459,15 @@ export async function toggleProviderIsAktif(
   isAktif:    boolean
 ): Promise<void> {
   return updateProviderIsAktif(providerId, isAktif)
+}
+
+/**
+ * Update use_cases satu instance.
+ * S#288 — FASE 2 use_case.
+ */
+export async function patchInstanceUseCases(
+  instanceId: string,
+  useCases:   string[]
+): Promise<void> {
+  return updateInstanceUseCases(instanceId, useCases)
 }

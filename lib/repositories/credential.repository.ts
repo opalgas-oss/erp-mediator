@@ -8,6 +8,7 @@
 // Update: Sesi #218 — tambah insertProvider + insertFieldDef untuk fitur Tambah Provider SA
 // Update: Sesi #248 — ROLLBACK: hapus getFieldDefinitionsAll + updateFieldDefIsAktif + filter is_aktif
 // Update: Sesi #249 — HUTANG-PROVIDER-INACTIVE: tambah updateProviderIsAktif + getProvidersWithStatus ambil semua (aktif+nonaktif)
+// Update: Sesi #288 — FASE 2 use_case: tambah updateInstanceUseCases + getProvidersWithStatus select use_cases dari instances
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -156,7 +157,7 @@ export async function getProvidersWithStatus(): Promise<ServiceProvider[]> {
     .select(`
       id, kode, nama, kategori, deskripsi, docs_url, status_url,
       tag, is_aktif, sort_order,
-      provider_instances(health_status)
+      provider_instances(health_status, use_cases)
     `)
     .order('sort_order')
 
@@ -164,8 +165,10 @@ export async function getProvidersWithStatus(): Promise<ServiceProvider[]> {
   if (!data) return []
 
   return data.map(p => {
-    const instances = (p.provider_instances as Array<{ health_status: string }>) ?? []
+    const instances = (p.provider_instances as Array<{ health_status: string; use_cases: string[] }>) ?? []
     const statuses  = instances.map(i => i.health_status as HealthStatus)
+    // Union semua use_cases dari semua instance aktif
+    const useCasesUnion = [...new Set(instances.flatMap(i => i.use_cases ?? []))]
 
     let health_overall: HealthStatus = 'belum_dites'
     if (statuses.includes('gagal'))           health_overall = 'gagal'
@@ -184,6 +187,7 @@ export async function getProvidersWithStatus(): Promise<ServiceProvider[]> {
       is_aktif:       p.is_aktif,
       sort_order:     p.sort_order,
       health_overall,
+      use_cases:      useCasesUnion,
     }
   })
 }
@@ -456,6 +460,25 @@ export async function updateProviderIsAktif(
     .eq('id', providerId)
 
   if (error) throw new Error(`[credential.repository] updateProviderIsAktif: ${error.message}`)
+}
+
+/**
+ * Update use_cases satu instance.
+ * Dipakai oleh updateInstanceUseCases di service layer.
+ * S#288 — FASE 2 use_case.
+ */
+export async function updateInstanceUseCases(
+  instanceId: string,
+  useCases:   string[]
+): Promise<void> {
+  const db = createServerSupabaseClient()
+
+  const { error } = await db
+    .from('provider_instances')
+    .update({ use_cases: useCases })
+    .eq('id', instanceId)
+
+  if (error) throw new Error(`[credential.repository] updateInstanceUseCases: ${error.message}`)
 }
 
 /**

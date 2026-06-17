@@ -6,6 +6,7 @@
 // Update S#216: mode edit (Kelola) — pre-fill form dari DB + tidak buat instance baru
 // Update S#248: ROLLBACK hapus fdsAll state + onToggleIsAktif handler + fetch field-defs/all
 // Update S#249: BUG-033 FIX — validasi is_required fields kosong saat mode baru sebelum save
+// Update S#288: tambah use_cases state + section Use Case di dialog + update instance PATCH
 // Dibuat: Sesi #107 — Update: Sesi #151, S#152, S#216
 
 import { useState, useEffect, useCallback } from 'react'
@@ -22,6 +23,7 @@ interface Props { open: boolean; provider: ServiceProvider | null; onClose: () =
 export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }: Props) {
   const [fds,                setFds]               = useState<ProviderFieldDef[]>([])
   const [ns,                 setNs]                = useState('')
+  const [useCases,           setUseCases]          = useState<string[]>([])
   const [cred,               setCred]              = useState<Record<string, string>>({})
   const [show,               setShow]              = useState<Record<string, boolean>>({})
   const [saving,             setSaving]            = useState(false)
@@ -36,6 +38,7 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
   useEffect(() => {
     if (!open || !provider) return
     setFds([]); setCred({}); setShow({}); setRes(null); setExistingInstanceId(null)
+    setUseCases([])
     setNs(provider.nama + ' Production')
     setLoadingCred(false)
 
@@ -46,6 +49,20 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
         fetch(`/api/superadmin/providers/${provider!.id}/instances`).then(r => r.json()),
       ])
 
+      // Pre-select use_case berdasarkan kategori provider
+      const DEFAULT_USE_CASES: Record<string, string[]> = {
+        messaging: ['notification'],
+        email:     ['notification'],
+        payment:   ['payment'],
+        media:     ['storage'],
+        cache:     ['runtime'],
+        database:  ['runtime'],
+        queue:     ['runtime'],
+        cdn:       ['cdn'],
+        search:    ['search'],
+        management: ['monitoring'],
+      }
+
       if (fdsRes.success) setFds(fdsRes.data)
 
       // Jika ada instance yang sudah terkonfigurasi — mode EDIT (Kelola)
@@ -55,6 +72,8 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
         const defaultInst = instances.find(i => i.is_default) ?? instances[instances.length - 1]
         setExistingInstanceId(defaultInst.id)
         setNs(defaultInst.nama_server)
+        // Load use_cases dari instance existing
+        setUseCases(defaultInst.use_cases ?? [])
 
         // Load credentials plaintext untuk pre-fill form
         setLoadingCred(true)
@@ -73,6 +92,10 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
         } finally {
           setLoadingCred(false)
         }
+      } else {
+        // Mode BARU — pre-select use_case berdasarkan kategori provider
+        const preselect = DEFAULT_USE_CASES[provider!.kategori ?? ''] ?? []
+        setUseCases(preselect)
       }
     }
 
@@ -85,6 +108,7 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
 
   const save = useCallback(async () => {
     if (!provider || !ns.trim()) { toast.error('Nama instance harus diisi'); return }
+    if (useCases.length === 0) { toast.error('Minimal satu Use Case harus dipilih'); return }
 
     // BUG-033 FIX S#249: mode BARU — validasi semua is_required field terisi
     if (!existingInstanceId) {
@@ -112,12 +136,17 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
         // Mode BARU — buat instance baru
         const r1 = await (await fetch('/api/superadmin/providers/instances', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider_id: provider.id, nama_server: ns.trim(), is_default: true, deskripsi: null }),
+          body: JSON.stringify({ provider_id: provider.id, nama_server: ns.trim(), is_default: true, deskripsi: null, use_cases: useCases }),
         })).json()
         if (!r1.success) { toast.error(r1.message ?? 'Gagal membuat instance'); return }
         toast.success('Instance dibuat — menyimpan credential...')
         iid = r1.data.id as string
       } else {
+        // Mode EDIT — update use_cases jika berubah
+        await fetch(`/api/superadmin/providers/instances/${iid}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ use_cases: useCases }),
+        })
         toast.success('Menyimpan credential yang diubah...')
       }
 
@@ -149,6 +178,7 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
         <DialogKonfigBody
           provider={provider} isQS={isQS} isMon={isMon}
           ns={ns} onNs={setNs}
+          useCases={useCases} onUseCasesChange={setUseCases}
           fds={fds} cred={cred} show={show}
           onChange={onChange} onToggle={onToggle}
           res={res}

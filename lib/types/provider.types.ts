@@ -19,6 +19,7 @@ export interface ServiceProvider {
   is_aktif:       boolean
   sort_order:     number
   health_overall: HealthStatus   // dihitung dari semua instance provider ini
+  use_cases:      string[]        // union dari semua instance — untuk tampil di tabel
 }
 
 // ─── Instance ────────────────────────────────────────────────────────────────
@@ -32,6 +33,7 @@ export interface ProviderInstance {
   is_default:     boolean
   health_status:  HealthStatus
   health_pesan:   string | null
+  use_cases:      string[]   // runtime | monitoring | notification | payment | storage | cdn | search
   last_tested_at: string | null
   created_at:     string
   updated_at:     string

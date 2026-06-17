@@ -9,9 +9,11 @@
 //   - Fix #9ca3af → var(--color-text-secondary) [STANDAR INKONSISTENSI 2]
 //   - Fix border baris 0.07 → 0.08 [STANDAR INKONSISTENSI 3]
 //   - Hapus kolom Instance + Terakhir Dites [sesuai STANDAR_UI_PENAMAAN Bagian 3]
+// Update: S#288 — tambah kolom Use Case (chip warna dari resolveUseCaseStyle)
 
 import { HealthBadge }                  from '@/components/superadmin/HealthBadge'
 import { ButtonToggleAktifProvider }    from './ButtonToggleAktifProvider'
+import { resolveUseCaseStyle }          from '@/lib/constants/ui-tokens.constant'
 import type { ServiceProvider }         from '@/lib/types/provider.types'
 
 const TAG_STYLE: Record<string, { bg: string; text: string; border: string }> = {
@@ -97,7 +99,28 @@ export function ProviderTableRow({ provider: p, onOpen, onToggle, toggling }: Pr
         }
       </td>
 
-      {/* Kolom 4: Aksi — Setup/Kelola + Power */}
+      {/* Kolom 4: Use Case */}
+      <td style={{ padding: '12px 14px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {(p.use_cases ?? []).length === 0
+            ? <span style={{ fontSize: 11, color: '#9ca3af' }}>—</span>
+            : (p.use_cases ?? []).map(uc => {
+                const s = resolveUseCaseStyle(uc)
+                return (
+                  <span key={uc} style={{
+                    fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 100,
+                    background: s.bg, color: s.color, border: `0.5px solid ${s.border}`,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {s.label}
+                  </span>
+                )
+              })
+          }
+        </div>
+      </td>
+
+      {/* Kolom 5: Aksi — Setup/Kelola + Power */}
       <td style={{ padding: '12px 14px', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <button

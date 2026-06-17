@@ -234,3 +234,23 @@ export function resolveHealthColor(status: string): string {
 export function resolveHealthLabel(status: string): string {
   return HEALTH_LABEL[status] ?? status
 }
+
+// ─── Use Case Options (API Provider) ───────────────────────────────────────────────────────────────
+// Dipakai: DialogKonfigurasi.body.tsx (checkbox pilih) + ProviderTableRow.tsx (chip tampil)
+// S#288 — FASE 2 use_case
+
+export const USE_CASE_OPTIONS: Array<{ value: string; label: string; color: string; bg: string; border: string }> = [
+  { value: 'runtime',      label: 'Runtime',      color: '#185FA5', bg: '#E6F1FB', border: '#85B7EB' },
+  { value: 'monitoring',   label: 'Monitoring',   color: '#5B3BAC', bg: '#F0EAFC', border: '#B59EE0' },
+  { value: 'notification', label: 'Notification', color: '#854F0B', bg: '#FAEEDA', border: '#EF9F27' },
+  { value: 'payment',      label: 'Payment',      color: '#3B6D11', bg: '#EAF3DE', border: '#97C459' },
+  { value: 'storage',      label: 'Storage',      color: '#6b7280', bg: '#F3F4F6', border: '#D1D5DB' },
+  { value: 'cdn',          label: 'CDN',          color: '#A32D2D', bg: '#FCEBEB', border: '#F09595' },
+  { value: 'search',       label: 'Search',       color: '#0E6E6E', bg: '#E0F5F5', border: '#7BCFCF' },
+]
+
+/** Resolve style chip use_case dari value string. Fallback ke abu-abu jika tidak dikenal. */
+export function resolveUseCaseStyle(value: string): { label: string; color: string; bg: string; border: string } {
+  return USE_CASE_OPTIONS.find(o => o.value === value)
+    ?? { label: value, color: '#6b7280', bg: '#F3F4F6', border: '#D1D5DB' }
+}

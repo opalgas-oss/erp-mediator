@@ -12,7 +12,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const auth = await requireSuperAdmin()
     if (!auth.ok) return auth.res
 
-    const body = await request.json() as TambahInstancePayload
+    const body = await request.json() as TambahInstancePayload & { use_cases?: string[] }
 
     if (!body.provider_id?.trim() || !body.nama_server?.trim()) {
       return NextResponse.json(
@@ -22,6 +22,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const instance = await tambahInstance(body, auth.uid)
+
+    // Update use_cases jika disertakan dalam payload
+    if (body.use_cases?.length) {
+      const { patchInstanceUseCases } = await import('@/lib/services/credential.service')
+      await patchInstanceUseCases(instance.id, body.use_cases)
+    }
 
     return NextResponse.json({ success: true, data: instance }, { status: 201 })
 

@@ -38,10 +38,12 @@ interface ColHeader {
 }
 
 // S#249: hapus kolom Instance + Terakhir Dites — 4 kolom sesuai STANDAR_UI_PENAMAAN Bagian 3
+// S#288: tambah kolom Use Case
 const HEADERS: ColHeader[] = [
   { label: 'Provider',  field: 'nama' },
   { label: 'Prioritas', field: 'tag' },
   { label: 'Status',    field: 'health_overall' },
+  { label: 'Use Case',  field: null, noIcon: true },
   { label: 'Aksi',      field: null, noIcon: true, right: true },
 ]
 
