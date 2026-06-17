@@ -1,19 +1,19 @@
 // app/api/cron/collect-metrics/route.ts
-// POST — QStash webhook: trigger pengumpulan metrics L1 + L3
-// Dipanggil oleh: QStash scheduler (bukan browser langsung)
-// Verifikasi signature QStash wajib sebelum eksekusi apapun
+// POST — Cron webhook: trigger pengumpulan metrics L1 + L3
+// Dipanggil oleh: QStash scheduler (sekarang) atau Vercel Cron (jika upgrade Pro)
 // Dibuat: Sesi #153 — PL-S09 Step 3.5
 // PERUBAHAN Sesi #161 — T-017: tambah baca data_retention_days dari config_registry
-// PERUBAHAN Sesi #171 — T-055: refactor ke getConfigValues (1 round-trip),
-//   tambah baca alert_threshold_response_ms + alert_cooldown_minutes + alert_consecutive_failures,
-//   pass 4 nilai ke collectL1Metrics() agar upsertDefaultRules() bisa dipanggil dengan nilai dari config.
+// PERUBAHAN Sesi #171 — T-055: refactor ke getConfigValues (1 round-trip)
+// PERUBAHAN Sesi #292 — dual-mode verification: CRON_MODE=qstash|vercel
+//   Ganti cron provider cukup ubah env var CRON_MODE — tanpa coding ulang.
 //
 // Catatan desain:
-// - QSTASH_CURRENT_SIGNING_KEY tetap di .env (bootstrap level — CREDENTIAL_SYSTEM_SPEC BAB 2 Kategori 1)
-//   karena verifikasi signature ini diperlukan SEBELUM kode lain bisa berjalan securely.
-// - Header x-qstash-signature adalah HMAC-SHA256 dari body menggunakan signing key.
-// - L1 (ping semua provider) dipanggil setiap 1 menit via QStash.
-// - L3 (deep check) dipanggil setiap 15 menit — ditentukan dari query param ?layer=L3.
+// - CRON_MODE=qstash  → verifikasi via QSTASH_CURRENT_SIGNING_KEY (HMAC-SHA256)
+// - CRON_MODE=vercel  → verifikasi via CRON_SECRET header (Vercel Pro native cron)
+// - Kedua key tetap di .env (bootstrap level — CREDENTIAL_SYSTEM_SPEC BAB 2 Kategori 1)
+//   karena verifikasi diperlukan SEBELUM kode lain bisa berjalan securely.
+// - L1 (ping semua provider) dipanggil setiap 1 menit.
+// - L3 (deep check) dipanggil setiap 15 menit — dari query param ?layer=L3.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { collectL1Metrics, collectL3Metrics } from '@/lib/services/metrics-collector.service'
@@ -25,7 +25,7 @@ import crypto from 'crypto'
 async function verifyQStashSignature(req: NextRequest, rawBody: string): Promise<boolean> {
   const signingKey = process.env.QSTASH_CURRENT_SIGNING_KEY
   if (!signingKey) {
-    console.error('[collect-metrics] QSTASH_CURRENT_SIGNING_KEY tidak ada di .env')
+    console.error('[collect-metrics] QSTASH_CURRENT_SIGNING_KEY tidak ada di env')
     return false
   }
 
@@ -33,7 +33,6 @@ async function verifyQStashSignature(req: NextRequest, rawBody: string): Promise
   if (!signature) return false
 
   try {
-    // QStash signature format: "v1:HMAC-SHA256-base64"
     const [version, receivedHmac] = signature.split(':')
     if (version !== 'v1' || !receivedHmac) return false
 
@@ -42,7 +41,6 @@ async function verifyQStashSignature(req: NextRequest, rawBody: string): Promise
       .update(rawBody)
       .digest('base64')
 
-    // Constant-time comparison untuk mencegah timing attack
     return crypto.timingSafeEqual(
       Buffer.from(receivedHmac),
       Buffer.from(expectedHmac)
@@ -52,29 +50,50 @@ async function verifyQStashSignature(req: NextRequest, rawBody: string): Promise
   }
 }
 
+// ─── verifyVercelCronSecret ───────────────────────────────────────────────────
+
+function verifyVercelCronSecret(req: NextRequest): boolean {
+  const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret) {
+    console.error('[collect-metrics] CRON_SECRET tidak ada di env')
+    return false
+  }
+  const authHeader = req.headers.get('authorization')
+  return authHeader === `Bearer ${cronSecret}`
+}
+
+// ─── verifyRequest ────────────────────────────────────────────────────────────
+
+async function verifyRequest(req: NextRequest, rawBody: string): Promise<boolean> {
+  const mode = process.env.CRON_MODE ?? 'qstash'
+
+  if (mode === 'vercel') {
+    return verifyVercelCronSecret(req)
+  }
+
+  // Default: qstash
+  return verifyQStashSignature(req, rawBody)
+}
+
 // ─── POST handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  // Baca body sebagai string untuk verifikasi signature
   const rawBody = await req.text()
 
-  // Verifikasi signature QStash — wajib sebelum eksekusi apapun
-  const isValid = await verifyQStashSignature(req, rawBody)
+  const isValid = await verifyRequest(req, rawBody)
   if (!isValid) {
-    console.warn('[collect-metrics] Signature QStash tidak valid — request ditolak')
+    const mode = process.env.CRON_MODE ?? 'qstash'
+    console.warn(`[collect-metrics] Verifikasi gagal (mode: ${mode}) — request ditolak`)
     return NextResponse.json(
-      { success: false, message: 'Unauthorized — invalid QStash signature' },
+      { success: false, message: 'Unauthorized — invalid cron credentials' },
       { status: 401 }
     )
   }
 
-  // Tentukan layer dari query param (?layer=L1 atau ?layer=L3)
-  // Default: L1 (ping health, setiap 1 menit)
   const layer = req.nextUrl.searchParams.get('layer') ?? 'L1'
 
   try {
     if (layer === 'L3') {
-      // Deep check setiap 15 menit
       const result = await collectL3Metrics()
       return NextResponse.json({
         success:   true,
@@ -83,15 +102,12 @@ export async function POST(req: NextRequest) {
         errors:    result.errors,
       })
     } else {
-      // Ping health setiap 1 menit (default)
-      // Baca 4 key monitoring sekaligus dalam 1 round-trip DB (efisiensi vs 4x getConfigValue terpisah)
-      // FIX T-055 S#171: tambah alert_threshold_response_ms + alert_cooldown_minutes + alert_consecutive_failures
-      const cfg            = await getConfigValues('monitoring')
-      const retentionDays  = parseConfigNumber(cfg['data_retention_days']         ?? '30',  30)
-      const thresholdMs    = parseConfigNumber(cfg['alert_threshold_response_ms'] ?? '3000', 3000)
-      const cooldown       = parseConfigNumber(cfg['alert_cooldown_minutes']       ?? '30',  30)
-      const consecutive    = parseConfigNumber(cfg['alert_consecutive_failures']   ?? '3',   3)
-      const result         = await collectL1Metrics(retentionDays, thresholdMs, cooldown, consecutive)
+      const cfg           = await getConfigValues('monitoring')
+      const retentionDays = parseConfigNumber(cfg['data_retention_days']         ?? '30',   30)
+      const thresholdMs   = parseConfigNumber(cfg['alert_threshold_response_ms'] ?? '3000', 3000)
+      const cooldown      = parseConfigNumber(cfg['alert_cooldown_minutes']       ?? '30',   30)
+      const consecutive   = parseConfigNumber(cfg['alert_consecutive_failures']   ?? '3',    3)
+      const result        = await collectL1Metrics(retentionDays, thresholdMs, cooldown, consecutive)
       return NextResponse.json({
         success:   true,
         layer:     'L1',
