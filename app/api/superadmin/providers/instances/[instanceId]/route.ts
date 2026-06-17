@@ -8,13 +8,13 @@ import { patchInstanceUseCases }      from '@/lib/services/credential.service'
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { instanceId: string } }
+  { params }: { params: Promise<{ instanceId: string }> }
 ): Promise<NextResponse> {
   try {
     const auth = await requireSuperAdmin()
     if (!auth.ok) return auth.res
 
-    const { instanceId } = params
+    const { instanceId } = await params
     if (!instanceId) {
       return NextResponse.json(
         { success: false, message: 'instanceId tidak ditemukan' },
