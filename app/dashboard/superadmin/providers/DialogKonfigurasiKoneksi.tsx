@@ -171,7 +171,7 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
       setTimeout(onSuccess, 1500)
     } catch { toast.error('Terjadi error jaringan') }
     finally { setSaving(false) }
-  }, [provider, ns, cred, existingInstanceId, onSuccess])
+  }, [provider, ns, useCases, fds, cred, existingInstanceId, onSuccess])
 
   return (
     <Dialog open={open} onOpenChange={o => !o && close()}>
