@@ -177,14 +177,15 @@ export function ProvidersClient({ initialProviders }: Props) {
           </div>
         )}
 
-        {/* Table — S#249: 4 kolom sesuai STANDAR_UI_PENAMAAN Bagian 3 */}
+        {/* Table — S#288: 5 kolom (Provider, Prioritas, Status, Use Case, Aksi) */}
         <div style={{ background:'#fff', borderRadius:'0 0 12px 12px', border:'0.5px solid rgba(0,0,0,0.12)', borderTop:'none', overflow:'hidden' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed', fontSize:13 }}>
             <colgroup>
-              <col style={{ width:'36%' }}/>
+              <col style={{ width:'34%' }}/>
+              <col style={{ width:'14%' }}/>
               <col style={{ width:'18%' }}/>
-              <col style={{ width:'22%' }}/>
-              <col style={{ width:'24%' }}/>
+              <col style={{ width:'20%' }}/>
+              <col style={{ width:'14%' }}/>
             </colgroup>
             <thead>
               <tr style={{ background:'#f9f9f8' }}>
