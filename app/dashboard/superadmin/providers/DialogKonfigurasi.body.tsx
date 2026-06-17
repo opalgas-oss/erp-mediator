@@ -67,10 +67,11 @@ interface BodyProps {
   onToggle:        (id: string) => void
   res:             { berhasil: boolean; pesan: string | null; latency_ms: number | null } | null
   loadingCred?:    boolean   // true saat sedang fetch credential dari DB
+  loadingData?:    boolean   // true saat loadData (field-defs + instances) belum selesai
   isEditMode?:     boolean   // true jika mode Kelola (instance sudah ada)
 }
 
-export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, useCases, onUseCasesChange, fds, cred, show, onChange, onToggle, res, loadingCred, isEditMode }: BodyProps) {
+export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, useCases, onUseCasesChange, fds, cred, show, onChange, onToggle, res, loadingCred, loadingData, isEditMode }: BodyProps) {
   const warn  = provider ? (WARN[provider.kode] ?? '') : ''
   const rows  = groupFields(fds)
 
@@ -116,13 +117,15 @@ export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, useCases, on
                   <button
                     key={opt.value}
                     type="button"
+                    disabled={!!loadingData}
                     onClick={() => {
                       if (checked) onUseCasesChange(useCases.filter(v => v !== opt.value))
                       else onUseCasesChange([...useCases, opt.value])
                     }}
                     style={{
                       padding: '5px 12px', borderRadius: 100, fontSize: 12, fontWeight: checked ? 600 : 400,
-                      cursor: 'pointer', transition: 'all 0.15s',
+                      cursor: loadingData ? 'wait' : 'pointer', transition: 'all 0.15s',
+                      opacity: loadingData ? 0.5 : 1,
                       background: checked ? opt.bg : '#f9f9f8',
                       color: checked ? opt.color : '#6b7280',
                       border: checked ? `1.5px solid ${opt.color}` : '1px solid rgba(0,0,0,0.15)',

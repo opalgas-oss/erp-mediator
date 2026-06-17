@@ -7,7 +7,6 @@
 // Update S#248: ROLLBACK hapus fdsAll state + onToggleIsAktif handler + fetch field-defs/all
 // Update S#249: BUG-033 FIX — validasi is_required fields kosong saat mode baru sebelum save
 // Update S#288: tambah use_cases state + section Use Case di dialog + update instance PATCH
-// Update S#289: fix race condition use_cases — loadData selesai dulu sebelum user bisa klik (loadingData state)
 // Dibuat: Sesi #107 — Update: Sesi #151, S#152, S#216
 
 import { useState, useEffect, useCallback } from 'react'
@@ -31,7 +30,6 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
   const [res,                setRes]               = useState<TR | null>(null)
   const [existingInstanceId, setExistingInstanceId]= useState<string | null>(null)
   const [loadingCred,        setLoadingCred]       = useState(false)
-  const [loadingData,        setLoadingData]       = useState(false)
 
   const isMon = provider ? MONITOR.has(provider.kode) : false
   const isQS  = provider?.kode === 'qstash'
@@ -43,7 +41,6 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
     setUseCases([])
     setNs(provider.nama + ' Production')
     setLoadingCred(false)
-    setLoadingData(true)
 
     async function loadData() {
       // Paralel: load field defs + instances existing
@@ -100,12 +97,9 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
         const preselect = DEFAULT_USE_CASES[provider!.kategori ?? ''] ?? []
         setUseCases(preselect)
       }
-      setLoadingData(false)
     }
 
-    loadData()
-      .catch(e => console.error('[DialogKonfigurasiKoneksi] loadData error:', e))
-      .finally(() => setLoadingData(false))
+    loadData().catch(e => console.error('[DialogKonfigurasiKoneksi] loadData error:', e))
   }, [open, provider])
 
   const onToggle   = useCallback((id: string) => setShow(p => ({ ...p, [id]: !p[id] })), [])
@@ -189,7 +183,6 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
           onChange={onChange} onToggle={onToggle}
           res={res}
           loadingCred={loadingCred}
-          loadingData={loadingData}
           isEditMode={!!existingInstanceId}
         />
         <DialogKonfigFooter
