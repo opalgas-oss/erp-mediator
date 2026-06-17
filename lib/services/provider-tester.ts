@@ -427,6 +427,111 @@ async function testResend(creds: Record<string, string>): Promise<TestKoneksiRes
   }
 }
 
+// ─── 10. GitHub ─────────────────────────────────────────────────────────────────
+
+async function testGitHub(creds: Record<string, string>): Promise<TestKoneksiResult> {
+  const { personal_access_token, repository_owner, repository_name } = creds
+
+  if (!personal_access_token || !repository_owner || !repository_name)
+    return buildResult(false, null, 'Credential tidak lengkap (personal_access_token + repository_owner + repository_name wajib)', 0)
+
+  const start = Date.now()
+
+  try {
+    // GET /repos/{owner}/{repo} — endpoint ringan untuk verifikasi token + akses repo
+    const url = `https://api.github.com/repos/${repository_owner}/${repository_name}`
+    const res = await fetchWithTimeout(url, {
+      headers: {
+        Authorization: `Bearer ${personal_access_token}`,
+        Accept:        'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    }, TIMEOUT_MS)
+
+    const latency_ms = Date.now() - start
+
+    if (res.ok)
+      return buildResult(true, true, null, latency_ms)
+
+    if (res.status === 401)
+      return buildResult(true, false, 'Personal access token GitHub tidak valid', latency_ms)
+
+    if (res.status === 404)
+      return buildResult(true, false, `Repo '${repository_owner}/${repository_name}' tidak ditemukan — periksa repository_owner dan repository_name`, latency_ms)
+
+    return buildResult(true, false, `GitHub API merespons HTTP ${res.status}`, latency_ms)
+
+  } catch (err) {
+    return buildResult(false, null, err instanceof Error ? err.message : 'Koneksi ke GitHub gagal', Date.now() - start)
+  }
+}
+
+// ─── 11. Vercel API ───────────────────────────────────────────────────────────
+
+async function testVercel(creds: Record<string, string>): Promise<TestKoneksiResult> {
+  const { api_token, project_id } = creds
+
+  if (!api_token || !project_id)
+    return buildResult(false, null, 'Credential tidak lengkap (api_token + project_id wajib)', 0)
+
+  const start = Date.now()
+
+  try {
+    // GET /v9/projects/{id} — verifikasi token + akses project
+    const url = `https://api.vercel.com/v9/projects/${project_id}`
+    const res = await fetchWithTimeout(url, {
+      headers: { Authorization: `Bearer ${api_token}` },
+    }, TIMEOUT_MS)
+
+    const latency_ms = Date.now() - start
+
+    if (res.ok)
+      return buildResult(true, true, null, latency_ms)
+
+    if (res.status === 401 || res.status === 403)
+      return buildResult(true, false, 'API token Vercel tidak valid atau tidak punya akses ke project ini', latency_ms)
+
+    if (res.status === 404)
+      return buildResult(true, false, `Project ID '${project_id}' tidak ditemukan di Vercel`, latency_ms)
+
+    return buildResult(true, false, `Vercel API merespons HTTP ${res.status}`, latency_ms)
+
+  } catch (err) {
+    return buildResult(false, null, err instanceof Error ? err.message : 'Koneksi ke Vercel gagal', Date.now() - start)
+  }
+}
+
+// ─── 12. Supabase Management API ─────────────────────────────────────────────
+
+async function testSupabaseManagement(creds: Record<string, string>): Promise<TestKoneksiResult> {
+  const { access_token } = creds
+
+  if (!access_token)
+    return buildResult(false, null, 'Credential tidak lengkap (access_token wajib)', 0)
+
+  const start = Date.now()
+
+  try {
+    // GET /v1/projects — list semua project, endpoint ringan untuk verifikasi token
+    const res = await fetchWithTimeout('https://api.supabase.com/v1/projects', {
+      headers: { Authorization: `Bearer ${access_token}` },
+    }, TIMEOUT_MS)
+
+    const latency_ms = Date.now() - start
+
+    if (res.ok)
+      return buildResult(true, true, null, latency_ms)
+
+    if (res.status === 401 || res.status === 403)
+      return buildResult(true, false, 'Access token Supabase Management API tidak valid', latency_ms)
+
+    return buildResult(true, false, `Supabase Management API merespons HTTP ${res.status}`, latency_ms)
+
+  } catch (err) {
+    return buildResult(false, null, err instanceof Error ? err.message : 'Koneksi ke Supabase Management API gagal', Date.now() - start)
+  }
+}
+
 // ─── Router utama ─────────────────────────────────────────────────────────────
 
 /**
@@ -451,7 +556,10 @@ export async function testProvider(
     case 'typesense':  return testTypesense(credentials)
     case 'cloudflare': return testCloudflare(credentials)
     case 'smtp':       return testSmtp(credentials)
-    case 'resend':     return testResend(credentials)
+    case 'resend':              return testResend(credentials)
+    case 'github':              return testGitHub(credentials)
+    case 'vercel':              return testVercel(credentials)
+    case 'supabase-management': return testSupabaseManagement(credentials)
     default:
       return buildResult(false, null, `Provider '${providerKode}' tidak dikenali di provider-tester`, 0)
   }
