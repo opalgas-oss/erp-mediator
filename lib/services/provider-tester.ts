@@ -170,6 +170,12 @@ async function testXendit(creds: Record<string, string>): Promise<TestKoneksiRes
 }
 
 // ─── 5. Fonnte ───────────────────────────────────────────────────────────────
+// Fonnte punya 2 jenis token:
+//   - account token : diambil dari Settings dashboard, dipakai untuk kirim pesan
+//                     (sendFonnteWA) dan endpoint get-devices
+//   - device token  : per-perangkat, dipakai untuk endpoint /device profile
+// Token yang disimpan di M3 adalah account token (dipakai otp.service sendFonnteWA).
+// FIX S#289: ganti endpoint /device (butuh device token) → /get-devices (butuh account token)
 
 async function testFonnte(creds: Record<string, string>): Promise<TestKoneksiResult> {
   const { api_token } = creds
@@ -181,7 +187,9 @@ async function testFonnte(creds: Record<string, string>): Promise<TestKoneksiRes
 
   try {
     // Fonnte: Authorization header langsung berisi token (bukan Bearer)
-    const res = await fetchWithTimeout('https://api.fonnte.com/device', {
+    // Pakai /get-devices — endpoint yang butuh account token (sama dengan sendFonnteWA)
+    const res = await fetchWithTimeout('https://api.fonnte.com/get-devices', {
+      method:  'POST',
       headers: { Authorization: api_token },
     }, TIMEOUT_MS)
 
@@ -192,13 +200,13 @@ async function testFonnte(creds: Record<string, string>): Promise<TestKoneksiRes
       if (body?.status === true)
         return buildResult(true, true, null, latency_ms)
       if (body?.status === false)
-        return buildResult(true, false, body?.reason ?? 'Token Fonnte tidak valid atau device tidak terdaftar', latency_ms)
+        return buildResult(true, false, body?.reason ?? 'Account token Fonnte tidak valid', latency_ms)
       // Format respons tidak dikenali tapi 200 — anggap OK
       return buildResult(true, true, null, latency_ms)
     }
 
     if (res.status === 401 || res.status === 403)
-      return buildResult(true, false, 'Token Fonnte tidak valid', latency_ms)
+      return buildResult(true, false, 'Account token Fonnte tidak valid', latency_ms)
 
     return buildResult(true, false, `Server merespons HTTP ${res.status}`, latency_ms)
 
