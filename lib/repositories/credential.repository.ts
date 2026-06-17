@@ -203,7 +203,7 @@ export async function getInstancesByProvider(providerId: string): Promise<Provid
     .select(`
       id, provider_id, nama_server, deskripsi,
       is_aktif, is_default, health_status, health_pesan,
-      last_tested_at, created_at, updated_at
+      use_cases, last_tested_at, created_at, updated_at
     `)
     .eq('provider_id', providerId)
     .order('created_at')
