@@ -1,22 +1,22 @@
 // app/api/monitoring/metrics/history/route.ts
 // GET — Data historis response time per provider untuk grafik L2
-// Query param: ?minutes=30 (default 30 menit)
-// Dipanggil oleh: L2RealtimePanel di MonitoringClient.subcomponents.tsx
-// Dibuat: Sesi #292 — implementasi grafik L2 nyata
+// Query param: ?minutes=60 (default 60 menit)
+// Dipanggil oleh: L2RealtimePanel (client component) via fetch() dari browser
+// PERUBAHAN S#292: ganti requireSuperAdmin() → requireSuperAdminCookie()
+//   karena dipanggil client-side, header middleware tidak tersedia
 
-import { NextRequest, NextResponse } from 'next/server'
-import { requireSuperAdmin }         from '@/lib/auth-server'
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { NextRequest, NextResponse }    from 'next/server'
+import { requireSuperAdminCookie }      from '@/lib/auth-server'
+import { createServerSupabaseClient }   from '@/lib/supabase-server'
 
 export async function GET(req: NextRequest) {
-  const auth = await requireSuperAdmin()
+  const auth = await requireSuperAdminCookie()
   if (!auth.ok) return auth.res
 
-  const minutes = Number(req.nextUrl.searchParams.get('minutes') ?? '30')
+  const minutes  = Number(req.nextUrl.searchParams.get('minutes') ?? '60')
   const supabase = createServerSupabaseClient()
 
   try {
-    // Ambil semua provider aktif
     const { data: providers, error: provErr } = await supabase
       .from('service_providers')
       .select('id, nama')
@@ -25,7 +25,6 @@ export async function GET(req: NextRequest) {
 
     if (provErr) throw provErr
 
-    // Ambil metrics historis dalam window waktu yang diminta
     const since = new Date(Date.now() - minutes * 60 * 1000).toISOString()
     const { data: metrics, error: metErr } = await supabase
       .from('provider_metrics')
@@ -36,7 +35,6 @@ export async function GET(req: NextRequest) {
 
     if (metErr) throw metErr
 
-    // Group metrics per provider
     const history = (providers ?? []).map(p => ({
       provider_id: p.id,
       nama:        p.nama,
