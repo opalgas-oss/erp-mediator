@@ -5,9 +5,6 @@
 // PERUBAHAN Sesi #161 — T-017: retentionDays dari parameter (dibaca config di caller route.ts)
 // PERUBAHAN Sesi #171 — T-055: update signature collectL1Metrics tambah thresholdMs+cooldown+consecutive,
 //   tambah call upsertDefaultRules() setelah providers diambil — sebelumnya diimport tapi tidak dipanggil.
-// PERUBAHAN Sesi #294 — FIX Fonnte false-DOWN: pingProvider() GET generik tidak bisa cek Fonnte
-//   (Fonnte tidak punya status-page publik; status_url '/check' → HTTP 404). Tambah pingFonnte()
-//   terautentikasi (POST /device + api_token M3, baca device_status) + dispatch kode==='fonnte'.
 //
 // PENTING: Token management API (Supabase, GitHub, Vercel) diambil dari M3 DB
 // via credential.service.ts — tidak ada process.env selain QStash (bootstrap level).
@@ -164,9 +161,6 @@ async function pingProvider(
   kode:       string,
   statusUrl:  string | null
 ): Promise<InsertProviderMetricPayload> {
-  // Fonnte tidak punya status-page publik — cek terautentikasi via POST /device (lihat pingFonnte).
-  if (kode === 'fonnte') return pingFonnte(providerId)
-
   const targetUrl = statusUrl ?? PING_URLS[kode] ?? null
 
   if (!targetUrl) {
@@ -189,64 +183,13 @@ async function pingProvider(
   }
 }
 
-// ─── pingFonnte — health check terautentikasi ────────────────────────────────
-
-/**
- * Cek kesehatan Fonnte via POST /device (endpoint sama dengan testFonnte di provider-tester
- * + sendFonnteWA). Token api_token diambil dari M3 (anti-hardcode). Berbeda dari testFonnte:
- * pingFonnte juga membaca `device_status` (connect/disconnect) — penentu apakah WA benar-benar
- * bisa dikirim. testFonnte hanya cek validitas token (status:true), tidak cek koneksi device.
- *   - status:true + device_status==='connect'  → UP (DEGRADED jika lambat)
- *   - device_status==='disconnect'              → DOWN (WA tidak bisa dikirim)
- *   - status:false / HTTP non-2xx / exception   → DOWN
- */
-async function pingFonnte(providerId: string): Promise<InsertProviderMetricPayload> {
-  const creds = await getCredentialsByProvider('fonnte')
-  const token = creds['api_token']
-  if (!token) {
-    return { provider_id: providerId, status: 'UNKNOWN', response_time_ms: null, layer: 'L1', error_detail: 'Token Fonnte (api_token) belum dikonfigurasi di M3' }
-  }
-
-  const start = Date.now()
-  try {
-    // Authorization Fonnte: token langsung (bukan Bearer). POST /device.
-    const res = await fetchWithTimeout(
-      'https://api.fonnte.com/device',
-      { method: 'POST', headers: { Authorization: token } },
-      PING_TIMEOUT_MS
-    )
-    const ms = Date.now() - start
-
-    if (!res.ok) {
-      return { provider_id: providerId, status: 'DOWN', response_time_ms: ms, layer: 'L1', error_detail: `HTTP ${res.status}` }
-    }
-
-    const body = (await res.json().catch(() => null)) as
-      { status?: boolean; device_status?: string; reason?: string } | null
-
-    if (body?.status !== true) {
-      return { provider_id: providerId, status: 'DOWN', response_time_ms: ms, layer: 'L1', error_detail: `Token invalid: ${body?.reason ?? 'unknown'}` }
-    }
-
-    if (body.device_status === 'connect') {
-      const status: MonitoringStatus = ms <= DEGRADED_THRESHOLD_MS ? 'UP' : 'DEGRADED'
-      return { provider_id: providerId, status, response_time_ms: ms, layer: 'L1' as MonitoringLayer }
-    }
-
-    // device_status === 'disconnect' (atau nilai lain) → WA tidak bisa dikirim
-    return { provider_id: providerId, status: 'DOWN', response_time_ms: ms, layer: 'L1', error_detail: `Device ${body.device_status ?? 'disconnect'}` }
-  } catch (err) {
-    const ms = Date.now() - start
-    return { provider_id: providerId, status: 'DOWN', response_time_ms: ms < PING_TIMEOUT_MS ? ms : null, layer: 'L1', error_detail: String(err) }
-  }
-}
-
 const PING_URLS: Record<string, string> = {
   'supabase':            'https://status.supabase.com/api/v2/status.json',
   'supabase-management': 'https://status.supabase.com/api/v2/status.json',
   'upstash':             'https://status.upstash.com/api/v2/status.json',
   'cloudinary':          'https://status.cloudinary.com/api/v2/status.json',
   'xendit':              'https://status.xendit.co/api/v2/status.json',
+  'fonnte':              'https://api.fonnte.com',
   'smtp':                'https://status.mailgun.com/api/v2/status.json',
   'typesense':           'https://cloud.typesense.org',
   'github':              'https://kctbh9vrtdwd.statuspage.io/api/v2/status.json',
