@@ -5,47 +5,48 @@
 // PERUBAHAN Sesi #161 — T-017: tambah baca data_retention_days dari config_registry
 // PERUBAHAN Sesi #171 — T-055: refactor ke getConfigValues (1 round-trip)
 // PERUBAHAN Sesi #292 — dual-mode verification: CRON_MODE=qstash|vercel
-//   Ganti cron provider cukup ubah env var CRON_MODE — tanpa coding ulang.
+//   Fix: ganti HMAC manual ke @upstash/qstash Receiver (JWT-based, bukan HMAC-SHA256)
 //
 // Catatan desain:
-// - CRON_MODE=qstash  → verifikasi via QSTASH_CURRENT_SIGNING_KEY (HMAC-SHA256)
+// - CRON_MODE=qstash  → verifikasi via @upstash/qstash Receiver (JWT)
 // - CRON_MODE=vercel  → verifikasi via CRON_SECRET header (Vercel Pro native cron)
+// - Ganti cron provider cukup ubah env var CRON_MODE — tanpa coding ulang.
 // - Kedua key tetap di .env (bootstrap level — CREDENTIAL_SYSTEM_SPEC BAB 2 Kategori 1)
-//   karena verifikasi diperlukan SEBELUM kode lain bisa berjalan securely.
-// - L1 (ping semua provider) dipanggil setiap 1 menit.
-// - L3 (deep check) dipanggil setiap 15 menit — dari query param ?layer=L3.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { Receiver } from '@upstash/qstash'
 import { collectL1Metrics, collectL3Metrics } from '@/lib/services/metrics-collector.service'
 import { getConfigValues, parseConfigNumber }   from '@/lib/config-registry'
-import crypto from 'crypto'
 
 // ─── verifyQStashSignature ────────────────────────────────────────────────────
 
 async function verifyQStashSignature(req: NextRequest, rawBody: string): Promise<boolean> {
-  const signingKey = process.env.QSTASH_CURRENT_SIGNING_KEY
-  if (!signingKey) {
-    console.error('[collect-metrics] QSTASH_CURRENT_SIGNING_KEY tidak ada di env')
+  const currentKey = process.env.QSTASH_CURRENT_SIGNING_KEY
+  const nextKey    = process.env.QSTASH_NEXT_SIGNING_KEY
+  if (!currentKey || !nextKey) {
+    console.error('[collect-metrics] QSTASH signing keys tidak ada di env')
     return false
   }
 
-  const signature = req.headers.get('upstash-signature') ?? req.headers.get('x-qstash-signature')
-  if (!signature) return false
+  const signature = req.headers.get('upstash-signature')
+  if (!signature) {
+    console.error('[collect-metrics] Header upstash-signature tidak ada')
+    return false
+  }
 
   try {
-    const [version, receivedHmac] = signature.split(':')
-    if (version !== 'v1' || !receivedHmac) return false
-
-    const expectedHmac = crypto
-      .createHmac('sha256', signingKey)
-      .update(rawBody)
-      .digest('base64')
-
-    return crypto.timingSafeEqual(
-      Buffer.from(receivedHmac),
-      Buffer.from(expectedHmac)
-    )
-  } catch {
+    const receiver = new Receiver({
+      currentSigningKey: currentKey,
+      nextSigningKey:    nextKey,
+    })
+    await receiver.verify({
+      signature,
+      body: rawBody,
+      url:  req.url,
+    })
+    return true
+  } catch (err) {
+    console.error('[collect-metrics] QStash signature invalid:', err)
     return false
   }
 }
@@ -66,12 +67,7 @@ function verifyVercelCronSecret(req: NextRequest): boolean {
 
 async function verifyRequest(req: NextRequest, rawBody: string): Promise<boolean> {
   const mode = process.env.CRON_MODE ?? 'qstash'
-
-  if (mode === 'vercel') {
-    return verifyVercelCronSecret(req)
-  }
-
-  // Default: qstash
+  if (mode === 'vercel') return verifyVercelCronSecret(req)
   return verifyQStashSignature(req, rawBody)
 }
 
