@@ -1,34 +1,23 @@
 'use client'
 // app/dashboard/superadmin/monitoring/MonitoringClient.subcomponents.tsx
 // Sub-komponen untuk MonitoringClient.tsx.
-// Dipecah dari MonitoringClient.tsx S#164 karena file mencapai 15.7 KB (melebihi batas 10 KB ATURAN 9).
-//
-// Isi:
-//   - SectionLabel          — heading section monitoring
-//   - SummaryCard           — kartu ringkasan UP/Degraded/Down
-//   - AlertRulesPanel       — panel edit alert_rules per provider (collapse toggle)
-//   - MonitoringConfigPanel — panel edit config_registry monitoring (T-032)
-//   - L2RealtimePanel       — grafik response time realtime (S#292: implementasi nyata)
-//   - L3DeepPanel           — kartu deep metrics per provider
-//
-// PERUBAHAN S#292 — L2RealtimePanel: implementasi grafik SVG response time per provider.
-//   Sebelumnya hanya teks placeholder. Sekarang tampil grafik line/bar dari data historis
-//   + update realtime via SSE. Grafik tampil dari nol bahkan sebelum ada data.
+// PERUBAHAN S#292 v3 — L2RealtimePanel sesuai mockup Mockup_M01_Status_Realtime.html:
+//   - Card per provider (2 kolom), besar, dengan gridline + threshold line + area fill
+//   - Tab: Response Time / Uptime % / Error Rate
+//   - Mini table di bawah grafik: waktu, response, status, bar
+//   - SSE dot animasi pulse
 
 import { useState, useEffect }  from 'react'
 import { ConfigPageClient }     from '../settings/security-login/ConfigPageClient'
-import type { AlertRule }       from '@/lib/types/monitoring.types'
-import type { ProviderSnapshot } from '@/lib/types/monitoring.types'
+import type { AlertRule, ProviderSnapshot } from '@/lib/types/monitoring.types'
 import type { ConfigItemData }  from '@/components/ConfigItem'
-
-// ─── Tipe ─────────────────────────────────────────────────────────────────────
 
 interface ConfigGroup { title: string; feature_key: string; items: ConfigItemData[] }
 
 interface MetricPoint {
-  checked_at:      string
+  checked_at:       string
   response_time_ms: number | null
-  status:          string
+  status:           string
 }
 
 interface ProviderHistory {
@@ -49,80 +38,163 @@ export function SectionLabel({ children }: { children: React.ReactNode }) {
 
 // ─── SummaryCard ──────────────────────────────────────────────────────────────
 
-export function SummaryCard({
-  label, value, color,
-}: { label: string; value: number; color: 'emerald' | 'amber' | 'red' }) {
-  const colors = {
-    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-    amber:   'border-amber-200   bg-amber-50   text-amber-900',
-    red:     'border-red-200     bg-red-50     text-red-900',
+export function SummaryCard({ label, value, color }: {
+  label: string; value: number; color: 'emerald' | 'amber' | 'red'
+}) {
+  const styles = {
+    emerald: { card: 'border-[#97C459] bg-[#EAF3DE]', val: 'text-[#3B6D11]', lbl: 'text-[#3B6D11]' },
+    amber:   { card: 'border-[#EF9F27] bg-[#FAEEDA]', val: 'text-[#854F0B]', lbl: 'text-[#854F0B]' },
+    red:     { card: 'border-[#F09595] bg-[#FCEBEB]', val: 'text-[#A32D2D]', lbl: 'text-[#A32D2D]' },
   }
+  const s = styles[color]
   return (
-    <div className={`rounded-md border p-3 text-center ${colors[color]}`}>
-      <div className="text-2xl font-bold">{value}</div>
-      <div className="text-xs mt-0.5 opacity-70">{label}</div>
+    <div className={`rounded-xl border p-[18px_20px] text-center ${s.card}`} style={{ borderWidth: '0.5px' }}>
+      <div className={`text-3xl font-bold leading-none ${s.val}`}>{value}</div>
+      <div className={`text-xs mt-1.5 font-medium ${s.lbl}`}>{label}</div>
     </div>
   )
 }
 
-// ─── MiniLineChart — grafik SVG per provider ──────────────────────────────────
+// ─── StatusPill ───────────────────────────────────────────────────────────────
 
-function MiniLineChart({ data, nama, currentMs, status }: {
-  data:      MetricPoint[]
-  nama:      string
-  currentMs: number | null
-  status:    string
+function StatusPill({ status }: { status: string }) {
+  const s = status === 'UP' ? 'bg-[#EAF3DE] text-[#3B6D11]'
+          : status === 'DEGRADED' ? 'bg-[#FAEEDA] text-[#854F0B]'
+          : status === 'DOWN' ? 'bg-[#FCEBEB] text-[#A32D2D]'
+          : 'bg-[#F1EFE8] text-[#5F5E5A]'
+  return (
+    <span className={`inline-flex px-[7px] py-[1px] rounded-full text-[10px] font-medium ${s}`}>
+      {status}
+    </span>
+  )
+}
+
+// ─── ProviderChart — card besar per provider sesuai mockup ────────────────────
+
+function ProviderChart({ provider, history, tab }: {
+  provider: ProviderSnapshot
+  history:  MetricPoint[]
+  tab:      'response' | 'uptime' | 'error'
 }) {
-  const W = 200
-  const H = 60
-  const PAD = 4
+  const W = 300
+  const H = 100
+  const THRESHOLD_Y = 8  // garis merah threshold ~3000ms
 
-  // Ambil 20 titik terakhir, isi dengan 0 jika kurang
-  const points = Array.from({ length: 20 }, (_, i) => {
-    const d = data[data.length - 20 + i]
+  // Ambil 60 titik terakhir (60 menit)
+  const points = Array.from({ length: 60 }, (_, i) => {
+    const d = history[history.length - 60 + i]
     return d ? (d.response_time_ms ?? 0) : 0
   })
 
-  const maxVal = Math.max(...points, 100) // minimal 100ms agar grafik tidak flat
-  const stepX  = (W - PAD * 2) / (points.length - 1)
+  const maxVal = Math.max(...points, 500)
+  const stepX  = W / (points.length - 1)
 
-  const coords = points.map((v, i) => {
-    const x = PAD + i * stepX
-    const y = PAD + (H - PAD * 2) * (1 - v / maxVal)
-    return { x, y, v }
-  })
+  const coords = points.map((v, i) => ({
+    x: i * stepX,
+    y: 10 + (H - 20) * (1 - Math.min(v / maxVal, 1)),
+    v,
+  }))
 
-  const pathD = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x} ${c.y}`).join(' ')
-  const areaD = `${pathD} L ${coords[coords.length - 1].x} ${H - PAD} L ${PAD} ${H - PAD} Z`
+  const lineD = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ')
+  const areaD = `${lineD} L ${coords[coords.length - 1].x.toFixed(1)} ${H} L 0 ${H} Z`
 
-  const statusColor = status === 'UP' ? '#10b981' : status === 'DEGRADED' ? '#f59e0b' : status === 'DOWN' ? '#ef4444' : '#9ca3af'
-  const statusBg    = status === 'UP' ? 'bg-emerald-50 border-emerald-200' : status === 'DEGRADED' ? 'bg-amber-50 border-amber-200' : status === 'DOWN' ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'
+  const color     = provider.status === 'UP' ? '#3B6D11' : provider.status === 'DEGRADED' ? '#854F0B' : provider.status === 'DOWN' ? '#A32D2D' : '#9ca3af'
+  const areaColor = provider.status === 'UP' ? 'rgba(59,109,17,0.09)' : provider.status === 'DEGRADED' ? 'rgba(133,79,11,0.09)' : provider.status === 'DOWN' ? 'rgba(163,45,45,0.09)' : 'rgba(156,163,175,0.09)'
+
+  // Avg response time dari titik yang ada
+  const validPoints = points.filter(v => v > 0)
+  const avg = validPoints.length > 0 ? Math.round(validPoints.reduce((a, b) => a + b, 0) / validPoints.length) : null
+
+  // 3 data terakhir untuk mini table
+  const lastThree = history.slice(-3).reverse()
+
+  if (tab !== 'response') {
+    return (
+      <div className="bg-white rounded-xl border border-black/10 p-8 text-center text-[#9ca3af] text-sm">
+        Data {tab === 'uptime' ? 'uptime %' : 'error rate'} tersedia setelah 24 jam data terkumpul.
+      </div>
+    )
+  }
 
   return (
-    <div className={`rounded-md border p-3 ${statusBg}`}>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-medium text-foreground truncate max-w-[120px]">{nama}</span>
-        <span className="text-xs font-semibold" style={{ color: statusColor }}>
-          {status === 'UNKNOWN' ? '?' : status}
-        </span>
+    <div className={`bg-white rounded-xl overflow-hidden ${provider.status === 'UNKNOWN' || provider.status === 'DOWN' ? 'opacity-80' : ''}`}
+      style={{ border: '0.5px solid rgba(0,0,0,0.12)' }}>
+      {/* Header */}
+      <div className="px-4 py-3.5 flex items-start justify-between" style={{ borderBottom: '0.5px solid rgba(0,0,0,0.08)' }}>
+        <div>
+          <div className="text-[13px] font-semibold text-[#1a1a1a]">Response Time — {provider.nama}</div>
+          <div className="text-[11px] text-[#9ca3af] mt-0.5">
+            60 menit terakhir{avg !== null ? ` · avg ${avg}ms` : ''}
+          </div>
+        </div>
+        <StatusPill status={provider.status} />
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} className="overflow-visible">
-        {/* Area */}
-        <path d={areaD} fill={statusColor} fillOpacity={0.08} />
-        {/* Line */}
-        <path d={pathD} fill="none" stroke={statusColor} strokeWidth={1.5} strokeLinejoin="round" />
-        {/* Titik terakhir */}
-        {coords.length > 0 && (
-          <circle
-            cx={coords[coords.length - 1].x}
-            cy={coords[coords.length - 1].y}
-            r={2.5}
-            fill={statusColor}
-          />
+
+      {/* Body */}
+      <div className="px-4 pt-3 pb-4">
+        {/* SVG Chart */}
+        <div style={{ height: H }}>
+          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
+            {/* Gridlines */}
+            <line x1="0" y1="25" x2={W} y2="25" stroke="#f1f0ed" strokeWidth="1"/>
+            <line x1="0" y1="55" x2={W} y2="55" stroke="#f1f0ed" strokeWidth="1"/>
+            <line x1="0" y1="85" x2={W} y2="85" stroke="#f1f0ed" strokeWidth="1"/>
+            {/* Threshold line */}
+            <line x1="0" y1={THRESHOLD_Y} x2={W} y2={THRESHOLD_Y} stroke="#F09595" strokeWidth="0.8" strokeDasharray="5,4"/>
+            {/* Area */}
+            <path d={areaD} fill={areaColor}/>
+            {/* Line */}
+            <polyline points={coords.map(c => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ')}
+              fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round"/>
+          </svg>
+        </div>
+        {/* Time labels */}
+        <div className="flex justify-between mt-1">
+          <span className="text-[10px] text-[#9ca3af]">60m lalu</span>
+          <span className="text-[10px] text-[#9ca3af]">sekarang</span>
+        </div>
+
+        {/* Mini table */}
+        {lastThree.length > 0 && (
+          <table className="w-full border-collapse text-xs mt-3">
+            <thead>
+              <tr>
+                {['Waktu','Response','Status','Bar'].map(h => (
+                  <th key={h} className="px-2 py-1.5 text-left text-[11px] font-medium text-[#6b7280]"
+                    style={{ background: '#f9f9f8', borderBottom: '0.5px solid rgba(0,0,0,0.08)' }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {lastThree.map((m, i) => {
+                const ms = m.response_time_ms ?? 0
+                const pct = Math.min(Math.round((ms / 3000) * 100), 100)
+                const barColor = ms < 2000 ? '#3B6D11' : '#854F0B'
+                const time = new Date(m.checked_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })
+                return (
+                  <tr key={i} style={{ borderBottom: i < lastThree.length - 1 ? '0.5px solid rgba(0,0,0,0.08)' : 'none' }}>
+                    <td className="px-2 py-1.5 text-[#9ca3af]">{time}</td>
+                    <td className="px-2 py-1.5 font-semibold">{ms > 0 ? `${ms}ms` : '—'}</td>
+                    <td className="px-2 py-1.5"><StatusPill status={m.status} /></td>
+                    <td className="px-2 py-1.5">
+                      <div className="w-[80px] h-[5px] rounded-full overflow-hidden bg-[#f1f0ed]">
+                        <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: 9999 }}/>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         )}
-      </svg>
-      <div className="text-xs text-muted-foreground mt-1 text-right">
-        {currentMs !== null ? `${currentMs}ms` : '—'}
+
+        {lastThree.length === 0 && (
+          <div className="mt-3 text-[12px] text-[#9ca3af] text-center py-2">
+            Menunggu data dari cron...
+          </div>
+        )}
       </div>
     </div>
   )
@@ -133,12 +205,12 @@ function MiniLineChart({ data, nama, currentMs, status }: {
 export function L2RealtimePanel({ systems }: { systems: ProviderSnapshot[] }) {
   const [history,   setHistory]   = useState<ProviderHistory[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [tab,       setTab]       = useState<'response' | 'uptime' | 'error'>('response')
 
-  // Fetch data historis 30 menit terakhir
   useEffect(() => {
     async function fetchHistory() {
       try {
-        const res  = await fetch('/api/monitoring/metrics/history?minutes=30')
+        const res  = await fetch('/api/monitoring/metrics/history?minutes=60')
         const data = await res.json()
         if (data.success) setHistory(data.history)
       } catch { /* silent */ } finally {
@@ -146,36 +218,37 @@ export function L2RealtimePanel({ systems }: { systems: ProviderSnapshot[] }) {
       }
     }
     fetchHistory()
-    // Refresh setiap 60 detik
     const interval = setInterval(fetchHistory, 60_000)
     return () => clearInterval(interval)
   }, [])
 
-  // Map provider_id ke data historis
   const historyMap = new Map(history.map(h => [h.provider_id, h]))
 
   return (
-    <div className="rounded-md border bg-background p-4">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm font-medium text-foreground">Response Time — 30 Menit Terakhir</p>
-        <p className="text-xs text-muted-foreground">Diperbarui otomatis via SSE · setiap menit</p>
+    <div>
+      {/* Tab bar */}
+      <div className="flex border-b mb-3.5" style={{ borderColor: 'rgba(0,0,0,0.12)' }}>
+        {(['response', 'uptime', 'error'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-4 py-2.5 text-[13px] border-b-2 transition-colors whitespace-nowrap font-normal
+              ${tab === t ? 'text-[#185FA5] border-[#185FA5] font-medium' : 'text-[#6b7280] border-transparent hover:text-[#1a1a1a]'}`}>
+            {t === 'response' ? 'Response Time' : t === 'uptime' ? 'Uptime %' : 'Error Rate'}
+          </button>
+        ))}
       </div>
+
       {isLoading ? (
-        <div className="text-xs text-muted-foreground py-4 text-center">Memuat data historis...</div>
+        <div className="text-xs text-muted-foreground py-8 text-center">Memuat data historis...</div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-          {systems.map(s => {
-            const provHistory = historyMap.get(s.provider_id)
-            return (
-              <MiniLineChart
-                key={s.provider_id}
-                nama={s.nama}
-                status={s.status}
-                currentMs={s.response_time_ms}
-                data={provHistory?.data ?? []}
-              />
-            )
-          })}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {systems.map(s => (
+            <ProviderChart
+              key={s.provider_id}
+              provider={s}
+              history={historyMap.get(s.provider_id)?.data ?? []}
+              tab={tab}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -210,12 +283,10 @@ export function L3DeepPanel({ systems }: { systems: ProviderSnapshot[] }) {
 
 // ─── AlertRulesPanel ──────────────────────────────────────────────────────────
 
-interface AlertRulesPanelProps {
-  rules:    AlertRule[]
+export function AlertRulesPanel({ rules, onUpdate }: {
+  rules: AlertRule[]
   onUpdate: (updater: (prev: AlertRule[]) => AlertRule[]) => void
-}
-
-export function AlertRulesPanel({ rules, onUpdate }: AlertRulesPanelProps) {
+}) {
   const [savingId, setSavingId] = useState<string | null>(null)
   const [errors,   setErrors]   = useState<Record<string, string>>({})
 
@@ -224,9 +295,8 @@ export function AlertRulesPanel({ rules, onUpdate }: AlertRulesPanelProps) {
     setErrors(e => ({ ...e, [rule.id]: '' }))
     try {
       const res  = await fetch(`/api/monitoring/alert-rules/${rule.id}`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ [field]: value }),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
       })
       const data = await res.json()
       if (data.success) {
@@ -236,9 +306,7 @@ export function AlertRulesPanel({ rules, onUpdate }: AlertRulesPanelProps) {
       }
     } catch {
       setErrors(e => ({ ...e, [rule.id]: 'Gagal menyimpan' }))
-    } finally {
-      setSavingId(null)
-    }
+    } finally { setSavingId(null) }
   }
 
   if (rules.length === 0) {
@@ -256,38 +324,26 @@ export function AlertRulesPanel({ rules, onUpdate }: AlertRulesPanelProps) {
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-medium">{rule.provider_id} — {rule.alert_type}</span>
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-              <input
-                type="checkbox"
-                checked={rule.is_active}
+              <input type="checkbox" checked={rule.is_active}
                 onChange={e => handleSave(rule, 'is_active', e.target.checked)}
-                disabled={savingId === rule.id}
-                className="h-3.5 w-3.5"
-              />
+                disabled={savingId === rule.id} className="h-3.5 w-3.5"/>
               Aktif
             </label>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">Threshold</span>
-              <input type="number" defaultValue={rule.threshold_value}
-                onBlur={e => handleSave(rule, 'threshold_value', Number(e.target.value))}
-                disabled={savingId === rule.id}
-                className="rounded border px-2 py-1 text-xs" />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">Berturut (kali)</span>
-              <input type="number" defaultValue={rule.consecutive_failures}
-                onBlur={e => handleSave(rule, 'consecutive_failures', Number(e.target.value))}
-                disabled={savingId === rule.id}
-                className="rounded border px-2 py-1 text-xs" />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">Cooldown (menit)</span>
-              <input type="number" defaultValue={rule.cooldown_minutes}
-                onBlur={e => handleSave(rule, 'cooldown_minutes', Number(e.target.value))}
-                disabled={savingId === rule.id}
-                className="rounded border px-2 py-1 text-xs" />
-            </label>
+            {[
+              { label: 'Threshold', field: 'threshold_value' as keyof AlertRule, val: rule.threshold_value },
+              { label: 'Berturut (kali)', field: 'consecutive_failures' as keyof AlertRule, val: rule.consecutive_failures },
+              { label: 'Cooldown (menit)', field: 'cooldown_minutes' as keyof AlertRule, val: rule.cooldown_minutes },
+            ].map(({ label, field, val }) => (
+              <label key={field} className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">{label}</span>
+                <input type="number" defaultValue={val as number}
+                  onBlur={e => handleSave(rule, field, Number(e.target.value))}
+                  disabled={savingId === rule.id}
+                  className="rounded border px-2 py-1 text-xs"/>
+              </label>
+            ))}
           </div>
           {savingId === rule.id && <p className="mt-1.5 text-xs text-muted-foreground">Menyimpan...</p>}
           {errors[rule.id]      && <p className="mt-1.5 text-xs text-red-500">{errors[rule.id]}</p>}
