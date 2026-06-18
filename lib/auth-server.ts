@@ -63,20 +63,6 @@ async function makeSupabaseFromCookie() {
   )
 }
 
-// ─── Helper: extract app_role dari JWT token string ───────────────────────────
-
-function extractAppRoleFromToken(token: string): string | null {
-  try {
-    const parts   = token.split('.')
-    if (parts.length !== 3) return null
-    const pad     = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-    const payload = JSON.parse(Buffer.from(pad, 'base64').toString('utf-8'))
-    return typeof payload['app_role'] === 'string' ? payload['app_role'] : null
-  } catch {
-    return null
-  }
-}
-
 // ─── verifyJWT ────────────────────────────────────────────────────────────────
 // Dipakai oleh Server Component dan API route yang dipanggil dari server.
 // Baca header x-user-* dari middleware sebagai fast path.
@@ -120,8 +106,14 @@ export const verifyJWT = cache(async (): Promise<JWTPayload | null> => {
     if (!role) {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.access_token) {
-        const fromToken = extractAppRoleFromToken(session.access_token)
-        if (fromToken) role = fromToken
+        try {
+          const parts = session.access_token.split('.')
+          if (parts.length === 3) {
+            const pad     = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+            const payload = JSON.parse(Buffer.from(pad, 'base64').toString('utf-8'))
+            if (typeof payload['app_role'] === 'string') role = payload['app_role']
+          }
+        } catch { /* abaikan */ }
       }
     }
 
@@ -167,25 +159,42 @@ export async function requireSuperAdmin(): Promise<RequireSuperAdminResult> {
 export async function requireSuperAdminCookie(): Promise<RequireSuperAdminResult> {
   try {
     const supabase = await makeSupabaseFromCookie()
-    const { data: { user }, error } = await supabase.auth.getUser()
 
+    // Pakai getClaims() — decode JWT langsung, sama seperti middleware.
+    // is_super_admin diinject Edge Function sebagai claim TOP-LEVEL (bukan app_metadata.app_role).
+    // FIX S#292: sebelumnya cek app_metadata.app_role yang TIDAK ADA di JWT project ini.
+    try {
+      const claimsResult = await (supabase.auth as unknown as {
+        getClaims: () => Promise<{ data: { claims: Record<string, unknown> } | null; error: unknown }>
+      }).getClaims()
+
+      if (!claimsResult.error && claimsResult.data?.claims) {
+        const c   = claimsResult.data.claims
+        const uid = typeof c['sub'] === 'string' ? c['sub'] : ''
+        if (c['is_super_admin'] === true) {
+          return { ok: true, uid }
+        }
+      }
+    } catch { /* fallback ke getUser + decode token manual */ }
+
+    // Fallback: getUser untuk dapat uid, lalu decode token untuk cek is_super_admin
+    const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) {
       return { ok: false, res: NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 }) }
     }
 
-    // Cek app_metadata (diisi Edge Function inject-custom-claims)
-    const appMeta = user.app_metadata ?? {}
-    if (appMeta['app_role'] === 'super_admin') {
-      return { ok: true, uid: user.id }
-    }
-
-    // Fallback: cek JWT token langsung
     const { data: { session } } = await supabase.auth.getSession()
     if (session?.access_token) {
-      const role = extractAppRoleFromToken(session.access_token)
-      if (role === 'super_admin') {
-        return { ok: true, uid: user.id }
-      }
+      try {
+        const parts = session.access_token.split('.')
+        if (parts.length === 3) {
+          const pad     = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+          const payload = JSON.parse(Buffer.from(pad, 'base64').toString('utf-8'))
+          if (payload['is_super_admin'] === true) {
+            return { ok: true, uid: user.id }
+          }
+        }
+      } catch { /* abaikan */ }
     }
 
     return { ok: false, res: NextResponse.json({ success: false, message: 'Akses ditolak' }, { status: 403 }) }
