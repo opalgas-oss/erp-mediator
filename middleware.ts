@@ -317,5 +317,14 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    // Semua halaman kecuali asset statis Next.js
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+    // API routes SA yang butuh auth header injection via Guard 6
+    // Wajib eksplisit — Next.js tidak selalu menjalankan middleware untuk /api/* dengan pattern di atas
+    '/api/superadmin/:path*',
+    '/api/admintenant/:path*',
+    '/api/config/:path*',
+    '/api/monitoring/:path*',
+  ],
 }
