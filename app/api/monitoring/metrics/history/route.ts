@@ -10,8 +10,16 @@ import { requireSuperAdminCookie }      from '@/lib/auth-server'
 import { createServerSupabaseClient }   from '@/lib/supabase-server'
 
 export async function GET(req: NextRequest) {
+  // DIAGNOSTIK S#292 — hapus setelah selesai
+  console.log('[history-diag] x-is-super-admin header:', req.headers.get('x-is-super-admin'))
+  console.log('[history-diag] x-user-id header:', req.headers.get('x-user-id'))
+  console.log('[history-diag] cookie ada:', req.headers.get('cookie') ? 'YA' : 'TIDAK')
+
   const auth = await requireSuperAdminCookie()
-  if (!auth.ok) return auth.res
+  if (!auth.ok) {
+    console.log('[history-diag] requireSuperAdminCookie GAGAL')
+    return auth.res
+  }
 
   const minutes  = Number(req.nextUrl.searchParams.get('minutes') ?? '60')
   const supabase = createServerSupabaseClient()
