@@ -5,7 +5,7 @@
 // PERUBAHAN Sesi #161 — T-017: retentionDays dari parameter (dibaca config di caller route.ts)
 // PERUBAHAN Sesi #171 — T-055: update signature collectL1Metrics tambah thresholdMs+cooldown+consecutive,
 //   tambah call upsertDefaultRules() setelah providers diambil — sebelumnya diimport tapi tidak dipanggil.
-// PERUBAHAN Sesi #294 — FIX Fonnte false-DOWN: pingProvider() GET generik tidak bisa cek Fonnte
+// PERUBAHAN Sesi #293 — FIX Fonnte false-DOWN: pingProvider() GET generik tidak bisa cek Fonnte
 //   (Fonnte tidak punya status-page publik; status_url '/check' → HTTP 404). Tambah pingFonnte()
 //   terautentikasi (POST /device + api_token M3, baca device_status) + dispatch kode==='fonnte'.
 //
