@@ -16,6 +16,11 @@
 //   tambah case 'supabase' di collectDeepMetrics() — credential diambil dari 'supabase-management'
 //   (reuse collectSupabaseMetrics). Sebelumnya panel Supabase di Deep Metrics selalu
 //   "Data L3 belum tersedia" karena kode='supabase' tidak ada di L3_PROVIDERS.
+// PERUBAHAN Sesi #297 — FIX db_size_bytes + storage_used_bytes selalu 0:
+//   case 'supabase' di collectDeepMetrics() sekarang pass appCreds (project_url + service_role_key
+//   dari provider 'supabase') ke collectSupabaseMetrics() sebagai parameter ke-2.
+//   collectSupabaseMetrics() gunakan appCreds untuk RPC monitoring.collect_metrics() yang
+//   mengambil pg_database_size() + storage.objects SUM langsung dari DB (lebih akurat + tersedia).
 //
 // PENTING: Token management API (Supabase, GitHub, Vercel) diambil dari M3 DB
 // via credential.service.ts — tidak ada process.env selain QStash (bootstrap level).
@@ -162,17 +167,24 @@ async function collectDeepMetrics(
 ): Promise<Record<string, unknown>> {
   switch (kode) {
     case 'supabase': {
-      // Panel Supabase (kode='supabase') pakai Supabase Management API.
-      // Credential diambil dari 'supabase-management' (bukan 'supabase' yang tidak punya credential M3).
+      // S#297: pass dua set credential ke collectSupabaseMetrics:
+      //   mgmtCreds: access_token + project_ref (untuk /health status komponen)
+      //   appCreds:  project_url + service_role_key (untuk RPC monitoring.collect_metrics())
+      // Kedua credential diambil dari M3 DB masing-masing provider-nya.
       const mgmtCreds = await getCredentialsByProvider('supabase-management')
-      return collectSupabaseMetrics(mgmtCreds)
+      const appCreds  = await getCredentialsByProvider('supabase')
+      return collectSupabaseMetrics(mgmtCreds, appCreds)
     }
-    case 'supabase-management': return collectSupabaseMetrics(creds)
-    case 'vercel':              return collectVercelMetrics(creds)
-    case 'upstash':             return collectUpstashMetrics(creds)
-    case 'cloudinary':          return collectCloudinaryMetrics(creds)
-    case 'github':              return collectGithubMetrics(creds)
-    default:                    return { _note: `No L3 collector for ${kode}` }
+    case 'supabase-management': {
+      // Panel supabase-management pakai mgmtCreds saja (tidak perlu RPC)
+      const appCreds = await getCredentialsByProvider('supabase')
+      return collectSupabaseMetrics(creds, appCreds)
+    }
+    case 'vercel':     return collectVercelMetrics(creds)
+    case 'upstash':    return collectUpstashMetrics(creds)
+    case 'cloudinary': return collectCloudinaryMetrics(creds)
+    case 'github':     return collectGithubMetrics(creds)
+    default:           return { _note: `No L3 collector for ${kode}` }
   }
 }
 
@@ -190,11 +202,11 @@ async function pingProvider(
 
   if (!targetUrl) {
     return {
-      provider_id:   providerId,
-      status:        'UNKNOWN',
+      provider_id:      providerId,
+      status:           'UNKNOWN',
       response_time_ms: null,
-      layer:         'L1',
-      error_detail:  'Tidak ada URL untuk ping',
+      layer:            'L1',
+      error_detail:     'Tidak ada URL untuk ping',
     }
   }
 
@@ -254,7 +266,6 @@ async function pingFonnte(providerId: string): Promise<InsertProviderMetricPaylo
 
   const start = Date.now()
   try {
-    // Authorization Fonnte: token langsung (bukan Bearer). POST /device.
     const res = await fetchWithTimeout(
       'https://api.fonnte.com/device',
       { method: 'POST', headers: { Authorization: token } },
@@ -278,7 +289,6 @@ async function pingFonnte(providerId: string): Promise<InsertProviderMetricPaylo
       return { provider_id: providerId, status, response_time_ms: ms, layer: 'L1' as MonitoringLayer }
     }
 
-    // device_status === 'disconnect' (atau nilai lain) → WA tidak bisa dikirim
     return { provider_id: providerId, status: 'DOWN', response_time_ms: ms, layer: 'L1', error_detail: `Device ${body.device_status ?? 'disconnect'}` }
   } catch (err) {
     const ms = Date.now() - start

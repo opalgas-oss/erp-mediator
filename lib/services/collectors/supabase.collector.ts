@@ -1,110 +1,126 @@
 // lib/services/collectors/supabase.collector.ts
-// L3 Deep Metrics — Supabase Management API
+// L3 Deep Metrics — Supabase
 // Dipanggil oleh: metrics-collector.service.ts → collectDeepMetrics()
 // Dibuat: Sesi #295 — HUTANG-SPLIT-COLLECTOR (pecah dari metrics-collector.service.ts)
 // PERUBAHAN Sesi #295 — FIX field mismatch: sebelumnya return db_status/auth_status/dll
-//   tapi UI deep/page.tsx expect db_active_connections/db_size_bytes/storage_used_bytes/dll.
-//   Fix: panggil /health untuk status komponen + /stats untuk metrics kuantitatif.
-//   Field output disesuaikan persis dengan yang di-render UI (MetricRow di SystemPanel kode=supabase).
+// PERUBAHAN Sesi #297 — FIX db_size_bytes + storage_used_bytes selalu 0:
+//   Endpoint /database/usage tidak exist di Management API → ganti dengan RPC SQL
+//   via monitoring.collect_metrics() menggunakan project_url + service_role_key dari
+//   provider 'supabase'. Management API /health tetap dipakai untuk status komponen.
+//   Tambah active_connections dari RPC (lebih akurat dari stat kumulatif).
 //
-// Credential: getCredentialsByProvider('supabase-management').access_token + project_ref
-// Dikonfigurasi SuperAdmin di: Integrasi > API Provider > Supabase Management API
+// Credential yang dibutuhkan:
+//   Dari provider 'supabase-management': access_token, project_ref  → /health endpoint
+//   Dari provider 'supabase': project_url, service_role_key         → RPC collect_metrics()
+//
 // Anti-hardcode: semua credential dari M3, tidak ada process.env di file ini.
 
 import 'server-only'
 
 /**
- * Kumpulkan deep metrics Supabase via Management API.
+ * Kumpulkan deep metrics Supabase.
  *
- * Credential yang dibutuhkan (dari M3):
- *   - access_token: Personal Access Token dari dashboard.supabase.com/account/tokens
- *   - project_ref:  Reference ID project (mis. abcdefghijklmnop)
+ * @param mgmtCreds  - Credential dari provider 'supabase-management' (access_token, project_ref)
+ * @param appCreds   - Credential dari provider 'supabase' (project_url, service_role_key)
  *
  * Field output (sesuai UI deep/page.tsx MetricRow kode=supabase):
  *   db_active_connections, db_max_connections, db_size_bytes,
  *   storage_used_bytes, auth_requests_per_min, active_sessions,
  *   edge_fn_invocations, edge_fn_error_rate_pct
- *
- * Endpoint:
- *   GET https://api.supabase.com/v1/projects/{ref}/health  → status komponen
- *   GET https://api.supabase.com/v1/projects/{ref}/database/usage → stats DB (jika tersedia)
  */
 export async function collectSupabaseMetrics(
-  creds: Record<string, string>
+  mgmtCreds: Record<string, string>,
+  appCreds:  Record<string, string> = {}
 ): Promise<Record<string, unknown>> {
-  const token      = creds['access_token']
-  const projectRef = creds['project_ref']
+  const token      = mgmtCreds['access_token']
+  const projectRef = mgmtCreds['project_ref']
+  const projectUrl = appCreds['project_url']
+  const serviceKey = appCreds['service_role_key']
 
-  if (!token) {
-    return {
-      _note:   'access_token belum dikonfigurasi di M3',
-      _source: 'Integrasi > API Provider > Supabase Management API',
-    }
-  }
+  // ── 1. RPC collect_metrics() via project_url + service_role_key ──────────────
+  // Ambil db_size_bytes, active_connections, storage_used_bytes langsung dari DB
+  // via monitoring.collect_metrics() SECURITY DEFINER function (statement_timeout=5s).
+  // Ini adalah sumber data paling akurat — langsung query pg_database_size() + storage.objects.
 
-  if (!projectRef) {
-    return {
-      _note:         'project_ref belum dikonfigurasi di M3 (tambahkan field project_ref di M3 credential supabase-management)',
-      _source:       'Integrasi > API Provider > Supabase Management API',
-      _token_source: 'M3 Credential Management (supabase-management.access_token)',
-    }
-  }
+  let dbSizeBytes     = 0
+  let activeConn      = 0
+  let storageBytes    = 0
+  let rpcOk           = false
 
-  const headers = {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type':  'application/json',
-  }
+  if (projectUrl && serviceKey) {
+    try {
+      const rpcRes = await fetch(`${projectUrl}/rest/v1/rpc/collect_metrics`, {
+        method:  'POST',
+        headers: {
+          'apikey':        serviceKey,
+          'Authorization': `Bearer ${serviceKey}`,
+          'Content-Type':  'application/json',
+        },
+        body: '{}',
+        signal: AbortSignal.timeout(8_000),
+      })
 
-  try {
-    // Panggil /health + /database/usage secara paralel
-    const [healthRes, usageRes] = await Promise.all([
-      fetch(`https://api.supabase.com/v1/projects/${projectRef}/health`, { headers }),
-      fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/usage`, { headers }),
-    ])
-
-    // Parse health — array of { name, status }
-    const healthData = healthRes.ok ? await healthRes.json().catch(() => []) : []
-    const components: Record<string, string> = {}
-    if (Array.isArray(healthData)) {
-      for (const item of healthData) {
-        if (item?.name) components[item.name] = item.status ?? 'UNKNOWN'
+      if (rpcRes.ok) {
+        const rpcData = await rpcRes.json().catch(() => null)
+        if (rpcData && typeof rpcData === 'object') {
+          dbSizeBytes  = Number(rpcData.db_size_bytes)      || 0
+          activeConn   = Number(rpcData.active_connections) || 0
+          storageBytes = Number(rpcData.storage_used_bytes) || 0
+          rpcOk        = true
+        }
       }
+    } catch {
+      // RPC gagal — fallback ke 0, tidak throw
     }
+  }
 
-    // Parse usage — shape varies, fallback ke 0 jika endpoint tidak tersedia
-    const usageData = usageRes.ok ? await usageRes.json().catch(() => null) : null
+  // ── 2. Management API /health — status komponen (db, auth, dll) ──────────────
+  // Tetap dipakai untuk _db_health + _auth_health (informasi status layanan Supabase).
+  // Tidak mengambil angka usage dari sini — endpoint usage tidak exist.
 
-    // db_max_connections: Supabase Free = 60 direct, Pro = 200
-    // Ambil dari usage jika ada, fallback ke 60 (free tier default)
-    const dbMaxConn    = usageData?.db_max_connections   ?? 60
-    const dbActiveConn = usageData?.db_active_connections ?? 0
-    const dbSizeBytes  = usageData?.db_size_bytes        ?? 0
-    const storageBytes = usageData?.storage_size_bytes   ?? 0
+  let dbHealth   = 'UNKNOWN'
+  let authHealth = 'UNKNOWN'
 
-    // Status komponen sebagai catatan tambahan
-    const dbHealth  = components['db']             ?? 'UNKNOWN'
-    const authHealth = components['auth']          ?? 'UNKNOWN'
-
-    return {
-      // Field yang di-render UI (MetricRow kode=supabase)
-      db_active_connections:  dbActiveConn,
-      db_max_connections:     dbMaxConn,
-      db_size_bytes:          dbSizeBytes,
-      storage_used_bytes:     storageBytes,
-      auth_requests_per_min:  usageData?.auth_requests_per_min  ?? 0,
-      active_sessions:        usageData?.active_sessions        ?? 0,
-      edge_fn_invocations:    usageData?.edge_fn_invocations    ?? 0,
-      edge_fn_error_rate_pct: usageData?.edge_fn_error_rate_pct ?? 0,
-      // Info tambahan (tidak di-render UI tapi berguna untuk debug)
-      _db_health:             dbHealth,
-      _auth_health:           authHealth,
-      _usage_available:       usageRes.ok,
-      _token_source:          'M3 Credential Management (supabase-management.access_token)',
+  if (token && projectRef) {
+    try {
+      const healthRes = await fetch(
+        `https://api.supabase.com/v1/projects/${projectRef}/health`,
+        {
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          signal:  AbortSignal.timeout(8_000),
+        }
+      )
+      if (healthRes.ok) {
+        const healthData = await healthRes.json().catch(() => [])
+        if (Array.isArray(healthData)) {
+          for (const item of healthData) {
+            if (item?.name === 'db')   dbHealth   = item.status ?? 'UNKNOWN'
+            if (item?.name === 'auth') authHealth = item.status ?? 'UNKNOWN'
+          }
+        }
+      }
+    } catch {
+      // Health check gagal — status tetap UNKNOWN
     }
-  } catch (err) {
-    return {
-      _error:        String(err),
-      _token_source: 'M3 Credential Management (supabase-management.access_token)',
-    }
+  }
+
+  // ── 3. Return semua field ─────────────────────────────────────────────────────
+
+  return {
+    // Field utama — di-render UI (MetricRow kode=supabase di deep/page.tsx)
+    db_active_connections:  activeConn,
+    db_max_connections:     60,   // Free tier default — dikonfigurasi SA via capacity_supabase_connections
+    db_size_bytes:          dbSizeBytes,
+    storage_used_bytes:     storageBytes,
+    auth_requests_per_min:  0,    // TODO: ambil dari Management API analytics jika diperlukan
+    active_sessions:        0,    // TODO: ambil dari auth.sessions jika diperlukan
+    edge_fn_invocations:    0,    // TODO: ambil dari Management API analytics jika diperlukan
+    edge_fn_error_rate_pct: 0,
+
+    // Info debug (tidak di-render UI — terlihat di raw metrics_json)
+    _db_health:      dbHealth,
+    _auth_health:    authHealth,
+    _rpc_available:  rpcOk,
+    _token_source:   'M3 Credential Management (supabase-management.access_token + supabase.service_role_key)',
   }
 }
