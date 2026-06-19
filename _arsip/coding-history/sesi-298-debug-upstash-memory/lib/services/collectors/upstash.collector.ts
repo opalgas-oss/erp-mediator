@@ -12,11 +12,6 @@
 //   Fix: gunakan word-boundary regex \bused_memory:(\d+) + fallback ke used_memory_rss.
 //   memory_max_bytes dari INFO diganti dengan config registry (capacity_upstash_memory_mb)
 //   karena nilai dari INFO (maxmemory) bisa 0 atau tidak akurat untuk managed instance.
-// PERUBAHAN Sesi #298 — DEBUG MODE memory_used_bytes masih 0:
-//   Tambah field debug _raw_info_sample (500 char pertama) + _result_type ke return,
-//   tersimpan ke tabel metrics → diquery via Supabase MCP untuk lihat format aktual.
-//   Handle result sebagai string ATAU object (Upstash bisa kembalikan keduanya).
-//   Field debug akan DIHAPUS setelah format terverifikasi + fix final ditulis.
 
 import 'server-only'
 
@@ -60,18 +55,13 @@ export async function collectUpstashMetrics(
     const data = await res.json()
 
     // Upstash REST /info → { result: "redis_version:7.x\r\nused_memory:12345\r\n..." }
-    // DEBUG S#298: Upstash bisa kembalikan result sebagai string ATAU object.
-    const resultRaw   = data?.result
-    const resultType  = typeof resultRaw
-    const infoString: string =
-      resultType === 'string'
-        ? (resultRaw as string)
-        : resultType === 'object' && resultRaw !== null
-          ? JSON.stringify(resultRaw)
-          : ''
+    const infoString: string = typeof data?.result === 'string' ? data.result : ''
 
     // Parse integer field dari INFO string
+    // Gunakan \b word boundary dan $ end-of-value untuk avoid prefix-match
+    // Contoh: `used_memory:12345\r\n` harus match, `used_memory_rss:99999` tidak boleh
     const parseInfoInt = (field: string): number => {
+      // Match: field diawali newline/start, diakhiri \r\n atau end
       const regex = new RegExp(`(?:^|\\r?\\n)${field}:(\\d+)`)
       const match = infoString.match(regex)
       return match ? parseInt(match[1], 10) : 0
@@ -96,18 +86,15 @@ export async function collectUpstashMetrics(
 
     return {
       // Field persis sesuai CapacityRow kode=upstash di UI
+      // memory_max_bytes TIDAK di-return — kapasitas diambil dari config registry di deep/page.tsx
       commands_per_second: commandsPerSecond,
       memory_used_bytes:   usedMemoryBytes,
       cache_hit_rate_pct:  cacheHitRatePct,
-      latency_p99_ms:      0,
-      // Info tambahan
+      latency_p99_ms:      0,   // Tidak tersedia dari /info — butuh endpoint terpisah
+      // Info tambahan (untuk debug, tidak di-render UI)
       _keyspace_hits:      keyspaceHits,
       _keyspace_misses:    keyspaceMisses,
       _uptime_seconds:     uptimeSec,
-      // DEBUG S#298 — hapus setelah format terverifikasi
-      _result_type:        resultType,
-      _info_length:        infoString.length,
-      _raw_info_sample:    infoString.slice(0, 600),
       _token_source:       'M3 Credential Management (upstash.rest_token)',
     }
   } catch (err) {
