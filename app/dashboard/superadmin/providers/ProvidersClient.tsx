@@ -1,11 +1,13 @@
 'use client'
 // app/dashboard/superadmin/providers/ProvidersClient.tsx
 // Halaman API Provider — tabel full-width + tab + progress bar.
-// Dibuat: Sesi #107 — Update: Sesi #151, S#218, S#247, S#249
+// Dibuat: Sesi #107 — Update: Sesi #151, S#218, S#247, S#249, S#288, S#297
 //   S#218a: tombol + Tambah Provider + DialogTambahProvider
 //   S#218b: fix auto-refresh (useEffect sync) + sort kolom via useSortableTable
 //   S#247:  hapus blok h1+deskripsi duplikat
 //   S#249:  HUTANG-PROVIDER-INACTIVE — toggle + dialog konfirmasi + fix Kategori 1 UI
+//   S#288:  tambah kolom Use Case
+//   S#297:  hapus kolom Prioritas + hapus tag belum_dibutuhkan
 
 import { useState, useCallback, useEffect }   from 'react'
 import { useRouter }                           from 'next/navigation'
@@ -37,11 +39,9 @@ interface ColHeader {
   right?:  boolean
 }
 
-// S#249: hapus kolom Instance + Terakhir Dites — 4 kolom sesuai STANDAR_UI_PENAMAAN Bagian 3
-// S#288: tambah kolom Use Case
+// S#297: hapus kolom Prioritas — 4 kolom: Provider, Status, Use Case, Aksi
 const HEADERS: ColHeader[] = [
   { label: 'Provider',  field: 'nama' },
-  { label: 'Prioritas', field: 'tag' },
   { label: 'Status',    field: 'health_overall' },
   { label: 'Use Case',  field: null, noIcon: true },
   { label: 'Aksi',      field: null, noIcon: true, right: true },
@@ -150,7 +150,7 @@ export function ProvidersClient({ initialProviders }: Props) {
 
       {/* Tabs + Table */}
       <div>
-        {/* Tab bar — S#249 fix: tab aktif #185FA5 bukan #1a1a1a [Kategori 1 INKONSISTENSI 6] */}
+        {/* Tab bar */}
         <div style={{ background:'#fff', borderRadius:'12px 12px 0 0', border:'0.5px solid rgba(0,0,0,0.12)', borderBottom:'none', display:'flex' }}>
           {([['app','Koneksi Aplikasi',appList.length,false],['monitor','Monitoring Platform',monitorList.length,true]] as const).map(([tab, label, count, isMon]) => (
             <button key={tab} onClick={() => setTab(tab as 'app'|'monitor')}
@@ -177,15 +177,14 @@ export function ProvidersClient({ initialProviders }: Props) {
           </div>
         )}
 
-        {/* Table — S#288: 5 kolom (Provider, Prioritas, Status, Use Case, Aksi) */}
+        {/* Table — S#297: 4 kolom (Provider, Status, Use Case, Aksi) */}
         <div style={{ background:'#fff', borderRadius:'0 0 12px 12px', border:'0.5px solid rgba(0,0,0,0.12)', borderTop:'none', overflow:'hidden' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed', fontSize:13 }}>
             <colgroup>
-              <col style={{ width:'34%' }}/>
-              <col style={{ width:'14%' }}/>
+              <col style={{ width:'38%' }}/>
               <col style={{ width:'18%' }}/>
-              <col style={{ width:'20%' }}/>
-              <col style={{ width:'14%' }}/>
+              <col style={{ width:'28%' }}/>
+              <col style={{ width:'16%' }}/>
             </colgroup>
             <thead>
               <tr style={{ background:'#f9f9f8' }}>

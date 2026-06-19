@@ -10,7 +10,6 @@
 //   - Fix border baris 0.07 → 0.08 [STANDAR INKONSISTENSI 3]
 //   - Hapus kolom Instance + Terakhir Dites [sesuai STANDAR_UI_PENAMAAN Bagian 3]
 // Update: S#288 — tambah kolom Use Case (chip warna dari resolveUseCaseStyle)
-// Update: S#297 — hapus kolom Prioritas + hapus tag belum_dibutuhkan
 
 import { HealthBadge }                  from '@/components/superadmin/HealthBadge'
 import { ButtonToggleAktifProvider }    from './ButtonToggleAktifProvider'

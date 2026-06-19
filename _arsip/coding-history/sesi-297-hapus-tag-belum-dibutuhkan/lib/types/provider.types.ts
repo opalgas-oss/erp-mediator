@@ -4,7 +4,6 @@
 // Dibuat: Sesi #107 — M3 Credential Management
 // Update: Sesi #218 — tambah TambahProviderPayload + TambahFieldDefPayload
 // Update: Sesi #248 — ROLLBACK: hapus is_aktif dari ProviderFieldDef (fitur per-field dihapus)
-// Update: Sesi #297 — hapus 'belum_dibutuhkan' dari union tag (diganti 'disarankan' di DB)
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
@@ -16,7 +15,7 @@ export interface ServiceProvider {
   deskripsi:      string | null
   docs_url:       string | null
   status_url:     string | null
-  tag:            'wajib' | 'disarankan' | 'opsional'
+  tag:            'wajib' | 'disarankan' | 'opsional' | 'belum_dibutuhkan'
   is_aktif:       boolean
   sort_order:     number
   health_overall: HealthStatus   // dihitung dari semua instance provider ini
@@ -106,7 +105,7 @@ export interface TestKoneksiResult {
 export interface TambahProviderPayload {
   nama:        string                    // nama tampil di dashboard SA
   kategori:    string                    // email | messaging | payment | media | cache | database | search | cdn | management | queue
-  tag:         'wajib' | 'disarankan' | 'opsional'
+  tag:         'wajib' | 'disarankan' | 'opsional' | 'belum_dibutuhkan'
   deskripsi:   string | null
   docs_url:    string | null
   field_defs:  TambahFieldDefPayload[]   // boleh kosong
