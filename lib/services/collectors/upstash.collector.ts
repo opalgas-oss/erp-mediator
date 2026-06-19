@@ -58,17 +58,17 @@ export async function collectUpstashMetrics(
     const infoString: string = typeof data?.result === 'string' ? data.result : ''
 
     // Parse integer field dari INFO string
-    const parseInt = (field: string): number => {
+    const parseInfoInt = (field: string): number => {
       const match = infoString.match(new RegExp(`${field}:(\\d+)`))
       return match ? parseInt(match[1], 10) : 0
     }
 
-    const usedMemoryBytes  = parseInt('used_memory')
-    const maxMemoryBytes   = parseInt('maxmemory')     // 0 = no limit (managed instance)
-    const keyspaceHits     = parseInt('keyspace_hits')
-    const keyspaceMisses   = parseInt('keyspace_misses')
-    const totalCmds        = parseInt('total_commands_processed')
-    const uptimeSec        = parseInt('uptime_in_seconds')
+    const usedMemoryBytes  = parseInfoInt('used_memory')
+    const maxMemoryBytes   = parseInfoInt('maxmemory')     // 0 = no limit (managed instance)
+    const keyspaceHits     = parseInfoInt('keyspace_hits')
+    const keyspaceMisses   = parseInfoInt('keyspace_misses')
+    const totalCmds        = parseInfoInt('total_commands_processed')
+    const uptimeSec        = parseInfoInt('uptime_in_seconds')
 
     // Cache hit rate: hits / (hits + misses) * 100, fallback 0
     const totalLookups    = keyspaceHits + keyspaceMisses
