@@ -14,7 +14,6 @@ import { findRulesByProvider } from '@/lib/repositories/alert-rules.repository'
 import { findLastAlertAt, insertAlertLog } from '@/lib/repositories/alert-log.repository'
 import { findRecentByProvider }            from '@/lib/repositories/provider-metrics.repository'
 import { sendFonnteWA }                    from '@/lib/utils/fonnte.server'
-import { sendResendEmail }                 from '@/lib/utils/resend.server'
 import type { MonitoringStatus }           from '@/lib/types/monitoring.types'
 import { MONITORING_STATUS, ALERT_TYPE }   from '@/lib/constants/monitoring.constant'
 
@@ -166,40 +165,23 @@ async function sendWAAlert(message: string, targetNumber: string): Promise<boole
   return true
 }
 
-// ─── sendEmailAlert — via Resend (dari M3 credential.service) ───────────────
+// ─── sendEmailAlert — via SMTP credential M3 ─────────────────────────────────
 
 /**
- * Kirim Email via Resend API.
- * Credential Resend (api_key, from_email, from_name) diambil dari M3 DB via credential.service.
+ * Kirim Email via SMTP.
+ * Credential SMTP diambil dari M3 DB via credential.service.
  * Email tujuan dari config_registry monitoring.superadmin_alert_email.
- * Throw Error jika credential tidak ada atau Resend gagal — ditangkap Promise.allSettled caller.
- *
- * PERUBAHAN Sesi #294 — ganti stub SMTP → Resend nyata.
- * Provider aktif platform adalah Resend (use_case: notification, is_default: true).
+ * TODO: integrasi penuh Nodemailer di iterasi berikutnya.
  */
 async function sendEmailAlert(message: string, targetEmail: string): Promise<boolean> {
-  // Ambil 3 credential Resend dari M3
-  const [apiKey, fromEmail, fromName] = await Promise.all([
-    getCredential('resend', 'api_key'),
-    getCredential('resend', 'from_email'),
-    getCredential('resend', 'from_name'),
-  ])
-
-  if (!apiKey)    throw new Error('Resend api_key belum dikonfigurasi di M3 Credential Management')
-  if (!fromEmail) throw new Error('Resend from_email belum dikonfigurasi di M3 Credential Management')
+  // Verifikasi credential SMTP ada di M3 sebelum kirim
+  const smtpHost = await getCredential('smtp', 'host')
+  if (!smtpHost) throw new Error('Credential SMTP belum dikonfigurasi di M3 Credential Management')
   if (!targetEmail) throw new Error('Email penerima alert belum dikonfigurasi di Config Registry')
 
-  const result = await sendResendEmail({
-    apiKey,
-    fromEmail,
-    fromName:  fromName ?? 'ERP Mediator',
-    to:        targetEmail,
-    subject:   '[ERP Mediator] Alert Sistem Monitoring',
-    text:      message,
-  })
-
-  if (!result.success) {
-    throw new Error(`Resend error: ${result.reason ?? 'Unknown error'}`)
-  }
+  // TODO: Implementasi pengiriman email via Nodemailer + credential SMTP M3
+  // Untuk saat ini: log + return true (tidak throw, supaya WA alert tetap bisa jalan)
+  console.log(`[alert.service] Email alert → ${targetEmail}: ${message}`)
+  console.log(`[alert.service] SMTP host: ${smtpHost} (credential dari M3)`)
   return true
 }
