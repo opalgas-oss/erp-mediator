@@ -2,21 +2,15 @@
 // L3 Deep Metrics — Upstash Redis REST API
 // Dipanggil oleh: metrics-collector.service.ts → collectDeepMetrics()
 // Dibuat: Sesi #295 — HUTANG-SPLIT-COLLECTOR (pecah dari metrics-collector.service.ts)
-// PERUBAHAN Sesi #295 — FIX field mismatch: sebelumnya return used_memory_human/
-//   connected_clients/dll (string dari Redis INFO) tapi UI expect commands_per_second/
-//   memory_used_bytes/memory_max_bytes/cache_hit_rate_pct/latency_p99_ms (numerik).
-//   Fix: parse Redis INFO string ke field numerik yang match persis dengan UI.
-// PERUBAHAN Sesi #297 — FIX memory_used_bytes selalu 0:
-//   Regex `used_memory:(\d+)` tidak match karena di Upstash INFO field `used_memory`
-//   diikuti field lain dengan prefix sama (mis. used_memory_rss, used_memory_peak).
-//   Fix: gunakan word-boundary regex \bused_memory:(\d+) + fallback ke used_memory_rss.
-//   memory_max_bytes dari INFO diganti dengan config registry (capacity_upstash_memory_mb)
-//   karena nilai dari INFO (maxmemory) bisa 0 atau tidak akurat untuk managed instance.
-// PERUBAHAN Sesi #298 — DEBUG MODE memory_used_bytes masih 0:
-//   Tambah field debug _raw_info_sample (500 char pertama) + _result_type ke return,
-//   tersimpan ke tabel metrics → diquery via Supabase MCP untuk lihat format aktual.
-//   Handle result sebagai string ATAU object (Upstash bisa kembalikan keduanya).
-//   Field debug akan DIHAPUS setelah format terverifikasi + fix final ditulis.
+// PERUBAHAN Sesi #295 — FIX field mismatch: parse Redis INFO string ke field numerik UI.
+// PERUBAHAN Sesi #297 — coba fix memory_used_bytes via regex used_memory (ternyata salah field).
+// PERUBAHAN Sesi #298 — FIX FINAL memory_used_bytes selalu 0:
+//   Root cause terbukti dari _raw_info_sample aktual: Upstash serverless TIDAK melaporkan
+//   `used_memory` seperti Redis biasa — field itu selalu 0 (engine memory tidak diekspos).
+//   Field yang benar untuk "data terpakai" di Upstash adalah `total_data_size`,
+//   dengan kapasitas `max_data_size` (256 MB = 268435456 bytes, cocok dengan config).
+//   Fix: gunakan total_data_size sebagai memory_used_bytes. Fallback ke used_memory bila ada.
+//   Field debug S#298 (_result_type/_info_length/_raw_info_sample) DIHAPUS.
 
 import 'server-only'
 
@@ -29,7 +23,12 @@ import 'server-only'
  *
  * Field output (sesuai UI deep/page.tsx CapacityRow kode=upstash):
  *   commands_per_second, memory_used_bytes, cache_hit_rate_pct, latency_p99_ms
- *   (memory_max_bytes tidak di-return — kapasitas diambil dari config registry di UI)
+ *   (kapasitas memory diambil dari config registry capacity_upstash_memory_mb di UI)
+ *
+ * Catatan format INFO Upstash (terverifikasi S#298):
+ *   used_memory   → SELALU 0 di Upstash serverless (engine memory tidak diekspos)
+ *   total_data_size → ukuran data tersimpan (field yang benar untuk "memory terpakai")
+ *   max_data_size   → kapasitas data (256 MB di Free plan)
  */
 export async function collectUpstashMetrics(
   creds: Record<string, string>
@@ -59,29 +58,27 @@ export async function collectUpstashMetrics(
 
     const data = await res.json()
 
-    // Upstash REST /info → { result: "redis_version:7.x\r\nused_memory:12345\r\n..." }
-    // DEBUG S#298: Upstash bisa kembalikan result sebagai string ATAU object.
-    const resultRaw   = data?.result
-    const resultType  = typeof resultRaw
-    const infoString: string =
-      resultType === 'string'
-        ? (resultRaw as string)
-        : resultType === 'object' && resultRaw !== null
-          ? JSON.stringify(resultRaw)
-          : ''
+    // Upstash REST /info → { result: "redis_version:8.x\r\nused_memory:0\r\n..." }
+    const infoString: string = typeof data?.result === 'string' ? data.result : ''
 
-    // Parse integer field dari INFO string
+    // Parse integer field dari INFO string — match line persis (hindari prefix-match)
     const parseInfoInt = (field: string): number => {
       const regex = new RegExp(`(?:^|\\r?\\n)${field}:(\\d+)`)
       const match = infoString.match(regex)
       return match ? parseInt(match[1], 10) : 0
     }
 
-    const usedMemoryBytes  = parseInfoInt('used_memory')
+    // Memory terpakai: Upstash serverless pakai total_data_size (used_memory selalu 0).
+    // Fallback ke used_memory bila total_data_size tidak ada (kompatibilitas instance lain).
+    const totalDataSize    = parseInfoInt('total_data_size')
+    const usedMemoryLegacy  = parseInfoInt('used_memory')
+    const memoryUsedBytes   = totalDataSize > 0 ? totalDataSize : usedMemoryLegacy
+
     const keyspaceHits     = parseInfoInt('keyspace_hits')
     const keyspaceMisses   = parseInfoInt('keyspace_misses')
     const totalCmds        = parseInfoInt('total_commands_processed')
     const uptimeSec        = parseInfoInt('uptime_in_seconds')
+    const opsPerSec        = parseInfoInt('instantaneous_ops_per_sec')
 
     // Cache hit rate: hits / (hits + misses) * 100, fallback 0
     const totalLookups    = keyspaceHits + keyspaceMisses
@@ -89,25 +86,22 @@ export async function collectUpstashMetrics(
       ? Math.round((keyspaceHits / totalLookups) * 100)
       : 0
 
-    // commands_per_second: total_commands / uptime (rough approximation)
-    const commandsPerSecond = uptimeSec > 0
-      ? Math.round(totalCmds / uptimeSec)
-      : 0
+    // commands_per_second: pakai instantaneous_ops_per_sec bila ada,
+    // fallback ke rata-rata total_commands / uptime
+    const commandsPerSecond = opsPerSec > 0
+      ? opsPerSec
+      : (uptimeSec > 0 ? Math.round(totalCmds / uptimeSec) : 0)
 
     return {
       // Field persis sesuai CapacityRow kode=upstash di UI
       commands_per_second: commandsPerSecond,
-      memory_used_bytes:   usedMemoryBytes,
+      memory_used_bytes:   memoryUsedBytes,
       cache_hit_rate_pct:  cacheHitRatePct,
-      latency_p99_ms:      0,
-      // Info tambahan
+      latency_p99_ms:      0,   // Tidak tersedia dari /info — butuh endpoint terpisah
+      // Info tambahan (untuk debug, tidak di-render UI)
       _keyspace_hits:      keyspaceHits,
       _keyspace_misses:    keyspaceMisses,
       _uptime_seconds:     uptimeSec,
-      // DEBUG S#298 — hapus setelah format terverifikasi
-      _result_type:        resultType,
-      _info_length:        infoString.length,
-      _raw_info_sample:    infoString.slice(0, 600),
       _token_source:       'M3 Credential Management (upstash.rest_token)',
     }
   } catch (err) {
