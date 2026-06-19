@@ -9,10 +9,6 @@
 // Update S#297: tambah CapacityRow (progress bar + "terpakai / kapasitas (XX%)"), baca kapasitas
 //   dari config_registry (policy_key capacity_*) — SA bisa ubah via dashboard Konfigurasi.
 //   Supabase: db_size_bytes + storage_used_bytes sekarang terisi nyata via RPC monitoring.collect_metrics().
-// Update S#299: Fix CapacityRow — bedakan null (N/A, tanpa bar) vs 0 (bar 0%, nol-asli).
-//   Fix loadCapacityConfig — pakai getConfigItemsByKategori('Monitoring') (Opsi A),
-//   sebelumnya getConfigPageItems('monitoring') → tidak pernah match capacity_* karena
-//   masing-masing punya feature_key sendiri, bukan feature_key='monitoring'.
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +16,7 @@ import {
   findLatestMetricsPerProvider,
   findLatestL3MetricsPerProvider,
 } from '@/lib/repositories/provider-metrics.repository'
-import { getConfigItemsByKategori } from '@/lib/config-registry'
+import { getConfigPageItems } from '@/lib/config-registry'
 import type { ProviderSnapshot } from '@/lib/types/monitoring.types'
 
 // ─── Tipe kapasitas ────────────────────────────────────────────────────────────
@@ -41,8 +37,7 @@ interface CapacityConfig {
 
 function fmtBytes(bytes: unknown): string {
   const n = Number(bytes)
-  if (bytes === null || bytes === undefined || isNaN(n)) return '—'
-  if (n === 0) return '0 B'
+  if (!bytes || isNaN(n) || n === 0) return '—'
   if (n >= 1_073_741_824) return `${(n / 1_073_741_824).toFixed(2)} GB`
   if (n >= 1_048_576)     return `${(n / 1_048_576).toFixed(1)} MB`
   return `${Math.round(n / 1024)} KB`
@@ -76,8 +71,6 @@ function MetricRow({ label, value, warn }: { label: string; value: string; warn?
 // ─── Sub-komponen: CapacityRow ────────────────────────────────────────────────
 // Menampilkan: label | "terpakai / kapasitas (XX%)" + progress bar
 // Warna: hijau <70%, kuning 70-89%, merah ≥90%
-// ATURAN: used=null → N/A tanpa bar (data tidak tersedia)
-//         used=number (termasuk 0) → bar 0% (nol-asli, data nyata)
 
 function CapacityRow({
   label,
@@ -85,58 +78,48 @@ function CapacityRow({
   maxVal,
   fmtUsed,
   fmtMax,
-  naLabel,
 }: {
-  label:    string
-  used:     number | null   // null = tidak tersedia (N/A); 0 = nol-asli (bar 0%)
-  maxVal:   number          // kapasitas maksimal
-  fmtUsed:  string          // teks terformat untuk used
-  fmtMax:   string          // teks terformat untuk kapasitas
-  naLabel?: string          // label N/A custom (misal 'N/A (Hobby)')
+  label:   string
+  used:    number   // nilai terpakai (dalam satuan yang sama dengan maxVal)
+  maxVal:  number   // kapasitas maksimal
+  fmtUsed: string   // teks terformat untuk used
+  fmtMax:  string   // teks terformat untuk kapasitas
 }) {
-  // null = data tidak tersedia → tampil N/A tanpa bar
-  if (used === null) {
-    return (
-      <tr className="border-b last:border-0">
-        <td className="px-4 py-2.5 text-sm text-muted-foreground">{label}</td>
-        <td className="px-4 py-2.5">
-          <span className="text-sm text-muted-foreground">{naLabel ?? 'N/A'}</span>
-        </td>
-      </tr>
-    )
-  }
-
-  // number (termasuk 0) = data nyata → tampil bar (0 = bar 0%)
-  const pct      = maxVal > 0 ? Math.min(Math.round((used / maxVal) * 100), 100) : 0
-  const isWarn   = pct >= 70 && pct < 90
+  const pct     = maxVal > 0 ? Math.min(Math.round((used / maxVal) * 100), 100) : 0
+  const isWarn  = pct >= 70 && pct < 90
   const isDanger = pct >= 90
 
   const barColor  = isDanger ? '#dc2626' : isWarn ? '#d97706' : '#16a34a'
   const textColor = isDanger ? 'text-red-600' : isWarn ? 'text-amber-600' : 'text-emerald-700'
+  const noData    = used === 0 && maxVal > 0
 
   return (
     <tr className="border-b last:border-0">
       <td className="px-4 py-2.5 text-sm text-muted-foreground">{label}</td>
       <td className="px-4 py-2.5">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between gap-2">
-            <span className={`text-sm font-medium ${textColor}`}>
-              {fmtUsed} / {fmtMax}
-            </span>
-            <span className={`text-xs font-semibold tabular-nums ${textColor}`}>
-              {pct}%
-            </span>
+        {noData ? (
+          <span className="text-sm text-muted-foreground">— / {fmtMax}</span>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className={`text-sm font-medium ${textColor}`}>
+                {fmtUsed} / {fmtMax}
+              </span>
+              <span className={`text-xs font-semibold tabular-nums ${textColor}`}>
+                {pct}%
+              </span>
+            </div>
+            <div style={{ background: '#e5e7eb', borderRadius: 100, height: 5, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%',
+                width: `${pct}%`,
+                background: barColor,
+                borderRadius: 100,
+                transition: 'width 0.3s',
+              }} />
+            </div>
           </div>
-          <div style={{ background: '#e5e7eb', borderRadius: 100, height: 5, overflow: 'hidden' }}>
-            <div style={{
-              height: '100%',
-              width: `${pct}%`,
-              background: barColor,
-              borderRadius: 100,
-              transition: 'width 0.3s',
-            }} />
-          </div>
-        </div>
+        )}
       </td>
     </tr>
   )
@@ -181,21 +164,21 @@ function SystemPanel({
             {kode === 'supabase' && <>
               <CapacityRow
                 label="DB Active Connections"
-                used={metrics.db_active_connections !== null && metrics.db_active_connections !== undefined ? Number(metrics.db_active_connections) : null}
+                used={Number(metrics.db_active_connections) || 0}
                 maxVal={cap.supabaseConnections}
                 fmtUsed={`${Number(metrics.db_active_connections) || 0}`}
                 fmtMax={`${cap.supabaseConnections}`}
               />
               <CapacityRow
                 label="Ukuran DB"
-                used={metrics.db_size_bytes !== null && metrics.db_size_bytes !== undefined ? Number(metrics.db_size_bytes) : null}
+                used={Number(metrics.db_size_bytes) || 0}
                 maxVal={cap.supabaseDbMb * 1_048_576}
                 fmtUsed={fmtBytes(metrics.db_size_bytes)}
                 fmtMax={`${cap.supabaseDbMb} MB`}
               />
               <CapacityRow
                 label="Storage Terpakai"
-                used={metrics.storage_used_bytes !== null && metrics.storage_used_bytes !== undefined ? Number(metrics.storage_used_bytes) : null}
+                used={Number(metrics.storage_used_bytes) || 0}
                 maxVal={cap.supabaseStorageGb * 1_073_741_824}
                 fmtUsed={fmtBytes(metrics.storage_used_bytes)}
                 fmtMax={`${cap.supabaseStorageGb} GB`}
@@ -212,14 +195,14 @@ function SystemPanel({
               <MetricRow label="Durasi Build Terakhir"  value={fmtNum(metrics.last_deployment_duration, 's')} />
               <CapacityRow
                 label="Bandwidth Bulan Ini"
-                used={metrics.bandwidth_bytes !== null && metrics.bandwidth_bytes !== undefined ? Number(metrics.bandwidth_bytes) : null}
+                used={Number(metrics.bandwidth_bytes) || 0}
                 maxVal={cap.vercelBandwidthGb * 1_073_741_824}
                 fmtUsed={fmtBytes(metrics.bandwidth_bytes)}
                 fmtMax={`${cap.vercelBandwidthGb} GB`}
               />
               <CapacityRow
                 label="Fn Invocations"
-                used={metrics.fn_invocations !== null && metrics.fn_invocations !== undefined ? Number(metrics.fn_invocations) : null}
+                used={Number(metrics.fn_invocations) || 0}
                 maxVal={cap.vercelFnInvocations}
                 fmtUsed={fmtNum(metrics.fn_invocations)}
                 fmtMax={`${cap.vercelFnInvocations.toLocaleString('id-ID')}/hari`}
@@ -233,7 +216,7 @@ function SystemPanel({
               <MetricRow label="Commands/detik" value={fmtNum(metrics.commands_per_second)} />
               <CapacityRow
                 label="Memory Used"
-                used={metrics.memory_used_bytes !== null && metrics.memory_used_bytes !== undefined ? Number(metrics.memory_used_bytes) : null}
+                used={Number(metrics.memory_used_bytes) || 0}
                 maxVal={cap.upstashMemoryMb * 1_048_576}
                 fmtUsed={fmtBytes(metrics.memory_used_bytes)}
                 fmtMax={`${cap.upstashMemoryMb} MB`}
@@ -246,21 +229,21 @@ function SystemPanel({
             {kode === 'cloudinary' && <>
               <CapacityRow
                 label="Storage"
-                used={metrics.storage_used_bytes !== null && metrics.storage_used_bytes !== undefined ? Number(metrics.storage_used_bytes) : null}
+                used={Number(metrics.storage_used_bytes) || 0}
                 maxVal={cap.cloudinaryStorageGb * 1_073_741_824}
                 fmtUsed={fmtBytes(metrics.storage_used_bytes)}
                 fmtMax={`${cap.cloudinaryStorageGb} GB`}
               />
               <CapacityRow
                 label="Bandwidth"
-                used={metrics.bandwidth_used_bytes !== null && metrics.bandwidth_used_bytes !== undefined ? Number(metrics.bandwidth_used_bytes) : null}
+                used={Number(metrics.bandwidth_used_bytes) || 0}
                 maxVal={cap.cloudinaryBandwidthGb * 1_073_741_824}
                 fmtUsed={fmtBytes(metrics.bandwidth_used_bytes)}
                 fmtMax={`${cap.cloudinaryBandwidthGb} GB`}
               />
               <CapacityRow
                 label="API Calls/bulan"
-                used={metrics.api_calls_used !== null && metrics.api_calls_used !== undefined ? Number(metrics.api_calls_used) : null}
+                used={Number(metrics.api_calls_used) || 0}
                 maxVal={cap.cloudinaryApiCalls}
                 fmtUsed={fmtNum(metrics.api_calls_used)}
                 fmtMax={`${cap.cloudinaryApiCalls.toLocaleString('id-ID')}`}
@@ -296,13 +279,9 @@ function SystemPanel({
 }
 
 // ─── Helper: baca config capacity dari config_registry ───────────────────────
-// Opsi A (S#299): pakai getConfigItemsByKategori('Monitoring') — ambil SEMUA item
-// kategori Monitoring sekaligus, map by feature_key.
-// Sebelumnya getConfigPageItems('monitoring') → tidak pernah match karena capacity_*
-// masing-masing punya feature_key sendiri (bukan 'monitoring').
 
 async function loadCapacityConfig(): Promise<CapacityConfig> {
-  const items = await getConfigItemsByKategori('Monitoring')
+  const items = await getConfigPageItems('monitoring')
   const map: Record<string, number> = {}
   for (const item of items) {
     map[item.feature_key] = Number(item.nilai) || 0
@@ -310,13 +289,13 @@ async function loadCapacityConfig(): Promise<CapacityConfig> {
   return {
     supabaseDbMb:          map['capacity_supabase_db_mb']          || 500,
     supabaseStorageGb:     map['capacity_supabase_storage_gb']     || 1,
-    supabaseConnections:   map['capacity_supabase_connections']    || 60,
-    vercelBandwidthGb:     map['capacity_vercel_bandwidth_gb']     || 100,
-    vercelFnInvocations:   map['capacity_vercel_fn_invocations']   || 100000,
-    upstashMemoryMb:       map['capacity_upstash_memory_mb']       || 256,
-    cloudinaryStorageGb:   map['capacity_cloudinary_storage_gb']   || 25,
-    cloudinaryBandwidthGb: map['capacity_cloudinary_bandwidth_gb'] || 25,
-    cloudinaryApiCalls:    map['capacity_cloudinary_api_calls']    || 500000,
+    supabaseConnections:   map['capacity_supabase_connections']     || 60,
+    vercelBandwidthGb:     map['capacity_vercel_bandwidth_gb']      || 100,
+    vercelFnInvocations:   map['capacity_vercel_fn_invocations']    || 100000,
+    upstashMemoryMb:       map['capacity_upstash_memory_mb']        || 256,
+    cloudinaryStorageGb:   map['capacity_cloudinary_storage_gb']    || 25,
+    cloudinaryBandwidthGb: map['capacity_cloudinary_bandwidth_gb']  || 25,
+    cloudinaryApiCalls:    map['capacity_cloudinary_api_calls']     || 500000,
   }
 }
 
