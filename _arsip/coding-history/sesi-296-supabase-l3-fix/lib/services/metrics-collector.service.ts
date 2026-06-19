@@ -12,10 +12,6 @@
 //   File ini sekarang hanya orchestrator (L1 ping + L3 dispatch). Logic collector per-provider
 //   dipindah ke lib/services/collectors/{supabase,vercel,upstash,cloudinary,github}.collector.ts.
 //   API publik (collectL1Metrics, collectL3Metrics) tidak berubah — caller route.ts tidak perlu diubah.
-// PERUBAHAN Sesi #296 — FIX HUTANG-SUPABASE-PANEL-L3: tambah 'supabase' ke L3_PROVIDERS +
-//   tambah case 'supabase' di collectDeepMetrics() — credential diambil dari 'supabase-management'
-//   (reuse collectSupabaseMetrics). Sebelumnya panel Supabase di Deep Metrics selalu
-//   "Data L3 belum tersedia" karena kode='supabase' tidak ada di L3_PROVIDERS.
 //
 // PENTING: Token management API (Supabase, GitHub, Vercel) diambil dari M3 DB
 // via credential.service.ts — tidak ada process.env selain QStash (bootstrap level).
@@ -123,7 +119,7 @@ export async function collectL3Metrics(): Promise<{
   const errors: string[] = []
   let processed = 0
 
-  const L3_PROVIDERS = ['supabase', 'supabase-management', 'vercel', 'upstash', 'cloudinary', 'github']
+  const L3_PROVIDERS = ['supabase-management', 'vercel', 'upstash', 'cloudinary', 'github']
 
   for (const kode of L3_PROVIDERS) {
     try {
@@ -161,12 +157,6 @@ async function collectDeepMetrics(
   creds: Record<string, string>
 ): Promise<Record<string, unknown>> {
   switch (kode) {
-    case 'supabase': {
-      // Panel Supabase (kode='supabase') pakai Supabase Management API.
-      // Credential diambil dari 'supabase-management' (bukan 'supabase' yang tidak punya credential M3).
-      const mgmtCreds = await getCredentialsByProvider('supabase-management')
-      return collectSupabaseMetrics(mgmtCreds)
-    }
     case 'supabase-management': return collectSupabaseMetrics(creds)
     case 'vercel':              return collectVercelMetrics(creds)
     case 'upstash':             return collectUpstashMetrics(creds)
