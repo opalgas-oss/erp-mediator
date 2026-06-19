@@ -4,6 +4,11 @@
 // Menampilkan: Log semua alert yang dikirim ke WA/Email + status pengiriman
 //
 // Dibuat: Sesi #283 — LANGKAH 1 Monitoring Pages
+// PERUBAHAN Sesi #294 — Langkah 4: tambah state ke-3 "dilewati" (—) di channelBadge.
+// PERUBAHAN Sesi #295 — FIX gagalCount: sebelumnya hitung log "dilewati" sebagai gagal.
+//   Sekarang: gagal = ada error_wa ATAU error_email (bukan hanya sent=false).
+//   Tambah kolom "Dilewati" di statistik untuk transparansi.
+//
 // Pola: RSC fetch via repository layer (TIDAK query DB langsung di page)
 // File yang di-reuse:
 //   - findRecentAlertLogs (alert-log.repository.ts) — TIDAK buat fungsi duplikat
@@ -11,34 +16,43 @@
 
 export const dynamic = 'force-dynamic'
 
-import { findRecentAlertLogs }  from '@/lib/repositories/alert-log.repository'
-import { getPastISOTimestamp }  from '@/lib/utils/date.utils'
-import type { AlertLog }        from '@/lib/types/monitoring.types'
+import { findRecentAlertLogs } from '@/lib/repositories/alert-log.repository'
+import { getPastISOTimestamp } from '@/lib/utils/date.utils'
+import type { AlertLog }       from '@/lib/types/monitoring.types'
 
 // ─── Hitung statistik dari logs ───────────────────────────────────────────────
 
+/**
+ * 3 kategori yang benar:
+ *   sukses   = minimal 1 channel terkirim (sent_via_wa || sent_via_email)
+ *   gagal    = ada error di minimal 1 channel (error_wa || error_email) — bukan sekadar sent=false
+ *   dilewati = tidak ada yang terkirim DAN tidak ada error (penerima belum dikonfigurasi saat alert terjadi)
+ *
+ * FIX Sesi #295: gagalCount sebelumnya = !sent_via_wa && !sent_via_email
+ *   → ikut sertakan log "dilewati" sebagai "gagal" — salah.
+ */
 function computeStats(logs: AlertLog[]) {
-  const since1d = getPastISOTimestamp(24,       'hours')
-  const since7d = getPastISOTimestamp(7 * 24,   'hours')
+  const since1d = getPastISOTimestamp(24,     'hours')
+  const since7d = getPastISOTimestamp(7 * 24, 'hours')
 
-  const alertsToday = logs.filter(l => l.triggered_at >= since1d).length
-  const alerts7d    = logs.filter(l => l.triggered_at >= since7d).length
-  const suksesCount = logs.filter(l => l.sent_via_wa || l.sent_via_email).length
-  const gagalCount  = logs.filter(l => !l.sent_via_wa && !l.sent_via_email).length
+  const alertsToday  = logs.filter(l => l.triggered_at >= since1d).length
+  const alerts7d     = logs.filter(l => l.triggered_at >= since7d).length
+  const suksesCount  = logs.filter(l => l.sent_via_wa || l.sent_via_email).length
+  const gagalCount   = logs.filter(l => !!(l.error_wa || l.error_email)).length
+  const dilewatiCount = logs.filter(
+    l => !l.sent_via_wa && !l.sent_via_email && !l.error_wa && !l.error_email
+  ).length
 
-  return { alertsToday, alerts7d, suksesCount, gagalCount }
+  return { alertsToday, alerts7d, suksesCount, gagalCount, dilewatiCount }
 }
 
-// ─── Badge status kirim per channel ─────────────────────────────────────────
+// ─── Badge status kirim per channel ──────────────────────────────────────────
 
 /**
- * Bedakan 3 state:
+ * 3 state visual:
  *   sukses  → hijau ✓  (sent_via_* = true)
- *   gagal   → merah ✗  (sent_via_* = false DAN ada error_*)
+ *   gagal   → merah ✗  (sent_via_* = false DAN ada error_*) — hover untuk lihat error
  *   netral  → abu  —   (sent_via_* = false DAN tidak ada error_* = penerima kosong / dilewati)
- *
- * PERUBAHAN Sesi #294 — Langkah 4: sebelumnya hanya 2 state (sukses/gagal),
- * tidak membedakan "tidak dikonfigurasi" vs "gagal kirim".
  */
 function channelBadge(
   label:    string,
@@ -46,22 +60,34 @@ function channelBadge(
   errorMsg: string | null | undefined
 ): { cls: string; icon: string; title: string } {
   if (sent) {
-    return { cls: label === 'WA' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800', icon: '✓', title: 'Terkirim' }
+    return {
+      cls:   label === 'WA' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800',
+      icon:  '✓',
+      title: 'Terkirim',
+    }
   }
   if (errorMsg) {
-    return { cls: 'bg-red-100 text-red-800', icon: '✗', title: `Gagal: ${errorMsg}` }
+    return {
+      cls:   'bg-red-100 text-red-800',
+      icon:  '✗',
+      title: `Gagal: ${errorMsg}`,
+    }
   }
-  return { cls: 'bg-slate-100 text-slate-500', icon: '—', title: 'Tidak dikonfigurasi / dilewati' }
+  return {
+    cls:   'bg-slate-100 text-slate-500',
+    icon:  '—',
+    title: 'Tidak dikonfigurasi / dilewati',
+  }
 }
 
 // ─── Badge warna alert type ───────────────────────────────────────────────────
 
 function alertTypeBadge(type: string): string {
   const map: Record<string, string> = {
-    DOWN:             'bg-red-100 text-red-800',
-    SLOW:             'bg-amber-100 text-amber-800',
-    HIGH_ERROR_RATE:  'bg-orange-100 text-orange-800',
-    QUOTA_WARNING:    'bg-blue-100 text-blue-800',
+    DOWN:            'bg-red-100 text-red-800',
+    SLOW:            'bg-amber-100 text-amber-800',
+    HIGH_ERROR_RATE: 'bg-orange-100 text-orange-800',
+    QUOTA_WARNING:   'bg-blue-100 text-blue-800',
   }
   return map[type] ?? 'bg-slate-100 text-slate-600'
 }
@@ -70,7 +96,6 @@ function alertTypeBadge(type: string): string {
 
 export default async function MonitoringAlertsPage() {
   try {
-    // Reuse findRecentAlertLogs dari alert-log.repository — tidak duplikasi query
     const logs  = await findRecentAlertLogs(100)
     const stats = computeStats(logs)
 
@@ -84,13 +109,14 @@ export default async function MonitoringAlertsPage() {
           </p>
         </div>
 
-        {/* Statistik Header */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {/* Statistik Header — 5 kolom */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           {[
-            { label: 'Alert Hari Ini',  value: stats.alertsToday, color: 'text-foreground' },
-            { label: 'Alert 7 Hari',    value: stats.alerts7d,    color: 'text-foreground' },
-            { label: 'Terkirim Sukses', value: stats.suksesCount, color: 'text-emerald-600' },
-            { label: 'Gagal Kirim',     value: stats.gagalCount,  color: 'text-red-600' },
+            { label: 'Alert Hari Ini',   value: stats.alertsToday,   color: 'text-foreground' },
+            { label: 'Alert 7 Hari',     value: stats.alerts7d,      color: 'text-foreground' },
+            { label: 'Terkirim Sukses',  value: stats.suksesCount,   color: 'text-emerald-600' },
+            { label: 'Gagal Kirim',      value: stats.gagalCount,    color: 'text-red-600' },
+            { label: 'Dilewati',         value: stats.dilewatiCount, color: 'text-slate-500' },
           ].map(stat => (
             <div key={stat.label} className="rounded-md border bg-muted/20 px-4 py-3">
               <div className="text-xs text-muted-foreground">{stat.label}</div>
@@ -137,24 +163,33 @@ export default async function MonitoringAlertsPage() {
                     <td className="px-4 py-2.5">
                       <div className="flex flex-wrap gap-1">
                         {log.notif_channels.includes('WA') && (() => {
-                            const b = channelBadge('WA', log.sent_via_wa, log.error_wa)
-                            return (
-                              <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${b.cls}`} title={b.title}>
-                                WA {b.icon}
-                              </span>
-                            )
-                          })()}
+                          const b = channelBadge('WA', log.sent_via_wa, log.error_wa)
+                          return (
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-xs font-medium cursor-default ${b.cls}`}
+                              title={b.title}
+                            >
+                              WA {b.icon}
+                            </span>
+                          )
+                        })()}
                         {log.notif_channels.includes('EMAIL') && (() => {
-                            const b = channelBadge('EMAIL', log.sent_via_email, log.error_email)
-                            return (
-                              <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${b.cls}`} title={b.title}>
-                                Email {b.icon}
-                              </span>
-                            )
-                          })()}
+                          const b = channelBadge('EMAIL', log.sent_via_email, log.error_email)
+                          return (
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-xs font-medium cursor-default ${b.cls}`}
+                              title={b.title}
+                            >
+                              Email {b.icon}
+                            </span>
+                          )
+                        })()}
                       </div>
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground max-w-[280px] truncate" title={log.message}>
+                    <td
+                      className="px-4 py-2.5 text-xs text-muted-foreground max-w-[280px] truncate"
+                      title={log.message}
+                    >
                       {log.message}
                     </td>
                   </tr>
@@ -165,9 +200,10 @@ export default async function MonitoringAlertsPage() {
         </div>
 
         <p className="text-[11px] text-muted-foreground">
-          Keterangan status: <span className="text-emerald-700 font-medium">✓ Terkirim</span> ·{' '}
+          Keterangan status:{' '}
+          <span className="text-emerald-700 font-medium">✓ Terkirim</span> ·{' '}
           <span className="text-red-700 font-medium">✗ Gagal kirim (hover untuk detail error)</span> ·{' '}
-          <span className="text-slate-500 font-medium">— Tidak dikonfigurasi / dilewati</span>.
+          <span className="text-slate-500 font-medium">— Tidak dikonfigurasi / dilewati</span>.{' '}
           Semua kegagalan dicatat di log ini meskipun SA tidak menerima notifikasi.
         </p>
       </div>
