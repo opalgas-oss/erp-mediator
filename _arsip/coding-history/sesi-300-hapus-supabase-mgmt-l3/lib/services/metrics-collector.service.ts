@@ -24,10 +24,6 @@
 // PERUBAHAN Sesi #299 — Vercel plan-aware: baca vercel_plan dari config_registry,
 //   pass ke collectVercelMetrics() agar bandwidth_bytes + fn_invocations return null
 //   di plan hobby (bukan 0 yang menyesatkan di UI CapacityRow).
-// PERUBAHAN Sesi #300 — FIX HUTANG-SUPABASE-MGMT-PANEL-MENTAH: hapus 'supabase-management'
-//   dari L3_PROVIDERS. Panel tampil field mentah/duplikat karena kode tidak dikenal UI
-//   (branch generic key-value). Data L3 Supabase sudah lengkap di panel 'supabase'.
-//   Alert DOWN+SLOW supabase-management tidak terdampak (L1/L2, bukan L3).
 //
 // PENTING: Token management API (Supabase, GitHub, Vercel) diambil dari M3 DB
 // via credential.service.ts — tidak ada process.env selain QStash (bootstrap level).
@@ -136,7 +132,7 @@ export async function collectL3Metrics(): Promise<{
   const errors: string[] = []
   let processed = 0
 
-  const L3_PROVIDERS = ['supabase', 'vercel', 'upstash', 'cloudinary', 'github']
+  const L3_PROVIDERS = ['supabase', 'supabase-management', 'vercel', 'upstash', 'cloudinary', 'github']
 
   for (const kode of L3_PROVIDERS) {
     try {
