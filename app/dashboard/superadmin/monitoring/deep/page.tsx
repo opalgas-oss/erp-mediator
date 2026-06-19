@@ -216,6 +216,7 @@ function SystemPanel({
                 maxVal={cap.vercelBandwidthGb * 1_073_741_824}
                 fmtUsed={fmtBytes(metrics.bandwidth_bytes)}
                 fmtMax={`${cap.vercelBandwidthGb} GB`}
+                naLabel="N/A (Hobby)"
               />
               <CapacityRow
                 label="Fn Invocations"
@@ -223,6 +224,7 @@ function SystemPanel({
                 maxVal={cap.vercelFnInvocations}
                 fmtUsed={fmtNum(metrics.fn_invocations)}
                 fmtMax={`${cap.vercelFnInvocations.toLocaleString('id-ID')}/hari`}
+                naLabel="N/A (Hobby)"
               />
               <MetricRow label="Fn Error Rate"          value={fmtPct(metrics.fn_error_rate_pct)} warn={Number(metrics.fn_error_rate_pct) > 5} />
               <MetricRow label="Fn Duration p50 / p99"  value={`${fmtNum(metrics.fn_duration_p50_ms, 'ms')} / ${fmtNum(metrics.fn_duration_p99_ms, 'ms')}`} />
