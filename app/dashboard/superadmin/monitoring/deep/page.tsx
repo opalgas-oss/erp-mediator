@@ -221,7 +221,7 @@ function SystemPanel({
                 fmtUsed={fmtBytes(metrics.memory_used_bytes)}
                 fmtMax={`${cap.upstashMemoryMb} MB`}
               />
-              <MetricRow label="Cache Hit Rate" value={fmtPct(metrics.cache_hit_rate_pct)} warn={Number(metrics.cache_hit_rate_pct) < 85} />
+              <MetricRow label="Cache Hit Rate" value={fmtPct(metrics.cache_hit_rate_pct)} warn={Number(metrics.cache_hit_rate_pct) > 0 && Number(metrics.cache_hit_rate_pct) < 85} />
               <MetricRow label="Latency p99"    value={fmtNum(metrics.latency_p99_ms, 'ms')} />
             </>}
 
@@ -236,16 +236,16 @@ function SystemPanel({
               />
               <CapacityRow
                 label="Bandwidth"
-                used={Number(metrics.bandwidth_bytes) || 0}
+                used={Number(metrics.bandwidth_used_bytes) || 0}
                 maxVal={cap.cloudinaryBandwidthGb * 1_073_741_824}
-                fmtUsed={fmtBytes(metrics.bandwidth_bytes)}
+                fmtUsed={fmtBytes(metrics.bandwidth_used_bytes)}
                 fmtMax={`${cap.cloudinaryBandwidthGb} GB`}
               />
               <CapacityRow
                 label="API Calls/bulan"
-                used={Number(metrics.api_calls) || 0}
+                used={Number(metrics.api_calls_used) || 0}
                 maxVal={cap.cloudinaryApiCalls}
-                fmtUsed={fmtNum(metrics.api_calls)}
+                fmtUsed={fmtNum(metrics.api_calls_used)}
                 fmtMax={`${cap.cloudinaryApiCalls.toLocaleString('id-ID')}`}
               />
             </>}

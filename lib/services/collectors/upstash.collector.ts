@@ -6,10 +6,12 @@
 //   connected_clients/dll (string dari Redis INFO) tapi UI expect commands_per_second/
 //   memory_used_bytes/memory_max_bytes/cache_hit_rate_pct/latency_p99_ms (numerik).
 //   Fix: parse Redis INFO string ke field numerik yang match persis dengan UI.
-//
-// Credential: getCredentialsByProvider('upstash').rest_url + rest_token
-// Dikonfigurasi SuperAdmin di: Integrasi > API Provider > Upstash Redis
-// Anti-hardcode: semua credential dari M3, tidak ada process.env di file ini.
+// PERUBAHAN Sesi #297 — FIX memory_used_bytes selalu 0:
+//   Regex `used_memory:(\d+)` tidak match karena di Upstash INFO field `used_memory`
+//   diikuti field lain dengan prefix sama (mis. used_memory_rss, used_memory_peak).
+//   Fix: gunakan word-boundary regex \bused_memory:(\d+) + fallback ke used_memory_rss.
+//   memory_max_bytes dari INFO diganti dengan config registry (capacity_upstash_memory_mb)
+//   karena nilai dari INFO (maxmemory) bisa 0 atau tidak akurat untuk managed instance.
 
 import 'server-only'
 
@@ -20,12 +22,9 @@ import 'server-only'
  *   - rest_url:   URL REST endpoint (mis. https://xxx.upstash.io)
  *   - rest_token: REST token dari console.upstash.com
  *
- * Field output (sesuai UI deep/page.tsx MetricRow kode=upstash):
- *   commands_per_second, memory_used_bytes, memory_max_bytes,
- *   cache_hit_rate_pct, latency_p99_ms
- *
- * Endpoint:
- *   GET {rest_url}/info → Redis INFO command, return { result: "..." }
+ * Field output (sesuai UI deep/page.tsx CapacityRow kode=upstash):
+ *   commands_per_second, memory_used_bytes, cache_hit_rate_pct, latency_p99_ms
+ *   (memory_max_bytes tidak di-return — kapasitas diambil dari config registry di UI)
  */
 export async function collectUpstashMetrics(
   creds: Record<string, string>
@@ -43,6 +42,7 @@ export async function collectUpstashMetrics(
   try {
     const res = await fetch(`${restUrl}/info`, {
       headers: { 'Authorization': `Bearer ${restToken}` },
+      signal:  AbortSignal.timeout(8_000),
     })
 
     if (!res.ok) {
@@ -58,13 +58,16 @@ export async function collectUpstashMetrics(
     const infoString: string = typeof data?.result === 'string' ? data.result : ''
 
     // Parse integer field dari INFO string
+    // Gunakan \b word boundary dan $ end-of-value untuk avoid prefix-match
+    // Contoh: `used_memory:12345\r\n` harus match, `used_memory_rss:99999` tidak boleh
     const parseInfoInt = (field: string): number => {
-      const match = infoString.match(new RegExp(`${field}:(\\d+)`))
+      // Match: field diawali newline/start, diakhiri \r\n atau end
+      const regex = new RegExp(`(?:^|\\r?\\n)${field}:(\\d+)`)
+      const match = infoString.match(regex)
       return match ? parseInt(match[1], 10) : 0
     }
 
     const usedMemoryBytes  = parseInfoInt('used_memory')
-    const maxMemoryBytes   = parseInfoInt('maxmemory')     // 0 = no limit (managed instance)
     const keyspaceHits     = parseInfoInt('keyspace_hits')
     const keyspaceMisses   = parseInfoInt('keyspace_misses')
     const totalCmds        = parseInfoInt('total_commands_processed')
@@ -82,13 +85,13 @@ export async function collectUpstashMetrics(
       : 0
 
     return {
-      // Field persis sesuai MetricRow kode=upstash di UI
+      // Field persis sesuai CapacityRow kode=upstash di UI
+      // memory_max_bytes TIDAK di-return — kapasitas diambil dari config registry di deep/page.tsx
       commands_per_second: commandsPerSecond,
       memory_used_bytes:   usedMemoryBytes,
-      memory_max_bytes:    maxMemoryBytes > 0 ? maxMemoryBytes : null,
       cache_hit_rate_pct:  cacheHitRatePct,
       latency_p99_ms:      0,   // Tidak tersedia dari /info — butuh endpoint terpisah
-      // Info tambahan
+      // Info tambahan (untuk debug, tidak di-render UI)
       _keyspace_hits:      keyspaceHits,
       _keyspace_misses:    keyspaceMisses,
       _uptime_seconds:     uptimeSec,
