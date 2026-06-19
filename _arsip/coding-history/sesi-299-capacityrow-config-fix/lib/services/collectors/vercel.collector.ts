@@ -7,11 +7,6 @@
 //   last_deployment_duration/bandwidth_bytes/fn_invocations/fn_error_rate_pct/
 //   fn_duration_p50_ms/fn_duration_p99_ms.
 //   Fix: sesuaikan nama field output persis dengan MetricRow kode=vercel di UI.
-// PERUBAHAN Sesi #299 — Plan-aware: tambah parameter plan ('hobby'|'pro').
-//   hobby → bandwidth_bytes: null, fn_invocations: null (N/A di UI)
-//   pro   → best-effort fetch usage dari Vercel observability API (null bila gagal)
-//   Alasan: plan hobby Vercel tidak expose bandwidth/fn_invocations via API.
-//   null di collector = sinyal UI tampilkan N/A (bukan 0% yang menyesatkan).
 //
 // Credential: getCredentialsByProvider('vercel').api_token + project_id + team_id (opsional)
 // Dikonfigurasi SuperAdmin di: Integrasi > API Provider > Vercel API
@@ -27,21 +22,16 @@ import 'server-only'
  *   - project_id: ID project Vercel (mis. prj_xxxxxxxxxxxx)
  *   - team_id:    Team ID Vercel — opsional, untuk team account
  *
- * @param creds - Credential dari M3 (api_token, project_id, team_id)
- * @param plan  - Vercel plan dari config_registry vercel_plan ('hobby'|'pro').
- *                Default 'hobby'. hobby → bandwidth/fn_invocations return null (N/A).
- *
- * Field output (sesuai UI deep/page.tsx kode=vercel):
- *   last_deployment_status, last_deployment_duration  → selalu diisi (dari deployments API)
- *   bandwidth_bytes, fn_invocations                   → null jika hobby, number|null jika pro
- *   fn_error_rate_pct, fn_duration_p50_ms, p99_ms    → 0 (tidak tersedia di API manapun)
+ * Field output (sesuai UI deep/page.tsx MetricRow kode=vercel):
+ *   last_deployment_status, last_deployment_duration,
+ *   bandwidth_bytes, fn_invocations, fn_error_rate_pct,
+ *   fn_duration_p50_ms, fn_duration_p99_ms
  *
  * Endpoint:
  *   GET https://api.vercel.com/v6/deployments?projectId={id}&limit=5
  */
 export async function collectVercelMetrics(
-  creds: Record<string, string>,
-  plan:  string = 'hobby'
+  creds: Record<string, string>
 ): Promise<Record<string, unknown>> {
   const token     = creds['api_token']
   const projectId = creds['project_id']
@@ -94,44 +84,18 @@ export async function collectVercelMetrics(
     // Vercel state: READY / ERROR / CANCELED / BUILDING / INITIALIZING
     const lastDeploymentStatus = latest?.state ?? 'UNKNOWN'
 
-    // ─── Plan-aware: bandwidth + fn_invocations ──────────────────────────────
-    // hobby → null (sinyal UI: N/A — data tidak tersedia di plan ini)
-    // pro   → best-effort fetch dari Vercel observability API (null bila gagal)
-    // Vercel Pro observability endpoint belum bisa ditest (akun masih Hobby).
-    // Implementasi berdasarkan dokumentasi — verifikasi tertunda sampai upgrade.
-    let bandwidthBytes:  number | null = null
-    let fnInvocations:  number | null = null
-
-    if (plan === 'pro') {
-      // Best-effort: gagal → tetap null, tidak crash collector
-      try {
-        // Vercel Pro: endpoint observability belum final per dokumentasi
-        // Placeholder — update saat akun upgrade ke Pro dan endpoint terkonfirmasi
-        bandwidthBytes = null
-        fnInvocations  = null
-        // TODO: implementasi nyata setelah upgrade ke Pro:
-        // const usageRes = await fetch(`https://api.vercel.com/v1/usage?...`, { headers })
-        // if (usageRes.ok) { const d = await usageRes.json(); bandwidthBytes = d.bandwidth?.total ?? null }
-      } catch {
-        bandwidthBytes = null
-        fnInvocations  = null
-      }
-    }
-    // plan==='hobby' → bandwidthBytes dan fnInvocations tetap null (sudah di-set awal)
-
     return {
-      // Field persis sesuai UI deep/page.tsx kode=vercel
+      // Field persis sesuai MetricRow kode=vercel di UI
       last_deployment_status:   lastDeploymentStatus,
       last_deployment_duration: lastDeploymentDuration,
-      bandwidth_bytes:          bandwidthBytes,   // null = N/A di UI (hobby atau pro gagal fetch)
-      fn_invocations:           fnInvocations,    // null = N/A di UI
-      fn_error_rate_pct:        0,                // Tidak tersedia di API manapun
-      fn_duration_p50_ms:       0,                // Tidak tersedia di API manapun
-      fn_duration_p99_ms:       0,                // Tidak tersedia di API manapun
+      bandwidth_bytes:          0,           // Vercel API v6 tidak expose bandwidth di deployments endpoint
+      fn_invocations:           0,           // Tidak tersedia di free tier API
+      fn_error_rate_pct:        0,           // Tidak tersedia di free tier API
+      fn_duration_p50_ms:       0,           // Tidak tersedia di free tier API
+      fn_duration_p99_ms:       0,           // Tidak tersedia di free tier API
       // Info tambahan
       last_deployment_target:   latest?.target ?? 'UNKNOWN',
       recent_deployments_count: deployments.length,
-      _vercel_plan:             plan,
       _token_source:            'M3 Credential Management (vercel.api_token)',
     }
   } catch (err) {

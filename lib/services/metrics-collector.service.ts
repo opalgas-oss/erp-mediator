@@ -21,6 +21,9 @@
 //   dari provider 'supabase') ke collectSupabaseMetrics() sebagai parameter ke-2.
 //   collectSupabaseMetrics() gunakan appCreds untuk RPC monitoring.collect_metrics() yang
 //   mengambil pg_database_size() + storage.objects SUM langsung dari DB (lebih akurat + tersedia).
+// PERUBAHAN Sesi #299 — Vercel plan-aware: baca vercel_plan dari config_registry,
+//   pass ke collectVercelMetrics() agar bandwidth_bytes + fn_invocations return null
+//   di plan hobby (bukan 0 yang menyesatkan di UI CapacityRow).
 //
 // PENTING: Token management API (Supabase, GitHub, Vercel) diambil dari M3 DB
 // via credential.service.ts — tidak ada process.env selain QStash (bootstrap level).
@@ -40,6 +43,7 @@ import { collectVercelMetrics }       from '@/lib/services/collectors/vercel.col
 import { collectUpstashMetrics }      from '@/lib/services/collectors/upstash.collector'
 import { collectCloudinaryMetrics }   from '@/lib/services/collectors/cloudinary.collector'
 import { collectGithubMetrics }       from '@/lib/services/collectors/github.collector'
+import { getConfigItemsByKategori }   from '@/lib/config-registry'
 import type {
   MonitoringStatus,
   MonitoringLayer,
@@ -180,7 +184,15 @@ async function collectDeepMetrics(
       const appCreds = await getCredentialsByProvider('supabase')
       return collectSupabaseMetrics(creds, appCreds)
     }
-    case 'vercel':     return collectVercelMetrics(creds)
+    case 'vercel': {
+      // S#299: baca vercel_plan dari config_registry, pass ke collector
+      // plan='hobby' → bandwidth_bytes: null, fn_invocations: null (tampil N/A di UI)
+      // plan='pro'   → best-effort fetch usage API (null bila gagal)
+      const monitoringItems = await getConfigItemsByKategori('Monitoring')
+      const vercelPlanItem  = monitoringItems.find(i => i.feature_key === 'vercel_plan')
+      const vercelPlan      = vercelPlanItem?.nilai ?? 'hobby'
+      return collectVercelMetrics(creds, vercelPlan)
+    }
     case 'upstash':    return collectUpstashMetrics(creds)
     case 'cloudinary': return collectCloudinaryMetrics(creds)
     case 'github':     return collectGithubMetrics(creds)
