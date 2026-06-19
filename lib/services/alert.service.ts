@@ -14,7 +14,7 @@ import { findRulesByProvider } from '@/lib/repositories/alert-rules.repository'
 import { findLastAlertAt, insertAlertLog } from '@/lib/repositories/alert-log.repository'
 import { findRecentByProvider }            from '@/lib/repositories/provider-metrics.repository'
 import { sendFonnteWA }                    from '@/lib/utils/fonnte.server'
-import { sendResendEmail }                 from '@/lib/utils/resend.server'
+import { sendResendEmailPlain }             from '@/lib/utils/resend.server'
 import type { MonitoringStatus }           from '@/lib/types/monitoring.types'
 import { MONITORING_STATUS, ALERT_TYPE }   from '@/lib/constants/monitoring.constant'
 
@@ -178,25 +178,13 @@ async function sendWAAlert(message: string, targetNumber: string): Promise<boole
  * Provider aktif platform adalah Resend (use_case: notification, is_default: true).
  */
 async function sendEmailAlert(message: string, targetEmail: string): Promise<boolean> {
-  // Ambil 3 credential Resend dari M3
-  const [apiKey, fromEmail, fromName] = await Promise.all([
-    getCredential('resend', 'api_key'),
-    getCredential('resend', 'from_email'),
-    getCredential('resend', 'from_name'),
-  ])
-
-  if (!apiKey)    throw new Error('Resend api_key belum dikonfigurasi di M3 Credential Management')
-  if (!fromEmail) throw new Error('Resend from_email belum dikonfigurasi di M3 Credential Management')
   if (!targetEmail) throw new Error('Email penerima alert belum dikonfigurasi di Config Registry')
 
-  const result = await sendResendEmail({
-    apiKey,
-    fromEmail,
-    fromName:  fromName ?? 'ERP Mediator',
-    to:        targetEmail,
-    subject:   '[ERP Mediator] Alert Sistem Monitoring',
-    text:      message,
-  })
+  const result = await sendResendEmailPlain(
+    targetEmail,
+    '[ERP Mediator] Alert Sistem Monitoring',
+    message,
+  )
 
   if (!result.success) {
     throw new Error(`Resend error: ${result.reason ?? 'Unknown error'}`)
