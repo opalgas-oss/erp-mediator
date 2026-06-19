@@ -2,6 +2,10 @@
 // L3 Deep Metrics — Upstash Redis REST API
 // Dipanggil oleh: metrics-collector.service.ts → collectDeepMetrics()
 // Dibuat: Sesi #295 — HUTANG-SPLIT-COLLECTOR (pecah dari metrics-collector.service.ts)
+// PERUBAHAN Sesi #295 — FIX field mismatch: sebelumnya return used_memory_human/
+//   connected_clients/dll (string dari Redis INFO) tapi UI expect commands_per_second/
+//   memory_used_bytes/memory_max_bytes/cache_hit_rate_pct/latency_p99_ms (numerik).
+//   Fix: parse Redis INFO string ke field numerik yang match persis dengan UI.
 //
 // Credential: getCredentialsByProvider('upstash').rest_url + rest_token
 // Dikonfigurasi SuperAdmin di: Integrasi > API Provider > Upstash Redis
@@ -16,8 +20,12 @@ import 'server-only'
  *   - rest_url:   URL REST endpoint (mis. https://xxx.upstash.io)
  *   - rest_token: REST token dari console.upstash.com
  *
- * Endpoint target:
- *   POST {rest_url}/info — Redis INFO command via REST
+ * Field output (sesuai UI deep/page.tsx MetricRow kode=upstash):
+ *   commands_per_second, memory_used_bytes, memory_max_bytes,
+ *   cache_hit_rate_pct, latency_p99_ms
+ *
+ * Endpoint:
+ *   GET {rest_url}/info → Redis INFO command, return { result: "..." }
  */
 export async function collectUpstashMetrics(
   creds: Record<string, string>
@@ -46,23 +54,45 @@ export async function collectUpstashMetrics(
 
     const data = await res.json()
 
-    // Upstash REST /info mengembalikan { result: "..." } berisi INFO string Redis
-    // Parse key metrics dari string INFO jika tersedia
+    // Upstash REST /info → { result: "redis_version:7.x\r\nused_memory:12345\r\n..." }
     const infoString: string = typeof data?.result === 'string' ? data.result : ''
-    const parseField = (field: string): string | null => {
-      const match = infoString.match(new RegExp(`${field}:(\\S+)`))
-      return match ? match[1] : null
+
+    // Parse integer field dari INFO string
+    const parseInt = (field: string): number => {
+      const match = infoString.match(new RegExp(`${field}:(\\d+)`))
+      return match ? parseInt(match[1], 10) : 0
     }
 
+    const usedMemoryBytes  = parseInt('used_memory')
+    const maxMemoryBytes   = parseInt('maxmemory')     // 0 = no limit (managed instance)
+    const keyspaceHits     = parseInt('keyspace_hits')
+    const keyspaceMisses   = parseInt('keyspace_misses')
+    const totalCmds        = parseInt('total_commands_processed')
+    const uptimeSec        = parseInt('uptime_in_seconds')
+
+    // Cache hit rate: hits / (hits + misses) * 100, fallback 0
+    const totalLookups    = keyspaceHits + keyspaceMisses
+    const cacheHitRatePct = totalLookups > 0
+      ? Math.round((keyspaceHits / totalLookups) * 100)
+      : 0
+
+    // commands_per_second: total_commands / uptime (rough approximation)
+    const commandsPerSecond = uptimeSec > 0
+      ? Math.round(totalCmds / uptimeSec)
+      : 0
+
     return {
-      used_memory_human:    parseField('used_memory_human')    ?? null,
-      connected_clients:    parseField('connected_clients')    ?? null,
-      total_commands_processed: parseField('total_commands_processed') ?? null,
-      keyspace_hits:        parseField('keyspace_hits')        ?? null,
-      keyspace_misses:      parseField('keyspace_misses')      ?? null,
-      uptime_in_seconds:    parseField('uptime_in_seconds')    ?? null,
-      _raw:                 data,
-      _token_source:        'M3 Credential Management (upstash.rest_token)',
+      // Field persis sesuai MetricRow kode=upstash di UI
+      commands_per_second: commandsPerSecond,
+      memory_used_bytes:   usedMemoryBytes,
+      memory_max_bytes:    maxMemoryBytes > 0 ? maxMemoryBytes : null,
+      cache_hit_rate_pct:  cacheHitRatePct,
+      latency_p99_ms:      0,   // Tidak tersedia dari /info — butuh endpoint terpisah
+      // Info tambahan
+      _keyspace_hits:      keyspaceHits,
+      _keyspace_misses:    keyspaceMisses,
+      _uptime_seconds:     uptimeSec,
+      _token_source:       'M3 Credential Management (upstash.rest_token)',
     }
   } catch (err) {
     return {

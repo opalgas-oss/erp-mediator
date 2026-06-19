@@ -2,8 +2,13 @@
 // L3 Deep Metrics — Vercel REST API
 // Dipanggil oleh: metrics-collector.service.ts → collectDeepMetrics()
 // Dibuat: Sesi #295 — HUTANG-SPLIT-COLLECTOR (pecah dari metrics-collector.service.ts)
+// PERUBAHAN Sesi #295 — FIX field mismatch: sebelumnya return last_deployment_state/
+//   last_build_duration_sec/recent_success_rate_pct tapi UI expect last_deployment_status/
+//   last_deployment_duration/bandwidth_bytes/fn_invocations/fn_error_rate_pct/
+//   fn_duration_p50_ms/fn_duration_p99_ms.
+//   Fix: sesuaikan nama field output persis dengan MetricRow kode=vercel di UI.
 //
-// Credential: getCredentialsByProvider('vercel').api_token + project_id + team_id
+// Credential: getCredentialsByProvider('vercel').api_token + project_id + team_id (opsional)
 // Dikonfigurasi SuperAdmin di: Integrasi > API Provider > Vercel API
 // Anti-hardcode: semua credential dari M3, tidak ada process.env di file ini.
 
@@ -15,10 +20,15 @@ import 'server-only'
  * Credential yang dibutuhkan (dari M3):
  *   - api_token:  Vercel API token (vercel.com/account/tokens)
  *   - project_id: ID project Vercel (mis. prj_xxxxxxxxxxxx)
- *   - team_id:    Team ID Vercel (mis. team_xxxxxxxxxxxx) — opsional untuk personal account
+ *   - team_id:    Team ID Vercel — opsional, untuk team account
  *
- * Endpoint target:
- *   GET https://api.vercel.com/v6/deployments?projectId={id}&limit=1
+ * Field output (sesuai UI deep/page.tsx MetricRow kode=vercel):
+ *   last_deployment_status, last_deployment_duration,
+ *   bandwidth_bytes, fn_invocations, fn_error_rate_pct,
+ *   fn_duration_p50_ms, fn_duration_p99_ms
+ *
+ * Endpoint:
+ *   GET https://api.vercel.com/v6/deployments?projectId={id}&limit=5
  */
 export async function collectVercelMetrics(
   creds: Record<string, string>
@@ -34,16 +44,17 @@ export async function collectVercelMetrics(
     }
   }
 
-  try {
-    const headers = {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type':  'application/json',
-    }
+  const headers = {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type':  'application/json',
+  }
 
-    // Query deployments terbaru
-    const teamParam  = teamId ? `&teamId=${teamId}` : ''
-    const deployUrl  = `https://api.vercel.com/v6/deployments?projectId=${projectId}&limit=5${teamParam}`
-    const deployRes  = await fetch(deployUrl, { headers })
+  try {
+    const teamParam = teamId ? `&teamId=${teamId}` : ''
+    const deployRes = await fetch(
+      `https://api.vercel.com/v6/deployments?projectId=${projectId}&limit=5${teamParam}`,
+      { headers }
+    )
 
     if (!deployRes.ok) {
       return {
@@ -54,40 +65,38 @@ export async function collectVercelMetrics(
 
     const deployData = await deployRes.json()
     const deployments: Array<{
-      uid: string
-      state: string
-      createdAt: number
-      buildingAt?: number
-      ready?: number
-      target?: string
+      uid:        string
+      state:      string
+      createdAt:  number
+      ready?:     number
+      target?:    string
     }> = deployData?.deployments ?? []
 
     const latest = deployments[0]
 
-    // Hitung durasi build deployment terakhir (ms → detik)
-    let lastBuildDurationSec = 0
+    // Durasi build terakhir (ms → detik), sesuai field UI: last_deployment_duration
+    let lastDeploymentDuration = 0
     if (latest?.createdAt && latest?.ready) {
-      lastBuildDurationSec = Math.round((latest.ready - latest.createdAt) / 1000)
+      lastDeploymentDuration = Math.round((latest.ready - latest.createdAt) / 1000)
     }
 
-    // Hitung success rate dari 5 deployment terakhir
-    const successCount = deployments.filter(d =>
-      d.state === 'READY' || d.state === 'PROMOTED'
-    ).length
-    const successRatePct = deployments.length > 0
-      ? Math.round((successCount / deployments.length) * 100)
-      : 0
+    // Status deployment: UI expect string seperti 'READY', 'ERROR', 'CANCELED'
+    // Vercel state: READY / ERROR / CANCELED / BUILDING / INITIALIZING
+    const lastDeploymentStatus = latest?.state ?? 'UNKNOWN'
 
     return {
-      last_deployment_state:      latest?.state          ?? 'UNKNOWN',
-      last_deployment_target:     latest?.target         ?? 'UNKNOWN',
-      last_deployment_created_at: latest?.createdAt
-        ? new Date(latest.createdAt).toISOString()
-        : null,
-      last_build_duration_sec:    lastBuildDurationSec,
-      recent_deployments_count:   deployments.length,
-      recent_success_rate_pct:    successRatePct,
-      _token_source:              'M3 Credential Management (vercel.api_token)',
+      // Field persis sesuai MetricRow kode=vercel di UI
+      last_deployment_status:   lastDeploymentStatus,
+      last_deployment_duration: lastDeploymentDuration,
+      bandwidth_bytes:          0,           // Vercel API v6 tidak expose bandwidth di deployments endpoint
+      fn_invocations:           0,           // Tidak tersedia di free tier API
+      fn_error_rate_pct:        0,           // Tidak tersedia di free tier API
+      fn_duration_p50_ms:       0,           // Tidak tersedia di free tier API
+      fn_duration_p99_ms:       0,           // Tidak tersedia di free tier API
+      // Info tambahan
+      last_deployment_target:   latest?.target ?? 'UNKNOWN',
+      recent_deployments_count: deployments.length,
+      _token_source:            'M3 Credential Management (vercel.api_token)',
     }
   } catch (err) {
     return {
