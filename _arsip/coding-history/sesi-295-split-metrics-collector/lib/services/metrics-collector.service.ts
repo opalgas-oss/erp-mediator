@@ -1,5 +1,5 @@
 // lib/services/metrics-collector.service.ts
-// Service: ping L1 + deep check L3 per sistem (orchestrator)
+// Service: ping L1 + deep check L3 per sistem
 // Dipakai oleh: POST /api/cron/collect-metrics (QStash webhook)
 // Dibuat: Sesi #151 — PL-S09 Monitoring Dashboard
 // PERUBAHAN Sesi #161 — T-017: retentionDays dari parameter (dibaca config di caller route.ts)
@@ -8,10 +8,6 @@
 // PERUBAHAN Sesi #293 — FIX Fonnte false-DOWN: pingProvider() GET generik tidak bisa cek Fonnte
 //   (Fonnte tidak punya status-page publik; status_url '/check' → HTTP 404). Tambah pingFonnte()
 //   terautentikasi (POST /device + api_token M3, baca device_status) + dispatch kode==='fonnte'.
-// PERUBAHAN Sesi #295 — HUTANG-SPLIT-COLLECTOR: pecah deep collectors ke file terpisah di collectors/.
-//   File ini sekarang hanya orchestrator (L1 ping + L3 dispatch). Logic collector per-provider
-//   dipindah ke lib/services/collectors/{supabase,vercel,upstash,cloudinary,github}.collector.ts.
-//   API publik (collectL1Metrics, collectL3Metrics) tidak berubah — caller route.ts tidak perlu diubah.
 //
 // PENTING: Token management API (Supabase, GitHub, Vercel) diambil dari M3 DB
 // via credential.service.ts — tidak ada process.env selain QStash (bootstrap level).
@@ -20,24 +16,19 @@
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import { getCredentialsByProvider }   from '@/lib/services/credential.service'
-import { insertMetric }               from '@/lib/repositories/provider-metrics.repository'
-import { upsertDefaultRules }         from '@/lib/repositories/alert-rules.repository'
-import { checkAndSendAlerts }         from '@/lib/services/alert.service'
-import { deleteOldMetrics }           from '@/lib/repositories/provider-metrics.repository'
-import { fetchWithTimeout }           from '@/lib/utils/fetch.server'
-import { collectSupabaseMetrics }     from '@/lib/services/collectors/supabase.collector'
-import { collectVercelMetrics }       from '@/lib/services/collectors/vercel.collector'
-import { collectUpstashMetrics }      from '@/lib/services/collectors/upstash.collector'
-import { collectCloudinaryMetrics }   from '@/lib/services/collectors/cloudinary.collector'
-import { collectGithubMetrics }       from '@/lib/services/collectors/github.collector'
+import { getCredentialsByProvider } from '@/lib/services/credential.service'
+import { insertMetric }          from '@/lib/repositories/provider-metrics.repository'
+import { upsertDefaultRules }    from '@/lib/repositories/alert-rules.repository'
+import { checkAndSendAlerts }    from '@/lib/services/alert.service'
+import { deleteOldMetrics }      from '@/lib/repositories/provider-metrics.repository'
+import { fetchWithTimeout }      from '@/lib/utils/fetch.server'
 import type {
   MonitoringStatus,
   MonitoringLayer,
   InsertProviderMetricPayload,
 } from '@/lib/types/monitoring.types'
 
-const PING_TIMEOUT_MS       = 5_000
+const PING_TIMEOUT_MS  = 5_000
 const DEGRADED_THRESHOLD_MS = 2_000
 
 // ─── collectL1Metrics ─────────────────────────────────────────────────────────
@@ -179,13 +170,7 @@ async function pingProvider(
   const targetUrl = statusUrl ?? PING_URLS[kode] ?? null
 
   if (!targetUrl) {
-    return {
-      provider_id:   providerId,
-      status:        'UNKNOWN',
-      response_time_ms: null,
-      layer:         'L1',
-      error_detail:  'Tidak ada URL untuk ping',
-    }
+    return { provider_id: providerId, status: 'UNKNOWN', response_time_ms: null, layer: 'L1', error_detail: 'Tidak ada URL untuk ping' }
   }
 
   const start = Date.now()
@@ -196,25 +181,11 @@ async function pingProvider(
       PING_TIMEOUT_MS
     )
     const ms = Date.now() - start
-    const status: MonitoringStatus =
-      res.ok && ms <= DEGRADED_THRESHOLD_MS ? 'UP' :
-      res.ok ? 'DEGRADED' : 'DOWN'
-    return {
-      provider_id:      providerId,
-      status,
-      response_time_ms: ms,
-      layer:            'L1' as MonitoringLayer,
-      error_detail:     !res.ok ? `HTTP ${res.status}` : undefined,
-    }
+    const status: MonitoringStatus = res.ok && ms <= DEGRADED_THRESHOLD_MS ? 'UP' : res.ok ? 'DEGRADED' : 'DOWN'
+    return { provider_id: providerId, status, response_time_ms: ms, layer: 'L1' as MonitoringLayer, error_detail: !res.ok ? `HTTP ${res.status}` : undefined }
   } catch (err) {
     const ms = Date.now() - start
-    return {
-      provider_id:      providerId,
-      status:           'DOWN',
-      response_time_ms: ms < PING_TIMEOUT_MS ? ms : null,
-      layer:            'L1',
-      error_detail:     String(err),
-    }
+    return { provider_id: providerId, status: 'DOWN', response_time_ms: ms < PING_TIMEOUT_MS ? ms : null, layer: 'L1', error_detail: String(err) }
   }
 }
 
@@ -233,13 +204,7 @@ async function pingFonnte(providerId: string): Promise<InsertProviderMetricPaylo
   const creds = await getCredentialsByProvider('fonnte')
   const token = creds['api_token']
   if (!token) {
-    return {
-      provider_id:      providerId,
-      status:           'UNKNOWN',
-      response_time_ms: null,
-      layer:            'L1',
-      error_detail:     'Token Fonnte (api_token) belum dikonfigurasi di M3',
-    }
+    return { provider_id: providerId, status: 'UNKNOWN', response_time_ms: null, layer: 'L1', error_detail: 'Token Fonnte (api_token) belum dikonfigurasi di M3' }
   }
 
   const start = Date.now()
@@ -272,17 +237,9 @@ async function pingFonnte(providerId: string): Promise<InsertProviderMetricPaylo
     return { provider_id: providerId, status: 'DOWN', response_time_ms: ms, layer: 'L1', error_detail: `Device ${body.device_status ?? 'disconnect'}` }
   } catch (err) {
     const ms = Date.now() - start
-    return {
-      provider_id:      providerId,
-      status:           'DOWN',
-      response_time_ms: ms < PING_TIMEOUT_MS ? ms : null,
-      layer:            'L1',
-      error_detail:     String(err),
-    }
+    return { provider_id: providerId, status: 'DOWN', response_time_ms: ms < PING_TIMEOUT_MS ? ms : null, layer: 'L1', error_detail: String(err) }
   }
 }
-
-// ─── PING_URLS — fallback jika status_url provider tidak diset di DB ──────────
 
 const PING_URLS: Record<string, string> = {
   'supabase':            'https://status.supabase.com/api/v2/status.json',
@@ -295,4 +252,155 @@ const PING_URLS: Record<string, string> = {
   'github':              'https://kctbh9vrtdwd.statuspage.io/api/v2/status.json',
   'vercel':              'https://www.vercel-status.com/api/v2/status.json',
   'qstash':              'https://status.upstash.com/api/v2/status.json',
+}
+
+// ─── Deep Collectors — token dari M3 via getCredentialsByProvider ──────────
+
+/**
+ * Supabase Management API metrics.
+ * Token: getCredentialsByProvider('supabase-management').access_token
+ * Dikonfigurasi SuperAdmin di Integrasi > API Provider > Supabase Management API.
+ */
+async function collectSupabaseMetrics(
+  creds: Record<string, string>
+): Promise<Record<string, unknown>> {
+  const token = creds['access_token']
+  if (!token) return { _note: 'access_token belum dikonfigurasi di M3', _source: 'Integrasi > API Provider > Supabase Management API' }
+
+  // TODO: panggil Supabase Management API dengan token
+  // GET https://api.supabase.com/v1/projects/{ref}/health
+  // Saat ini return placeholder — diisi setelah endpoint Management API dikonfirmasi
+  return {
+    db_active_connections:   0,
+    db_max_connections:      60,
+    db_size_bytes:           0,
+    auth_requests_per_min:   0,
+    active_sessions:         0,
+    edge_fn_invocations:     0,
+    edge_fn_error_rate_pct:  0,
+    storage_used_bytes:      0,
+    _note:                   'Token dikonfigurasi — implementasi API call pending',
+    _token_source:           'M3 Credential Management (supabase-management.access_token)',
+  }
+}
+
+/**
+ * Vercel REST API metrics.
+ * Token: getCredentialsByProvider('vercel').api_token + project_id
+ * Dikonfigurasi SuperAdmin di Integrasi > API Provider > Vercel API.
+ */
+async function collectVercelMetrics(
+  creds: Record<string, string>
+): Promise<Record<string, unknown>> {
+  const token     = creds['api_token']
+  const projectId = creds['project_id']
+  if (!token || !projectId) return { _note: 'api_token atau project_id belum dikonfigurasi di M3', _source: 'Integrasi > API Provider > Vercel API' }
+
+  // TODO: panggil Vercel REST API
+  // GET https://api.vercel.com/v6/deployments?projectId={projectId}
+  return {
+    last_deployment_status:   'UNKNOWN',
+    last_deployment_duration: 0,
+    fn_invocations:           0,
+    fn_error_rate_pct:        0,
+    fn_duration_p50_ms:       0,
+    fn_duration_p99_ms:       0,
+    bandwidth_bytes:          0,
+    _note:                    'Token dikonfigurasi — implementasi API call pending',
+    _token_source:            'M3 Credential Management (vercel.api_token)',
+  }
+}
+
+/**
+ * Upstash Redis metrics via REST API.
+ * Token: getCredentialsByProvider('upstash').rest_url + rest_token
+ * Dikonfigurasi SuperAdmin di Integrasi > API Provider > Upstash Redis (existing).
+ */
+async function collectUpstashMetrics(
+  creds: Record<string, string>
+): Promise<Record<string, unknown>> {
+  const restUrl   = creds['rest_url']
+  const restToken = creds['rest_token']
+  if (!restUrl || !restToken) return { _note: 'rest_url atau rest_token belum dikonfigurasi di M3', _source: 'Integrasi > API Provider > Upstash Redis' }
+
+  try {
+    const res = await fetch(`${restUrl}/info`, {
+      headers: { 'Authorization': `Bearer ${restToken}` },
+    })
+    if (!res.ok) throw new Error(`Upstash INFO error ${res.status}`)
+    const data = await res.json()
+    return { _raw: data, _token_source: 'M3 Credential Management (upstash.rest_token)' }
+  } catch (err) {
+    return { _error: String(err), _token_source: 'M3 Credential Management (upstash.rest_token)' }
+  }
+}
+
+/**
+ * Cloudinary Admin API metrics.
+ * Token: getCredentialsByProvider('cloudinary').cloud_name + api_key + api_secret
+ * Dikonfigurasi SuperAdmin di Integrasi > API Provider > Cloudinary (existing).
+ */
+async function collectCloudinaryMetrics(
+  creds: Record<string, string>
+): Promise<Record<string, unknown>> {
+  const cloudName = creds['cloud_name']
+  const apiKey    = creds['api_key']
+  const apiSecret = creds['api_secret']
+  if (!cloudName || !apiKey || !apiSecret) return { _note: 'Credential Cloudinary belum dikonfigurasi di M3', _source: 'Integrasi > API Provider > Cloudinary' }
+
+  // TODO: panggil Cloudinary Admin API
+  // GET https://api.cloudinary.com/v1_1/{cloudName}/usage
+  return {
+    storage_used_bytes:  0,
+    storage_max_bytes:   0,
+    bandwidth_bytes:     0,
+    bandwidth_max_bytes: 0,
+    api_calls:           0,
+    api_calls_max:       0,
+    _note:               'Token dikonfigurasi — implementasi API call pending',
+    _token_source:       'M3 Credential Management (cloudinary)',
+  }
+}
+
+/**
+ * GitHub REST API metrics.
+ * Token: getCredentialsByProvider('github').personal_access_token + repository_owner + repository_name
+ * Dikonfigurasi SuperAdmin di Integrasi > API Provider > GitHub.
+ */
+async function collectGithubMetrics(
+  creds: Record<string, string>
+): Promise<Record<string, unknown>> {
+  const token   = creds['personal_access_token']
+  const owner   = creds['repository_owner']
+  const repo    = creds['repository_name']
+  if (!token || !owner || !repo) return { _note: 'Credential GitHub belum dikonfigurasi di M3', _source: 'Integrasi > API Provider > GitHub' }
+
+  try {
+    const [workflowRes, prsRes] = await Promise.all([
+      fetch(`https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=1`, {
+        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' },
+      }),
+      fetch(`https://api.github.com/repos/${owner}/${repo}/pulls?state=open&per_page=100`, {
+        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' },
+      }),
+    ])
+
+    const [workflowData, prsData] = await Promise.all([
+      workflowRes.ok ? workflowRes.json() : null,
+      prsRes.ok     ? prsRes.json()       : null,
+    ])
+
+    const lastRun = workflowData?.workflow_runs?.[0]
+    return {
+      last_workflow_status:    lastRun?.conclusion  ?? 'UNKNOWN',
+      last_workflow_duration:  lastRun
+        ? Math.round((new Date(lastRun.updated_at).getTime() - new Date(lastRun.created_at).getTime()) / 1000)
+        : 0,
+      open_pull_requests:      Array.isArray(prsData) ? prsData.length : 0,
+      last_commit_at:          lastRun?.created_at  ?? null,
+      _token_source:           'M3 Credential Management (github.personal_access_token)',
+    }
+  } catch (err) {
+    return { _error: String(err), _token_source: 'M3 Credential Management (github.personal_access_token)' }
+  }
 }
