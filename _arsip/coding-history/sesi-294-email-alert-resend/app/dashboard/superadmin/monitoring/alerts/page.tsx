@@ -1,3 +1,5 @@
+// ARSIP SEBELUM EDIT — Sesi #294 Langkah 4
+// Sumber: app/dashboard/superadmin/monitoring/alerts/page.tsx
 // app/dashboard/superadmin/monitoring/alerts/page.tsx
 // M04 — Riwayat Alert
 // Route: /dashboard/superadmin/monitoring/alerts
@@ -27,31 +29,6 @@ function computeStats(logs: AlertLog[]) {
   const gagalCount  = logs.filter(l => !l.sent_via_wa && !l.sent_via_email).length
 
   return { alertsToday, alerts7d, suksesCount, gagalCount }
-}
-
-// ─── Badge status kirim per channel ─────────────────────────────────────────
-
-/**
- * Bedakan 3 state:
- *   sukses  → hijau ✓  (sent_via_* = true)
- *   gagal   → merah ✗  (sent_via_* = false DAN ada error_*)
- *   netral  → abu  —   (sent_via_* = false DAN tidak ada error_* = penerima kosong / dilewati)
- *
- * PERUBAHAN Sesi #294 — Langkah 4: sebelumnya hanya 2 state (sukses/gagal),
- * tidak membedakan "tidak dikonfigurasi" vs "gagal kirim".
- */
-function channelBadge(
-  label:    string,
-  sent:     boolean,
-  errorMsg: string | null | undefined
-): { cls: string; icon: string; title: string } {
-  if (sent) {
-    return { cls: label === 'WA' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800', icon: '✓', title: 'Terkirim' }
-  }
-  if (errorMsg) {
-    return { cls: 'bg-red-100 text-red-800', icon: '✗', title: `Gagal: ${errorMsg}` }
-  }
-  return { cls: 'bg-slate-100 text-slate-500', icon: '—', title: 'Tidak dikonfigurasi / dilewati' }
 }
 
 // ─── Badge warna alert type ───────────────────────────────────────────────────
@@ -136,22 +113,22 @@ export default async function MonitoringAlertsPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex flex-wrap gap-1">
-                        {log.notif_channels.includes('WA') && (() => {
-                            const b = channelBadge('WA', log.sent_via_wa, log.error_wa)
-                            return (
-                              <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${b.cls}`} title={b.title}>
-                                WA {b.icon}
-                              </span>
-                            )
-                          })()}
-                        {log.notif_channels.includes('EMAIL') && (() => {
-                            const b = channelBadge('EMAIL', log.sent_via_email, log.error_email)
-                            return (
-                              <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${b.cls}`} title={b.title}>
-                                Email {b.icon}
-                              </span>
-                            )
-                          })()}
+                        {log.notif_channels.includes('WA') && (
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-xs font-medium ${log.sent_via_wa ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}
+                            title={log.error_wa ?? undefined}
+                          >
+                            WA {log.sent_via_wa ? '✓' : '✗'}
+                          </span>
+                        )}
+                        {log.notif_channels.includes('EMAIL') && (
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-xs font-medium ${log.sent_via_email ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}`}
+                            title={log.error_email ?? undefined}
+                          >
+                            Email {log.sent_via_email ? '✓' : '✗'}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground max-w-[280px] truncate" title={log.message}>
@@ -165,9 +142,7 @@ export default async function MonitoringAlertsPage() {
         </div>
 
         <p className="text-[11px] text-muted-foreground">
-          Keterangan status: <span className="text-emerald-700 font-medium">✓ Terkirim</span> ·{' '}
-          <span className="text-red-700 font-medium">✗ Gagal kirim (hover untuk detail error)</span> ·{' '}
-          <span className="text-slate-500 font-medium">— Tidak dikonfigurasi / dilewati</span>.
+          Catatan: Jika SMTP DOWN, notifikasi email tidak bisa dikirim. Jika Fonnte DOWN, notifikasi WA tidak bisa dikirim.
           Semua kegagalan dicatat di log ini meskipun SA tidak menerima notifikasi.
         </p>
       </div>
