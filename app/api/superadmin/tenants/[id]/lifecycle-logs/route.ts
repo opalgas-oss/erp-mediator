@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSuperAdmin }          from '@/lib/auth-server'
-import { createClient }               from '@/lib/supabase/server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { classifyHttpError }          from '@/lib/utils/http.server'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -22,7 +22,7 @@ export async function GET(
     const { id }       = await params
     const statusTo     = request.nextUrl.searchParams.get('status_to') ?? undefined
 
-    const supabase = await createClient()
+    const supabase = createServerSupabaseClient()
 
     let query = supabase
       .from('tenant_lifecycle_logs')
