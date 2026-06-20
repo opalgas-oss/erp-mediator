@@ -4,7 +4,7 @@
 // Header persisten Detail Tenant — avatar, badge, quick stats, tab nav
 // Dipasang di semua 6 tab halaman detail tenant.
 // Dibuat: Sesi #141 — M6 Fix Fase A (G14)
-// Fix konsole error borderBottom conflict + tab alignment
+// Diupdate: Sesi #303 — label tombol suspended ganti ke 'Re-Aktif'
 
 import type { Tenant, TenantLifecycleStatus, TenantTipe, TenantTier, TenantStatusPKP } from '@/lib/types/tenant.types'
 
@@ -172,7 +172,7 @@ export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, 
               )}
               {tenant.lifecycle_status === 'suspended' && (
                 <button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#97C459', color: '#3B6D11', background: 'transparent' }}>
-                  <i className="ti ti-refresh" /> Aktifkan kembali
+                  <i className="ti ti-refresh" /> Re-Aktif
                 </button>
               )}
               {tenant.lifecycle_status === 'terminated' && (   // S#302: tombol re-aktivasi

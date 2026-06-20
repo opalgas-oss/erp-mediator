@@ -10,6 +10,9 @@
 //   API: PATCH /api/superadmin/tenants/[id]/status
 // Diupdate: Sesi #302 — H-B06-02 Re-aktivasi Tenant Terminated
 //   Tambah DialogMode 'reactivate', fix kalimat terminate, prop onReactivate di Header.
+// Diupdate: Sesi #303 — FIX B-06 dialog Re-Aktif dari Non-Active
+//   Ganti mode 'resume' dengan DialogReaktifSuspended: tampil info catatan Non-Active
+//   + pilihan tombol 'Pending' atau 'Aktifkan' langsung di dalam dialog.
 
 import { useState, useEffect } from 'react'
 import { toast }       from 'sonner'
@@ -29,7 +32,7 @@ interface Props { tenant: Tenant }
 
 // ─── Tipe dialog lifecycle ────────────────────────────────────────────────────
 
-type DialogMode = 'suspend' | 'resume' | 'terminate' | 'reactivate' | null
+type DialogMode = 'suspend' | 'terminate' | 'reactivate' | null
 
 // ─── Dialog konfirmasi lifecycle ──────────────────────────────────────────────
 
@@ -61,9 +64,8 @@ function DialogLifecycle({
 
   if (!mode) return null
 
-  const isResume     = mode === 'resume'
   const isReactivate = mode === 'reactivate'   // S#302
-  const isSimple     = isResume || isReactivate // mode tanpa langkah 2 konfirmasi nama
+  const isSimple     = isReactivate             // mode tanpa langkah 2 konfirmasi nama
 
   const config = {
     suspend: {
@@ -78,17 +80,7 @@ function DialogLifecycle({
         'Tenant bisa diaktifkan kembali kapan saja.',
       ],
     },
-    resume: {
-      title:       'Aktifkan Kembali',
-      borderColor: '#97C459',
-      btnColor:    { bg: 'transparent', text: '#3B6D11', border: '#97C459' },
-      btnLabel:    'Aktifkan',
-      konsekuensi: [
-        'AdminTenant dapat login kembali ke dashboard tenant.',
-        'Semua operasi bisnis tenant diaktifkan kembali.',
-        'Status lifecycle kembali ke Aktif.',
-      ],
-    },
+
     terminate: {
       title:       'Akhiri Tenant',
       borderColor: '#F09595',
@@ -140,8 +132,8 @@ function DialogLifecycle({
                 {config.konsekuensi.map((k, i) => <li key={i}>{k}</li>)}
               </ul>
 
-              {/* Field alasan: opsional untuk suspend/terminate, wajib untuk reactivate */}
-              {!isResume && !isReactivate && (
+              {/* Field alasan: opsional untuk suspend/terminate */}
+              {!isReactivate && (
                 <div style={{ marginTop: 14 }}>
                   <label style={{ fontSize: 12, color: '#6b7280', display: 'block', marginBottom: 4 }}>Alasan (opsional)</label>
                   <input
@@ -221,6 +213,118 @@ function DialogLifecycle({
   )
 }
 
+// ─── Dialog Re-Aktif dari Non-Active (S#303) ────────────────────────────────
+// Tampil info catatan Non-Active terakhir + pilihan tombol Pending / Aktifkan
+
+interface LogNonActive {
+  status_to:  string
+  alasan:     string | null
+  created_at: string
+}
+
+function DialogReaktifSuspended({
+  tenantId,
+  tenantNama,
+  onClose,
+  onPilih,
+  saving,
+}: {
+  tenantId:   string
+  tenantNama: string
+  onClose:    () => void
+  onPilih:    (pilihan: 'pending' | 'active') => void
+  saving:     boolean
+}) {
+  const [log,     setLog]     = useState<LogNonActive | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchLog() {
+      try {
+        const res  = await fetch(`/api/superadmin/tenants/${tenantId}/lifecycle-logs?status_to=suspended`)
+        const json = await res.json()
+        if (json.success && json.data.length > 0) setLog(json.data[0])
+      } catch { /* silent */ } finally {
+        setLoading(false)
+      }
+    }
+    fetchLog()
+  }, [tenantId])
+
+  function formatTglIndo(isoStr: string) {
+    return new Date(isoStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#fff', borderRadius: 14, width: 500, maxWidth: '90vw', border: '1.5px solid #97C459', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ padding: '16px 20px', borderBottom: '0.5px solid rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a' }}>Re-Aktif Tenant</div>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 18, color: '#6b7280', padding: '2px 6px' }}>x</button>
+        </div>
+
+        <div style={{ padding: '16px 20px' }}>
+          {loading ? (
+            <div style={{ fontSize: 13, color: '#6b7280', textAlign: 'center', padding: '20px 0' }}>Memuat data...</div>
+          ) : (
+            <>
+              {/* Info catatan Non-Active */}
+              <div style={{ background: '#FAEEDA', border: '0.5px solid #EF9F27', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: '#633806', marginBottom: 16, lineHeight: 1.7 }}>
+                {log ? (
+                  <>
+                    <strong>{tenantNama}</strong> memiliki catatan Non Active,
+                    {' '}tanggal: <strong>{formatTglIndo(log.created_at)}</strong>,
+                    {' '}dengan alasan: <strong>{log.alasan ?? '(tidak ada alasan)'}</strong>.
+                    {' '}Belum ada data transaksi.
+                  </>
+                ) : (
+                  <><strong>{tenantNama}</strong> tidak memiliki catatan Non Active sebelumnya. Belum ada data transaksi.</>
+                )}
+              </div>
+
+              {/* Pilihan tindakan */}
+              <div style={{ fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 10 }}>Pilih tindakan untuk tenant ini:</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button
+                  onClick={() => onPilih('pending')}
+                  disabled={saving}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderRadius: 10, border: '0.5px solid #EF9F27', background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}
+                >
+                  <i className="ti ti-hourglass" style={{ fontSize: 16, color: '#854F0B', marginTop: 1, flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: '#854F0B' }}>Pending</div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Status kembali ke Menunggu. SA perlu klik Aktifkan Tenant setelahnya.</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => onPilih('active')}
+                  disabled={saving}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderRadius: 10, border: '0.5px solid #97C459', background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}
+                >
+                  <i className="ti ti-circle-check" style={{ fontSize: 16, color: '#3B6D11', marginTop: 1, flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: '#3B6D11' }}>Aktifkan</div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Tenant langsung Aktif. AdminTenant dapat login kembali sekarang.</div>
+                  </div>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '12px 20px', borderTop: '0.5px solid rgba(0,0,0,0.12)', display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} disabled={saving} style={{ padding: '6px 14px', fontSize: 13, borderRadius: 8, border: '0.5px solid rgba(0,0,0,0.22)', background: 'transparent', color: '#1a1a1a', cursor: 'pointer', fontFamily: 'inherit' }}>
+            Batal
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Komponen utama ───────────────────────────────────────────────────────────
 
 export function TenantDetailClient({ tenant: initialTenant }: Props) {
@@ -228,6 +332,8 @@ export function TenantDetailClient({ tenant: initialTenant }: Props) {
   const [activeTab,   setActiveTab]   = useState<TenantTabId>('info')
   const [dialogMode,  setDialogMode]  = useState<DialogMode>(null)
   const [savingStatus, setSavingStatus] = useState(false)
+  // S#303: dialog Re-Aktif dari Non-Active
+  const [showDialogReaktif, setShowDialogReaktif] = useState(false)
 
   // Refresh data setelah ada perubahan
   const handleRefresh = async () => {
@@ -276,6 +382,28 @@ export function TenantDetailClient({ tenant: initialTenant }: Props) {
     }
   }
 
+  // S#303: handler Re-Aktif dari Non-Active — pilihan Pending atau Aktifkan
+  const handlePilihReaktif = async (pilihan: 'pending' | 'active') => {
+    setSavingStatus(true)
+    try {
+      const res  = await fetch(`/api/superadmin/tenants/${tenant.id}/status`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ status: pilihan, alasan: 'Re-aktivasi dari Non-Active' }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.message)
+      const label = pilihan === 'active' ? 'Tenant berhasil diaktifkan' : 'Tenant kembali ke status Pending'
+      toast.success(label)
+      setShowDialogReaktif(false)
+      await handleRefresh()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal mengubah status')
+    } finally {
+      setSavingStatus(false)
+    }
+  }
+
   // Quick stats dari field yang ada di Tenant
   const quickStats = {
     kategori_aktif:   0,
@@ -285,8 +413,9 @@ export function TenantDetailClient({ tenant: initialTenant }: Props) {
     auto_renewal:     tenant.auto_renewal,
   }
 
-  // Tentukan mode dialog berdasarkan status saat ini
-  const handleSuspend    = () => setDialogMode(tenant.lifecycle_status === 'suspended' ? 'resume' : 'suspend')
+  const handleSuspend    = () => setDialogMode(tenant.lifecycle_status === 'suspended' ? null : 'suspend')
+  // S#303: suspended → buka DialogReaktifSuspended, bukan DialogLifecycle
+  const handleResume     = () => setShowDialogReaktif(true)
   const handleTerminate  = () => setDialogMode('terminate')
   const handleReactivate = () => setDialogMode('reactivate')   // S#302
 
@@ -298,7 +427,7 @@ export function TenantDetailClient({ tenant: initialTenant }: Props) {
           tenant={tenant}
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          onSuspend={handleSuspend}
+          onSuspend={tenant.lifecycle_status === 'suspended' ? handleResume : handleSuspend}
           onTerminate={handleTerminate}
           onReactivate={handleReactivate}   // S#302
           quickStats={quickStats}
@@ -312,6 +441,17 @@ export function TenantDetailClient({ tenant: initialTenant }: Props) {
         {activeTab === 'config'      && <TabOverrideConfig     tenantId={tenant.id} />}
         {activeTab === 'aksesmenu'   && <TabAksesMenuAT        tenantId={tenant.id} tenantNama={tenant.nama_brand ?? ''} />}
       </div>
+
+      {/* Dialog Re-Aktif dari Non-Active (S#303) */}
+      {showDialogReaktif && (
+        <DialogReaktifSuspended
+          tenantId={tenant.id}
+          tenantNama={tenant.nama_brand ?? ''}
+          onClose={() => setShowDialogReaktif(false)}
+          onPilih={handlePilihReaktif}
+          saving={savingStatus}
+        />
+      )}
 
       {/* Dialog konfirmasi lifecycle */}
       <DialogLifecycle
