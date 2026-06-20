@@ -11,8 +11,6 @@
 // Diupdate: Sesi #141 — M6 Fix Fase A
 // Diupdate: Sesi #301 — FIX B-06: tambah 'in_registration' ke LC_STATES
 //   (findIndex = -1 jika status in_registration → semua circle abu, tidak ada highlight)
-// Diupdate: Sesi #303 — FIX B-06: tambah tombol "Aktifkan tenant" untuk
-//   status pending dan in_registration (sebelumnya tidak ada tombol aktivasi)
 
 import { useState }  from 'react'
 import { toast }     from 'sonner'
@@ -183,87 +181,11 @@ function FSelect({ label, value, onChange, options, fullWidth }: {
   )
 }
 
-// ─── Dialog Aktivasi Tenant ───────────────────────────────────────────────────
-// FIX S#303: Dialog konfirmasi untuk aktivasi pending/in_registration → active.
-// Menggunakan pola yang sama dengan dialog lifecycle lain (2-step confirmation).
-
-interface DialogAktivasiProps {
-  namaTenant: string
-  loading:    boolean
-  onConfirm:  (alasan: string) => void
-  onClose:    () => void
-}
-
-function DialogAktivasi({ namaTenant, loading, onConfirm, onClose }: DialogAktivasiProps) {
-  const [alasan, setAlasan] = useState('')
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 50,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(0,0,0,0.35)',
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: 16, padding: 24, width: 440, maxWidth: '90vw',
-        border: '0.5px solid rgba(0,0,0,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-      }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <i className="ti ti-circle-check" style={{ fontSize: 18, color: '#3B6D11' }} />
-          </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 15 }}>Aktifkan Tenant</div>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>Ubah status menjadi Aktif</div>
-          </div>
-        </div>
-
-        {/* Info */}
-        <div style={{ background: '#EAF3DE', border: '0.5px solid #97C459', borderRadius: 10, padding: '10px 12px', fontSize: 13, color: '#3B6D11', marginBottom: 16 }}>
-          <strong>{namaTenant}</strong> akan diaktifkan. Tenant dan AdminTenant-nya dapat mulai menggunakan platform.
-        </div>
-
-        {/* Alasan (opsional) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
-          <label style={{ fontSize: 12, color: '#6b7280' }}>Catatan aktivasi (opsional)</label>
-          <textarea
-            value={alasan}
-            onChange={e => setAlasan(e.target.value)}
-            placeholder="Contoh: Dokumen lengkap, kontrak sudah ditandatangani"
-            style={{
-              fontSize: 13, padding: '8px 10px', border: '0.5px solid rgba(0,0,0,0.22)',
-              borderRadius: 8, resize: 'vertical', minHeight: 70, fontFamily: 'inherit',
-              color: '#1a1a1a',
-            }}
-          />
-        </div>
-
-        {/* Tombol */}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button
-            onClick={onClose}
-            disabled={loading}
-            style={{ padding: '7px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid rgba(0,0,0,0.22)', background: 'transparent', color: '#1a1a1a' }}
-          >
-            Batal
-          </button>
-          <button
-            onClick={() => onConfirm(alasan)}
-            disabled={loading}
-            style={{ padding: '7px 16px', borderRadius: 8, fontSize: 13, cursor: loading ? 'not-allowed' : 'pointer', border: '0.5px solid #97C459', background: '#EAF3DE', color: '#3B6D11', opacity: loading ? 0.7 : 1 }}
-          >
-            <i className="ti ti-circle-check" /> {loading ? 'Mengaktifkan...' : 'Aktifkan Tenant'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ─── Lifecycle Visualization ──────────────────────────────────────────────────
 
 // FIX S#301 (B-06): Tambah 'in_registration' sebagai state pertama.
-// FIX S#303 (B-06): Tambah tombol "Aktifkan tenant" untuk status pending & in_registration.
+// Sebelumnya hanya 5 state (pending..terminated) — status in_registration tidak ditemukan
+// oleh findIndex → currentIdx = -1 → semua lingkaran abu, tidak ada highlight.
 const LC_STATES = [
   { key: 'in_registration', label: 'Dalam Registrasi', icon: 'ti-file-description' },
   { key: 'pending',         label: 'Menunggu aktivasi', icon: 'ti-hourglass' },
@@ -275,10 +197,9 @@ const LC_STATES = [
 
 type LCStatus = 'in_registration' | 'pending' | 'active' | 'suspended' | 'expired' | 'terminated'
 
-function LifecycleViz({ status, onAktifkan, onSuspend, onTerminate }: {
-  status:     LCStatus
-  onAktifkan: () => void
-  onSuspend:  () => void
+function LifecycleViz({ status, onSuspend, onTerminate }: {
+  status:      LCStatus
+  onSuspend:   () => void
   onTerminate: () => void
 }) {
   const currentIdx = LC_STATES.findIndex(s => s.key === status)
@@ -297,7 +218,7 @@ function LifecycleViz({ status, onAktifkan, onSuspend, onTerminate }: {
     <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 12, padding: 16, marginBottom: 10 }}>
       <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>Status lifecycle tenant</div>
 
-      {/* 6-state visualization */}
+      {/* 6-state visualization (in_registration + 5 state lifecycle) */}
       <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 14 }}>
         {LC_STATES.map((state, idx) => (
           <div key={state.key} style={{ display: 'contents' }}>
@@ -324,15 +245,6 @@ function LifecycleViz({ status, onAktifkan, onSuspend, onTerminate }: {
 
       {/* Tombol aksi */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {/* FIX S#303: Tombol aktivasi untuk pending dan in_registration */}
-        {(status === 'pending' || status === 'in_registration') && (
-          <button
-            onClick={onAktifkan}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid #97C459', color: '#3B6D11', background: '#EAF3DE' }}
-          >
-            <i className="ti ti-circle-check" /> Aktifkan tenant
-          </button>
-        )}
         {status === 'active' && (
           <button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid #EF9F27', color: '#854F0B', background: 'transparent' }}>
             <i className="ti ti-player-pause" /> Nonaktifkan sementara
@@ -364,13 +276,11 @@ function LifecycleViz({ status, onAktifkan, onSuspend, onTerminate }: {
 // ─── Komponen utama ───────────────────────────────────────────────────────────
 
 export function TabInfoUmum({ tenant, onRefresh }: Props) {
-  const [editingCluster,   setEditingCluster]   = useState<ClusterId | null>(null)
-  const [saving,           setSaving]           = useState(false)
-  const [form,             setForm]             = useState<Partial<UpdateTenantInfoPayload>>({})
-  // FIX S#303: State dialog aktivasi
-  const [showDialogAktivasi, setShowDialogAktivasi] = useState(false)
-  const [loadingAktivasi,    setLoadingAktivasi]    = useState(false)
+  const [editingCluster, setEditingCluster] = useState<ClusterId | null>(null)
+  const [saving,  setSaving]   = useState(false)
+  const [form,    setForm]     = useState<Partial<UpdateTenantInfoPayload>>({})
 
+  // Reset form saat buka cluster baru
   const handleOpenEdit = (id: ClusterId) => {
     setForm({})
     setEditingCluster(id)
@@ -402,29 +312,8 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
     }
   }
 
-  // FIX S#303: Handler aktivasi tenant pending/in_registration → active
-  const handleKonfirmasiAktivasi = async (alasan: string) => {
-    setLoadingAktivasi(true)
-    try {
-      const res  = await fetch(`/api/superadmin/tenants/${tenant.id}/status`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ status: 'active', alasan: alasan || 'Diaktifkan oleh SuperAdmin' }),
-      })
-      const json = await res.json()
-      if (!json.success) throw new Error(json.message)
-      toast.success(`Tenant ${tenant.nama_brand} berhasil diaktifkan`)
-      setShowDialogAktivasi(false)
-      onRefresh()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Gagal mengaktifkan tenant')
-    } finally {
-      setLoadingAktivasi(false)
-    }
-  }
-
-  const handleSuspend   = () => toast.info('Fitur nonaktifkan tenant: segera tersedia')
-  const handleTerminate = () => toast.info('Fitur akhiri tenant: segera tersedia')
+  const handleSuspend    = () => toast.info('Fitur nonaktifkan tenant: segera tersedia')
+  const handleTerminate  = () => toast.info('Fitur akhiri tenant: segera tersedia')
 
   const isEditA = editingCluster === 'A'
   const isEditB = editingCluster === 'B'
@@ -434,15 +323,6 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
 
   return (
     <div>
-      {/* Dialog Aktivasi */}
-      {showDialogAktivasi && (
-        <DialogAktivasi
-          namaTenant={tenant.nama_brand}
-          loading={loadingAktivasi}
-          onConfirm={handleKonfirmasiAktivasi}
-          onClose={() => setShowDialogAktivasi(false)}
-        />
-      )}
 
       {/* ── Cluster A: Identitas master ─────────────────────────────────────── */}
       <Accordion id="A" icon="ti-id-badge" iconBg="#E6F1FB" iconColor="#185FA5"
@@ -602,7 +482,7 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
         </FRow>
       </Accordion>
 
-      {/* ── Cluster D: Klasifikasi internal ─────────────────────────────────── */}
+      {/* ── Cluster D: Klasifikasi internal (G18 — isi dikoreksi) ─────────────── */}
       <Accordion id="D" icon="ti-adjustments" iconBg="#FAEEDA" iconColor="#854F0B"
         title="Cluster D — Klasifikasi internal platform" editingCluster={editingCluster} onEdit={handleOpenEdit}
       >
@@ -652,12 +532,7 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
       </Accordion>
 
       {/* ── Status Lifecycle Visualization (G20) ────────────────────────────── */}
-      <LifecycleViz
-        status={tenant.lifecycle_status as LCStatus}
-        onAktifkan={() => setShowDialogAktivasi(true)}
-        onSuspend={handleSuspend}
-        onTerminate={handleTerminate}
-      />
+      <LifecycleViz status={tenant.lifecycle_status as LCStatus} onSuspend={handleSuspend} onTerminate={handleTerminate} />
 
       {/* ── Cluster F: Pengaturan tambahan & catatan internal (G19) ─────────── */}
       <Accordion id="F" icon="ti-settings-2" iconBg="#F1EFE8" iconColor="#5F5E5A"
