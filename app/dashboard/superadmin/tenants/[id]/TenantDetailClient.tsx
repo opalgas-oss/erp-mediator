@@ -159,7 +159,7 @@ function DialogLifecycle({
           )}
 
           {/* Langkah 2 — konfirmasi nama (suspend/terminate) */}
-          {step === 2 && !isResume && (
+          {step === 2 && !isReactivate && (
             <div>
               <div style={{ fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 8 }}>
                 Langkah 2 — Konfirmasi dengan mengetik nama tenant:
