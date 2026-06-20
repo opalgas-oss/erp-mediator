@@ -242,44 +242,21 @@ export async function tenantRepo_updateInfo(
 
 // ─── M6: tenantRepo_updateStatus ─────────────────────────────────────────────
 /**
- * Update status lifecycle tenant (active/suspended/terminated/expired/pending).
- * Update S#302: tambah insert ke tenant_lifecycle_logs untuk audit trail lengkap.
- * Sebelumnya tabel ini tidak pernah diisi — tidak ada trigger DB maupun SP.
+ * Update status lifecycle tenant (active/suspended/terminated/expired).
  */
 export async function tenantRepo_updateStatus(
-  tenantId:   string,
-  status:     TenantLifecycleStatus,
-  updatedBy:  string,
-  statusFrom: TenantLifecycleStatus | null = null,
-  alasan:     string | null = null
+  tenantId:  string,
+  status:    TenantLifecycleStatus,
+  updatedBy: string
 ): Promise<boolean> {
   const db = createServerSupabaseClient()
-
-  // Step 1: update kolom lifecycle_status di tenants
   const { error } = await db
     .from('tenants')
     .update({ lifecycle_status: status, updated_by: updatedBy, updated_at: new Date().toISOString() })   // STATUS-REDESIGN S#212
     .eq('id', tenantId)
     .is('deleted_at', null)
 
-  if (error) return false
-
-  // Step 2: catat ke tenant_lifecycle_logs (audit trail) — S#302
-  // Non-blocking: jika insert log gagal, status tetap terupdate (tidak rollback)
-  await db
-    .from('tenant_lifecycle_logs')
-    .insert({
-      entity_type:      'tenant',
-      entity_id:        tenantId,
-      tenant_id:        tenantId,
-      status_from:      statusFrom,
-      status_to:        status,
-      alasan:           alasan,
-      changed_by:       updatedBy,
-      changed_by_role:  'super_admin',
-    })
-
-  return true
+  return !error
 }
 
 // ─── M6: tenantRepo_updateContract ────────────────────────────────────────────

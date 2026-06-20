@@ -1,3 +1,5 @@
+// ARSIP sesi-302-b06-reactivate-tenant
+// Salin dari: lib/services/tenant.service.ts
 // lib/services/tenant.service.ts
 // Service layer untuk entitas tenants — business logic + validation.
 // Dipakai oleh: API route handlers di app/api/superadmin/tenants/
@@ -29,8 +31,6 @@ import type {
   TenantContractStatus,
 } from '@/lib/types/tenant.types'
 
-// ─── Validation Helpers ──────────────────────────────────────────────────────
-
 const SLUG_REGEX = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/
 
 function validateSlug(slug: string): void {
@@ -49,25 +49,16 @@ function validateNpwp(npwp: string): void {
   }
 }
 
-// ─── TenantService_list ───────────────────────────────────────────────────────
-/**
- * Ambil daftar tenant untuk halaman List Tenants (8.1).
- */
 export async function TenantService_list(
   params?: TenantListFilter
 ): Promise<TenantListResponse> {
   const page   = params?.page  ?? 1
   const limit  = params?.limit ?? 20
-  // 'all' berarti tidak filter lifecycle_status — jangan diteruskan ke repo
-  const lifecycleStatus = params?.lifecycle_status === 'all' ? undefined : params?.lifecycle_status   // STATUS-REDESIGN S#212
+  const lifecycleStatus = params?.lifecycle_status === 'all' ? undefined : params?.lifecycle_status
   const result = await tenantRepo_findAll({ ...params, status: lifecycleStatus })
   return { ...result, page, limit }
 }
 
-// ─── TenantService_getById ────────────────────────────────────────────────────
-/**
- * Ambil detail tenant lengkap untuk halaman Detail Tenant (8.2).
- */
 export async function TenantService_getById(
   tenantId: string
 ): Promise<Tenant | null> {
@@ -75,10 +66,6 @@ export async function TenantService_getById(
   return tenantRepo_findById(tenantId)
 }
 
-// ─── TenantService_create ─────────────────────────────────────────────────────
-/**
- * Buat tenant baru via sp_create_tenant_with_pic (transactional).
- */
 export async function TenantService_create(
   input:     BuatTenantPayload,
   createdBy: string
@@ -97,17 +84,13 @@ export async function TenantService_create(
     throw new Error(`Kode tenant "${input.slug}" sudah digunakan. Coba "${input.slug}-2"`)
   }
 
-  const tenantId  = await tenantRepo_createWithPIC(input, createdBy)  // PV-04 S#179: dipindah ke repo layer
+  const tenantId  = await tenantRepo_createWithPIC(input, createdBy)
   const tenant    = await tenantRepo_findById(tenantId)
   const displayId = tenant?.tenant_display_id ?? tenantId
 
   return { tenant_id: tenantId, display_id: displayId }
 }
 
-// ─── TenantService_update ─────────────────────────────────────────────────────
-/**
- * Update partial field tenant (per cluster edit di Tab Info Umum).
- */
 export async function TenantService_update(
   tenantId:  string,
   input:     UpdateTenantInfoPayload,
@@ -120,10 +103,6 @@ export async function TenantService_update(
   if (!ok) throw new Error('Gagal mengupdate tenant. Pastikan tenant masih aktif.')
 }
 
-// ─── TenantService_updateLifecycleStatus ─────────────────────────────────────
-/**
- * Update status lifecycle tenant (suspend/activate/terminate).
- */
 export async function TenantService_updateLifecycleStatus(
   tenantId:   string,
   newStatus:  TenantLifecycleStatus,
@@ -134,12 +113,12 @@ export async function TenantService_updateLifecycleStatus(
   if (!tenant) throw new Error('Tenant tidak ditemukan')
 
   const validTransitions: Record<TenantLifecycleStatus, TenantLifecycleStatus[]> = {
-    in_registration: [], // transisi otomatis via approve, bukan manual SA
+    in_registration: [],
     pending:    ['active', 'terminated'],
     active:     ['suspended', 'terminated'],
     suspended:  ['active', 'terminated'],
     expired:    ['active', 'terminated'],
-    terminated: ['pending'],   // S#302: SA bisa re-aktivasi ke pending untuk review ulang
+    terminated: [],
   }
 
   if (!validTransitions[tenant.lifecycle_status].includes(newStatus)) {
@@ -152,19 +131,10 @@ export async function TenantService_updateLifecycleStatus(
     throw new Error('Alasan wajib diisi untuk aksi ini')
   }
 
-  // S#302: re-aktivasi dari terminated juga wajib alasan
-  if (tenant.lifecycle_status === 'terminated' && !alasan?.trim()) {
-    throw new Error('Alasan re-aktivasi wajib diisi')
-  }
-
-  const ok = await tenantRepo_updateStatus(tenantId, newStatus, updatedBy, tenant.lifecycle_status, alasan ?? null)
+  const ok = await tenantRepo_updateStatus(tenantId, newStatus, updatedBy)
   if (!ok) throw new Error('Gagal mengupdate status tenant')
 }
 
-// ─── TenantService_updateContract ────────────────────────────────────────────
-/**
- * Update informasi kontrak sewa (Tab Kontrak Sewa).
- */
 export async function TenantService_updateContract(
   tenantId:  string,
   input: {
@@ -194,10 +164,6 @@ export async function TenantService_updateContract(
   if (!ok) throw new Error('Gagal mengupdate informasi kontrak')
 }
 
-// ─── TenantService_checkSlugAvailable ────────────────────────────────────────
-/**
- * Cek ketersediaan slug/kode tenant (untuk validasi realtime di form).
- */
 export async function TenantService_checkSlugAvailable(
   slug: string
 ): Promise<{ available: boolean; suggestion?: string }> {
@@ -216,7 +182,6 @@ export async function TenantService_checkSlugAvailable(
   return { available: false }
 }
 
-// ─── Helper: format nomor WA ──────────────────────────────────────────────────
 export function TenantService_formatNomorWa(nomor: string): string {
   const digits = nomor.replace(/\D/g, '')
   if (digits.startsWith('08')) return '62' + digits.slice(1)
