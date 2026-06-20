@@ -1,7 +1,7 @@
 'use client'
 
 // app/dashboard/superadmin/tenants/[id]/TabInfoUmum.tsx
-// Tab Info Umum — 5 cluster accordion + lifecycle visualization 6-state
+// Tab Info Umum — 5 cluster accordion + lifecycle visualization 5-state
 // Fix: G14 (TenantDetailHeader), G15 (tanggal bergabung + aktivitas),
 //      G16 (KBLI + tombol verifikasi), G17 (kecamatan + kode pos cascade),
 //      G18 (isi cluster D dikoreksi), G19 (cluster F baru),
@@ -9,8 +9,6 @@
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
 // Diupdate: Sesi #141 — M6 Fix Fase A
-// Diupdate: Sesi #301 — FIX B-06: tambah 'in_registration' ke LC_STATES
-//   (findIndex = -1 jika status in_registration → semua circle abu, tidak ada highlight)
 
 import { useState }  from 'react'
 import { toast }     from 'sonner'
