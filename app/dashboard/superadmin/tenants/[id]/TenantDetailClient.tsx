@@ -351,7 +351,6 @@ export function TenantDetailClient({ tenant: initialTenant }: Props) {
 
     const statusMap: Record<NonNullable<DialogMode>, TenantLifecycleStatus> = {
       suspend:    'suspended',
-      resume:     'active',
       terminate:  'terminated',
       reactivate: 'pending',   // S#302: terminated → pending untuk review ulang
     }
@@ -368,7 +367,6 @@ export function TenantDetailClient({ tenant: initialTenant }: Props) {
 
       const labelMap: Record<NonNullable<DialogMode>, string> = {
         suspend:    'Tenant berhasil dinonaktifkan',
-        resume:     'Tenant berhasil diaktifkan kembali',
         terminate:  'Tenant berhasil diakhiri',
         reactivate: 'Tenant berhasil diaktifkan kembali — status: Menunggu Review',   // S#302
       }
