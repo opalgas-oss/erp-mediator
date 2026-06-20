@@ -69,10 +69,10 @@ function DialogLifecycle({
 
   const config = {
     suspend: {
-      title:       'Nonaktifkan Sementara',
+      title:       'Non Active',
       borderColor: '#EF9F27',
       btnColor:    { bg: 'transparent', text: '#854F0B', border: '#EF9F27' },
-      btnLabel:    'Nonaktifkan',
+      btnLabel:    'Non Active',
       konsekuensi: [
         'AdminTenant tidak bisa login ke dashboard tenant ini.',
         'Semua operasi bisnis tenant dihentikan sementara.',
@@ -305,7 +305,7 @@ function DialogReaktifSuspended({
                 >
                   <i className="ti ti-circle-check" style={{ fontSize: 16, color: '#3B6D11', marginTop: 1, flexShrink: 0 }} />
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: '#3B6D11' }}>Aktifkan</div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: '#3B6D11' }}>Actived</div>
                     <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Tenant langsung Aktif. AdminTenant dapat login kembali sekarang.</div>
                   </div>
                 </button>

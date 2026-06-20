@@ -4,7 +4,7 @@
 // Header persisten Detail Tenant — avatar, badge, quick stats, tab nav
 // Dipasang di semua 6 tab halaman detail tenant.
 // Dibuat: Sesi #141 — M6 Fix Fase A (G14)
-// Diupdate: Sesi #303 — label tombol suspended ganti ke 'Re-Aktif'
+// Diupdate: Sesi #303 — label tombol: 'Non Active' (active) + 'Re Active' (suspended)
 
 import type { Tenant, TenantLifecycleStatus, TenantTipe, TenantTier, TenantStatusPKP } from '@/lib/types/tenant.types'
 
@@ -167,12 +167,12 @@ export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, 
             <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
               {tenant.lifecycle_status === 'active' && (
                 <button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#EF9F27', color: '#854F0B', background: 'transparent' }}>
-                  <i className="ti ti-player-pause" /> Nonaktifkan sementara
+                  <i className="ti ti-player-pause" /> Non Active
                 </button>
               )}
               {tenant.lifecycle_status === 'suspended' && (
                 <button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#97C459', color: '#3B6D11', background: 'transparent' }}>
-                  <i className="ti ti-refresh" /> Re-Aktif
+                  <i className="ti ti-refresh" /> Re Active
                 </button>
               )}
               {tenant.lifecycle_status === 'terminated' && (   // S#302: tombol re-aktivasi
