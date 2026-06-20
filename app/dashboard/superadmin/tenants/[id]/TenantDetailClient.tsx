@@ -11,7 +11,7 @@
 // Diupdate: Sesi #302 — H-B06-02 Re-aktivasi Tenant Terminated
 //   Tambah DialogMode 'reactivate', fix kalimat terminate, prop onReactivate di Header.
 
-import { useState }    from 'react'
+import { useState, useEffect } from 'react'
 import { toast }       from 'sonner'
 import { TenantDetailHeader, type TenantTabId } from '@/components/superadmin/tenants/TenantDetailHeader'
 import { TabInfoUmum }           from './TabInfoUmum'
@@ -49,6 +49,15 @@ function DialogLifecycle({
   const [step,           setStep]           = useState<1 | 2>(1)
   const [alasan,         setAlasan]         = useState('')
   const [konfirmasiNama, setKonfirmasiNama] = useState('')
+
+  // Reset state setiap kali dialog dibuka ulang (mode berubah dari null ke nilai tertentu)
+  useEffect(() => {
+    if (mode) {
+      setStep(1)
+      setAlasan('')
+      setKonfirmasiNama('')
+    }
+  }, [mode])
 
   if (!mode) return null
 
