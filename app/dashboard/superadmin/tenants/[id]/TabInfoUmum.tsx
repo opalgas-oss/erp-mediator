@@ -1,21 +1,16 @@
 'use client'
 
 // app/dashboard/superadmin/tenants/[id]/TabInfoUmum.tsx
-// Tab Info Umum — 5 cluster accordion + lifecycle visualization 6-state
-// Fix: G14 (TenantDetailHeader), G15 (tanggal bergabung + aktivitas),
-//      G16 (KBLI + tombol verifikasi), G17 (kecamatan + kode pos cascade),
-//      G18 (isi cluster D dikoreksi), G19 (cluster F baru),
-//      G20 (lifecycle visualization), G21 (edit per-cluster independent)
+// Tab Info Umum — 5 cluster accordion + lifecycle visualization 2-state (visual only)
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
 // Diupdate: Sesi #141 — M6 Fix Fase A
-// Diupdate: Sesi #301 — FIX B-06: tambah 'in_registration' ke LC_STATES
-//   (findIndex = -1 jika status in_registration → semua circle abu, tidak ada highlight)
-// Diupdate: Sesi #303 — FIX B-06: tambah tombol "Aktifkan tenant" untuk
-//   status pending dan in_registration (sebelumnya tidak ada tombol aktivasi)
+// Diupdate: Sesi #303 — UNIFIKASI STATUS: LifecycleViz murni visual 2-state (active / non_active)
+//   Semua tombol aksi lifecycle dipindah ke TenantDetailHeader.
+//   DialogAktivasi dihapus — tidak diperlukan lagi.
 
-import { useState }  from 'react'
-import { toast }     from 'sonner'
+import { useState } from 'react'
+import { toast }    from 'sonner'
 import type { Tenant, UpdateTenantInfoPayload } from '@/lib/types/tenant.types'
 
 interface Props { tenant: Tenant; onRefresh: () => void }
@@ -24,7 +19,7 @@ interface Props { tenant: Tenant; onRefresh: () => void }
 
 type ClusterId = 'A' | 'B' | 'C' | 'D' | 'F'
 
-// ─── Helper: format tanggal ────────────────────────────────────────────────────
+// ─── Helper: format tanggal ───────────────────────────────────────────────────
 
 function formatTglLengkap(isoStr: string | null | undefined): string {
   if (!isoStr) return '—'
@@ -33,24 +28,24 @@ function formatTglLengkap(isoStr: string | null | undefined): string {
 
 function formatTglWaktu(isoStr: string | null | undefined): string {
   if (!isoStr) return '—'
-  const d = new Date(isoStr)
-  const tgl  = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
-  const jam  = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  const d   = new Date(isoStr)
+  const tgl = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+  const jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
   return `${tgl}, ${jam} WIB`
 }
 
 // ─── Sub-komponen: Accordion Cluster ─────────────────────────────────────────
 
 interface AccordionProps {
-  id:          ClusterId
-  icon:        string
-  iconBg:      string
-  iconColor:   string
-  title:       string
-  defaultOpen?: boolean
+  id:             ClusterId
+  icon:           string
+  iconBg:         string
+  iconColor:      string
+  title:          string
+  defaultOpen?:   boolean
   editingCluster: ClusterId | null
-  onEdit:      (id: ClusterId) => void
-  children:    React.ReactNode
+  onEdit:         (id: ClusterId) => void
+  children:       React.ReactNode
 }
 
 function Accordion({ id, icon, iconBg, iconColor, title, defaultOpen, editingCluster, onEdit, children }: AccordionProps) {
@@ -59,13 +54,9 @@ function Accordion({ id, icon, iconBg, iconColor, title, defaultOpen, editingClu
 
   return (
     <div style={{ border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 12, overflow: 'hidden', marginBottom: 10 }}>
-      {/* Header */}
       <div
         onClick={() => setOpen(o => !o)}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 16px', cursor: 'pointer', background: '#fff', userSelect: 'none',
-        }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', cursor: 'pointer', background: '#fff', userSelect: 'none' }}
         onMouseEnter={e => (e.currentTarget.style.background = '#f9f9f8')}
         onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
       >
@@ -78,19 +69,13 @@ function Accordion({ id, icon, iconBg, iconColor, title, defaultOpen, editingClu
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }} onClick={e => e.stopPropagation()}>
           <button
             onClick={() => onEdit(id)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '4px 10px', fontSize: 12, borderRadius: 8, cursor: 'pointer',
-              border: '0.5px solid #85B7EB', color: '#185FA5', background: isEditing ? '#E6F1FB' : 'transparent',
-            }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12, borderRadius: 8, cursor: 'pointer', border: '0.5px solid #85B7EB', color: '#185FA5', background: isEditing ? '#E6F1FB' : 'transparent' }}
           >
             <i className="ti ti-edit" /> Edit
           </button>
-          <i className={`ti ti-chevron-down`} style={{ fontSize: 16, color: '#6b7280', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+          <i className="ti ti-chevron-down" style={{ fontSize: 16, color: '#6b7280', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
         </div>
       </div>
-
-      {/* Body */}
       {open && (
         <div style={{ padding: '0 16px 16px', background: '#fff' }}>
           {children}
@@ -100,18 +85,18 @@ function Accordion({ id, icon, iconBg, iconColor, title, defaultOpen, editingClu
   )
 }
 
-// ─── Sub-komponen: Field read-only ────────────────────────────────────────────
+// ─── Sub-komponen: Field helpers ──────────────────────────────────────────────
 
 function FRow({ children }: { children: React.ReactNode }) {
   return <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 20px', marginTop: 12 }}>{children}</div>
 }
 
 function FField({ label, value, fullWidth, readOnly, children }: {
-  label:     string
-  value?:    string | null
+  label:      string
+  value?:     string | null
   fullWidth?: boolean
-  readOnly?: boolean
-  children?: React.ReactNode
+  readOnly?:  boolean
+  children?:  React.ReactNode
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: fullWidth ? '1/-1' : undefined }}>
@@ -120,12 +105,7 @@ function FField({ label, value, fullWidth, readOnly, children }: {
         <input
           readOnly
           value={value ?? ''}
-          className="fv"
-          style={{
-            fontSize: 13, padding: '7px 10px', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8,
-            background: readOnly ? '#f9f9f8' : '#fff', color: readOnly ? '#6b7280' : '#1a1a1a',
-            width: '100%', fontFamily: 'inherit',
-          }}
+          style={{ fontSize: 13, padding: '7px 10px', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, background: readOnly ? '#f9f9f8' : '#fff', color: readOnly ? '#6b7280' : '#1a1a1a', width: '100%', fontFamily: 'inherit' }}
         />
       )}
     </div>
@@ -133,13 +113,13 @@ function FField({ label, value, fullWidth, readOnly, children }: {
 }
 
 function FInput({ label, value, onChange, fullWidth, placeholder, type, helpText }: {
-  label:      string
-  value:      string
-  onChange:   (v: string) => void
-  fullWidth?: boolean
+  label:        string
+  value:        string
+  onChange:     (v: string) => void
+  fullWidth?:   boolean
   placeholder?: string
-  type?:      string
-  helpText?:  string
+  type?:        string
+  helpText?:    string
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: fullWidth ? '1/-1' : undefined }}>
@@ -149,10 +129,7 @@ function FInput({ label, value, onChange, fullWidth, placeholder, type, helpText
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        style={{
-          fontSize: 13, padding: '7px 10px', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8,
-          background: '#fff', color: '#1a1a1a', width: '100%', fontFamily: 'inherit',
-        }}
+        style={{ fontSize: 13, padding: '7px 10px', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, background: '#fff', color: '#1a1a1a', width: '100%', fontFamily: 'inherit' }}
       />
       {helpText && <span style={{ fontSize: 11, color: '#9ca3af' }}>{helpText}</span>}
     </div>
@@ -160,10 +137,10 @@ function FInput({ label, value, onChange, fullWidth, placeholder, type, helpText
 }
 
 function FSelect({ label, value, onChange, options, fullWidth }: {
-  label:     string
-  value:     string
-  onChange:  (v: string) => void
-  options:   { val: string; label: string }[]
+  label:      string
+  value:      string
+  onChange:   (v: string) => void
+  options:    { val: string; label: string }[]
   fullWidth?: boolean
 }) {
   return (
@@ -172,10 +149,7 @@ function FSelect({ label, value, onChange, options, fullWidth }: {
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        style={{
-          fontSize: 13, padding: '7px 10px', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8,
-          background: '#fff', color: '#1a1a1a', width: '100%', fontFamily: 'inherit',
-        }}
+        style={{ fontSize: 13, padding: '7px 10px', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, background: '#fff', color: '#1a1a1a', width: '100%', fontFamily: 'inherit' }}
       >
         {options.map(o => <option key={o.val} value={o.val}>{o.label}</option>)}
       </select>
@@ -183,179 +157,63 @@ function FSelect({ label, value, onChange, options, fullWidth }: {
   )
 }
 
-// ─── Dialog Aktivasi Tenant ───────────────────────────────────────────────────
-// FIX S#303: Dialog konfirmasi untuk aktivasi pending/in_registration → active.
-// Menggunakan pola yang sama dengan dialog lifecycle lain (2-step confirmation).
+// ─── Lifecycle Visualization — MURNI VISUAL, tidak ada tombol aksi ────────────
+// S#303 UNIFIKASI: hanya 2 state — active dan non_active
+// Semua aksi lifecycle ada di TenantDetailHeader
 
-interface DialogAktivasiProps {
-  namaTenant: string
-  loading:    boolean
-  onConfirm:  (alasan: string) => void
-  onClose:    () => void
-}
+type TenantStatus = 'active' | 'non_active'
 
-function DialogAktivasi({ namaTenant, loading, onConfirm, onClose }: DialogAktivasiProps) {
-  const [alasan, setAlasan] = useState('')
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 50,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(0,0,0,0.35)',
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: 16, padding: 24, width: 440, maxWidth: '90vw',
-        border: '0.5px solid rgba(0,0,0,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-      }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: '#EAF3DE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <i className="ti ti-circle-check" style={{ fontSize: 18, color: '#3B6D11' }} />
-          </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 15 }}>Aktifkan Tenant</div>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>Ubah status menjadi Aktif</div>
-          </div>
-        </div>
-
-        {/* Info */}
-        <div style={{ background: '#EAF3DE', border: '0.5px solid #97C459', borderRadius: 10, padding: '10px 12px', fontSize: 13, color: '#3B6D11', marginBottom: 16 }}>
-          <strong>{namaTenant}</strong> akan diaktifkan. Tenant dan AdminTenant-nya dapat mulai menggunakan platform.
-        </div>
-
-        {/* Alasan (opsional) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
-          <label style={{ fontSize: 12, color: '#6b7280' }}>Catatan aktivasi (opsional)</label>
-          <textarea
-            value={alasan}
-            onChange={e => setAlasan(e.target.value)}
-            placeholder="Contoh: Dokumen lengkap, kontrak sudah ditandatangani"
-            style={{
-              fontSize: 13, padding: '8px 10px', border: '0.5px solid rgba(0,0,0,0.22)',
-              borderRadius: 8, resize: 'vertical', minHeight: 70, fontFamily: 'inherit',
-              color: '#1a1a1a',
-            }}
-          />
-        </div>
-
-        {/* Tombol */}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button
-            onClick={onClose}
-            disabled={loading}
-            style={{ padding: '7px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid rgba(0,0,0,0.22)', background: 'transparent', color: '#1a1a1a' }}
-          >
-            Batal
-          </button>
-          <button
-            onClick={() => onConfirm(alasan)}
-            disabled={loading}
-            style={{ padding: '7px 16px', borderRadius: 8, fontSize: 13, cursor: loading ? 'not-allowed' : 'pointer', border: '0.5px solid #97C459', background: '#EAF3DE', color: '#3B6D11', opacity: loading ? 0.7 : 1 }}
-          >
-            <i className="ti ti-circle-check" /> {loading ? 'Mengaktifkan...' : 'Aktifkan Tenant'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Lifecycle Visualization ──────────────────────────────────────────────────
-
-// FIX S#301 (B-06): Tambah 'in_registration' sebagai state pertama.
-// FIX S#303 (B-06): Tambah tombol "Aktifkan tenant" untuk status pending & in_registration.
-const LC_STATES = [
-  { key: 'in_registration', label: 'Dalam Registrasi', icon: 'ti-file-description' },
-  { key: 'pending',         label: 'Menunggu aktivasi', icon: 'ti-hourglass' },
-  { key: 'active',          label: 'Aktif',             icon: 'ti-circle-check' },
-  { key: 'suspended',       label: 'Dinonaktifkan',     icon: 'ti-player-pause' },
-  { key: 'expired',         label: 'Kedaluwarsa',       icon: 'ti-hourglass-empty' },
-  { key: 'terminated',      label: 'Diakhiri',          icon: 'ti-circle-x' },
-]
-
-type LCStatus = 'in_registration' | 'pending' | 'active' | 'suspended' | 'expired' | 'terminated'
-
-function LifecycleViz({ status, onAktifkan, onSuspend, onTerminate }: {
-  status:     LCStatus
-  onAktifkan: () => void
-  onSuspend:  () => void
-  onTerminate: () => void
-}) {
-  const currentIdx = LC_STATES.findIndex(s => s.key === status)
-
-  const getCircleStyle = (idx: number) => {
-    if (idx < currentIdx) return { background: '#EAF3DE', border: '0.5px solid #97C459', color: '#3B6D11' }
-    if (idx === currentIdx) return { background: '#185FA5', border: '0.5px solid #185FA5', color: '#fff' }
-    return { background: '#f9f9f8', border: '0.5px solid rgba(0,0,0,0.12)', color: '#9ca3af' }
-  }
-
-  const getLineStyle = (idx: number) => ({
-    flex: 1, height: 1, background: idx < currentIdx ? '#97C459' : 'rgba(0,0,0,0.12)',
-  })
+function LifecycleViz({ status }: { status: TenantStatus }) {
+  const isActive = status === 'active'
 
   return (
     <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 12, padding: 16, marginBottom: 10 }}>
-      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>Status lifecycle tenant</div>
+      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>Status tenant</div>
 
-      {/* 6-state visualization */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 14 }}>
-        {LC_STATES.map((state, idx) => (
-          <div key={state.key} style={{ display: 'contents' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, ...getCircleStyle(idx), position: 'relative', zIndex: 1 }}>
-                <i className={`ti ${state.icon}`} style={{ fontSize: 14 }} />
-              </div>
-              <div style={{
-                fontSize: 11, color: idx === currentIdx ? '#1a1a1a' : '#6b7280',
-                fontWeight: idx === currentIdx ? 500 : 400,
-                marginTop: 5, textAlign: 'center', maxWidth: 70, lineHeight: 1.3,
-              }}>
-                {state.label}
-              </div>
-            </div>
-            {idx < LC_STATES.length - 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', paddingTop: 14, flex: 0.5 }}>
-                <div style={getLineStyle(idx)} />
-              </div>
-            )}
+      {/* Visual 2-state */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+
+        {/* State: Aktif */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
+            background: isActive ? '#185FA5' : '#f9f9f8',
+            border: isActive ? '0.5px solid #185FA5' : '0.5px solid rgba(0,0,0,0.12)',
+            color: isActive ? '#fff' : '#9ca3af',
+          }}>
+            <i className="ti ti-circle-check" />
           </div>
-        ))}
+          <div style={{ fontSize: 12, fontWeight: isActive ? 600 : 400, color: isActive ? '#1a1a1a' : '#9ca3af', textAlign: 'center' }}>
+            Aktif
+          </div>
+        </div>
+
+        {/* Garis penghubung */}
+        <div style={{ flex: 1, height: 1, background: 'rgba(0,0,0,0.12)' }} />
+
+        {/* State: Tidak Aktif */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
+            background: !isActive ? '#185FA5' : '#f9f9f8',
+            border: !isActive ? '0.5px solid #185FA5' : '0.5px solid rgba(0,0,0,0.12)',
+            color: !isActive ? '#fff' : '#9ca3af',
+          }}>
+            <i className="ti ti-circle-x" />
+          </div>
+          <div style={{ fontSize: 12, fontWeight: !isActive ? 600 : 400, color: !isActive ? '#1a1a1a' : '#9ca3af', textAlign: 'center' }}>
+            Tidak Aktif
+          </div>
+        </div>
       </div>
 
-      {/* Tombol aksi */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {/* FIX S#303: Tombol aktivasi untuk pending dan in_registration */}
-        {(status === 'pending' || status === 'in_registration') && (
-          <button
-            onClick={onAktifkan}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid #97C459', color: '#3B6D11', background: '#EAF3DE' }}
-          >
-            <i className="ti ti-circle-check" /> Aktifkan tenant
-          </button>
-        )}
-        {status === 'active' && (
-          <button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid #EF9F27', color: '#854F0B', background: 'transparent' }}>
-            <i className="ti ti-player-pause" /> Nonaktifkan sementara
-          </button>
-        )}
-        {status === 'suspended' && (
-          <button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid #97C459', color: '#3B6D11', background: 'transparent' }}>
-            <i className="ti ti-refresh" /> Aktifkan kembali
-          </button>
-        )}
-        {status !== 'terminated' && (
-          <button onClick={onTerminate} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid #F09595', color: '#A32D2D', background: 'transparent' }}>
-            <i className="ti ti-circle-x" /> Akhiri tenant (permanen)
-          </button>
-        )}
-        <button style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid rgba(0,0,0,0.22)', color: '#1a1a1a', background: 'transparent' }}>
-          <i className="ti ti-history" /> Lihat riwayat perubahan status
-        </button>
-      </div>
-
-      {/* Note */}
-      <div style={{ background: '#f9f9f8', borderLeft: '3px solid rgba(0,0,0,0.22)', padding: '8px 12px', borderRadius: '0 8px 8px 0', fontSize: 12, color: '#6b7280', marginTop: 12 }}>
-        Setiap perubahan status membutuhkan konfirmasi 2 langkah: baca konsekuensi → ketik nama tenant untuk konfirmasi. Tenant yang diakhiri tidak bisa dipulihkan.
+      {/* Keterangan status aktual */}
+      <div style={{ marginTop: 12, background: isActive ? '#EAF3DE' : '#FCEBEB', border: `0.5px solid ${isActive ? '#97C459' : '#F09595'}`, borderRadius: 8, padding: '8px 12px', fontSize: 12, color: isActive ? '#3B6D11' : '#A32D2D' }}>
+        <i className={`ti ${isActive ? 'ti-circle-check' : 'ti-circle-x'}`} style={{ marginRight: 6 }} />
+        {isActive
+          ? 'Tenant aktif — AdminTenant dapat login dan operasi bisnis berjalan normal.'
+          : 'Tenant tidak aktif — AdminTenant tidak dapat login. Klik "Aktifkan Kembali" di header untuk mengaktifkan.'
+        }
       </div>
     </div>
   )
@@ -364,22 +222,13 @@ function LifecycleViz({ status, onAktifkan, onSuspend, onTerminate }: {
 // ─── Komponen utama ───────────────────────────────────────────────────────────
 
 export function TabInfoUmum({ tenant, onRefresh }: Props) {
-  const [editingCluster,   setEditingCluster]   = useState<ClusterId | null>(null)
-  const [saving,           setSaving]           = useState(false)
-  const [form,             setForm]             = useState<Partial<UpdateTenantInfoPayload>>({})
-  // FIX S#303: State dialog aktivasi
-  const [showDialogAktivasi, setShowDialogAktivasi] = useState(false)
-  const [loadingAktivasi,    setLoadingAktivasi]    = useState(false)
+  const [editingCluster, setEditingCluster] = useState<ClusterId | null>(null)
+  const [saving,         setSaving]         = useState(false)
+  const [form,           setForm]           = useState<Partial<UpdateTenantInfoPayload>>({})
 
-  const handleOpenEdit = (id: ClusterId) => {
-    setForm({})
-    setEditingCluster(id)
-  }
-
-  const handleCancel = () => { setEditingCluster(null); setForm({}) }
-
-  const set = (k: keyof UpdateTenantInfoPayload, v: string | boolean) =>
-    setForm(f => ({ ...f, [k]: v }))
+  const handleOpenEdit = (id: ClusterId) => { setForm({}); setEditingCluster(id) }
+  const handleCancel   = () => { setEditingCluster(null); setForm({}) }
+  const set = (k: keyof UpdateTenantInfoPayload, v: string | boolean) => setForm(f => ({ ...f, [k]: v }))
 
   const handleSave = async () => {
     setSaving(true)
@@ -402,29 +251,8 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
     }
   }
 
-  // FIX S#303: Handler aktivasi tenant pending/in_registration → active
-  const handleKonfirmasiAktivasi = async (alasan: string) => {
-    setLoadingAktivasi(true)
-    try {
-      const res  = await fetch(`/api/superadmin/tenants/${tenant.id}/status`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ status: 'active', alasan: alasan || 'Diaktifkan oleh SuperAdmin' }),
-      })
-      const json = await res.json()
-      if (!json.success) throw new Error(json.message)
-      toast.success(`Tenant ${tenant.nama_brand} berhasil diaktifkan`)
-      setShowDialogAktivasi(false)
-      onRefresh()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Gagal mengaktifkan tenant')
-    } finally {
-      setLoadingAktivasi(false)
-    }
-  }
-
-  const handleSuspend   = () => toast.info('Fitur nonaktifkan tenant: segera tersedia')
-  const handleTerminate = () => toast.info('Fitur akhiri tenant: segera tersedia')
+  // Normalkan status ke 2 nilai
+  const status: TenantStatus = tenant.lifecycle_status === 'active' ? 'active' : 'non_active'
 
   const isEditA = editingCluster === 'A'
   const isEditB = editingCluster === 'B'
@@ -434,30 +262,21 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
 
   return (
     <div>
-      {/* Dialog Aktivasi */}
-      {showDialogAktivasi && (
-        <DialogAktivasi
-          namaTenant={tenant.nama_brand}
-          loading={loadingAktivasi}
-          onConfirm={handleKonfirmasiAktivasi}
-          onClose={() => setShowDialogAktivasi(false)}
-        />
-      )}
 
-      {/* ── Cluster A: Identitas master ─────────────────────────────────────── */}
+      {/* ── Cluster A: Identitas master ──────────────────────────────────────── */}
       <Accordion id="A" icon="ti-id-badge" iconBg="#E6F1FB" iconColor="#185FA5"
         title="Cluster A — Identitas master" defaultOpen editingCluster={editingCluster} onEdit={handleOpenEdit}
       >
         <FRow>
           {isEditA ? (
             <>
-              <FInput label="Nama brand *"               value={form.nama_brand      ?? tenant.nama_brand}      onChange={v => set('nama_brand', v)} />
-              <FInput label="Nama legal perusahaan *"    value={form.nama_legal      ?? tenant.nama_legal ?? ''} onChange={v => set('nama_legal', v)} />
+              <FInput label="Nama brand *"            value={form.nama_brand ?? tenant.nama_brand}      onChange={v => set('nama_brand', v)} />
+              <FInput label="Nama legal perusahaan *" value={form.nama_legal ?? tenant.nama_legal ?? ''} onChange={v => set('nama_legal', v)} />
             </>
           ) : (
             <>
-              <FField label="Nama brand"              value={tenant.nama_brand} />
-              <FField label="Nama legal perusahaan"   value={tenant.nama_legal} />
+              <FField label="Nama brand"            value={tenant.nama_brand} />
+              <FField label="Nama legal perusahaan" value={tenant.nama_legal} />
             </>
           )}
           <FField label="Kode tenant" value={tenant.slug ?? ''} readOnly>
@@ -466,13 +285,13 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
               <i className="ti ti-lock" /> Tidak bisa diubah setelah aktif
             </span>
           </FField>
-          <FField label="ID sistem" value={tenant.tenant_display_id} readOnly />
-          <FField label="Tanggal bergabung" value={formatTglLengkap(tenant.created_at)} readOnly />
+          <FField label="ID sistem"          value={tenant.tenant_display_id} readOnly />
+          <FField label="Tanggal bergabung"  value={formatTglLengkap(tenant.created_at)} readOnly />
           <FField label="Aktivitas terakhir" value={formatTglWaktu(tenant.updated_at)} readOnly />
         </FRow>
       </Accordion>
 
-      {/* ── Cluster B: Legalitas Indonesia ──────────────────────────────────── */}
+      {/* ── Cluster B: Legalitas Indonesia ───────────────────────────────────── */}
       <Accordion id="B" icon="ti-file-certificate" iconBg="#EAF3DE" iconColor="#3B6D11"
         title="Cluster B — Legalitas Indonesia" defaultOpen editingCluster={editingCluster} onEdit={handleOpenEdit}
       >
@@ -545,7 +364,7 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
         </FRow>
       </Accordion>
 
-      {/* ── Cluster C: Kontak & Domisili ─────────────────────────────────────── */}
+      {/* ── Cluster C: Kontak & Domisili ──────────────────────────────────────── */}
       <Accordion id="C" icon="ti-map-pin" iconBg="#EEEDFE" iconColor="#534AB7"
         title="Cluster C — Kontak & domisili" editingCluster={editingCluster} onEdit={handleOpenEdit}
       >
@@ -558,7 +377,7 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
 
           {isEditC ? (
             <FSelect label="Provinsi" value={form.provinsi ?? tenant.provinsi ?? ''} onChange={v => set('provinsi', v)} options={[
-              { val: '', label: '— Pilih provinsi —' },
+              { val: '',             label: '— Pilih provinsi —' },
               { val: 'DKI Jakarta',  label: 'DKI Jakarta' },
               { val: 'Jawa Barat',   label: 'Jawa Barat' },
               { val: 'Jawa Tengah',  label: 'Jawa Tengah' },
@@ -602,7 +421,7 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
         </FRow>
       </Accordion>
 
-      {/* ── Cluster D: Klasifikasi internal ─────────────────────────────────── */}
+      {/* ── Cluster D: Klasifikasi internal ───────────────────────────────────── */}
       <Accordion id="D" icon="ti-adjustments" iconBg="#FAEEDA" iconColor="#854F0B"
         title="Cluster D — Klasifikasi internal platform" editingCluster={editingCluster} onEdit={handleOpenEdit}
       >
@@ -651,15 +470,10 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
         </FRow>
       </Accordion>
 
-      {/* ── Status Lifecycle Visualization (G20) ────────────────────────────── */}
-      <LifecycleViz
-        status={tenant.lifecycle_status as LCStatus}
-        onAktifkan={() => setShowDialogAktivasi(true)}
-        onSuspend={handleSuspend}
-        onTerminate={handleTerminate}
-      />
+      {/* ── Status Lifecycle — MURNI VISUAL ───────────────────────────────────── */}
+      <LifecycleViz status={status} />
 
-      {/* ── Cluster F: Pengaturan tambahan & catatan internal (G19) ─────────── */}
+      {/* ── Cluster F: Pengaturan tambahan & catatan internal ─────────────────── */}
       <Accordion id="F" icon="ti-settings-2" iconBg="#F1EFE8" iconColor="#5F5E5A"
         title="Pengaturan tambahan & catatan internal" editingCluster={editingCluster} onEdit={handleOpenEdit}
       >
@@ -708,36 +522,30 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
 
         <div style={{ fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 10 }}>Branding whitelabel (opsional)</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px 16px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 12, color: '#6b7280' }}>Warna utama</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, border: '0.5px solid rgba(0,0,0,0.12)', background: form.warna_utama ?? tenant.warna_utama ?? '#185FA5', flexShrink: 0 }} />
-              <input value={form.warna_utama ?? tenant.warna_utama ?? '#185FA5'} onChange={e => set('warna_utama', e.target.value)} readOnly={!isEditF} style={{ flex: 1, fontSize: 13, padding: '7px 10px', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, background: isEditF ? '#fff' : '#f9f9f8', fontFamily: 'inherit' }} />
+          {[
+            { label: 'Warna utama',  key: 'warna_utama'  as const, default: '#185FA5' },
+            { label: 'Warna aksen',  key: 'warna_aksen'  as const, default: '#EF9F27' },
+          ].map(({ label, key, default: def }) => (
+            <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 12, color: '#6b7280' }}>{label}</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, border: '0.5px solid rgba(0,0,0,0.12)', background: (form[key] ?? tenant[key] ?? def) as string, flexShrink: 0 }} />
+                <input value={(form[key] ?? tenant[key] ?? def) as string} onChange={e => set(key, e.target.value)} readOnly={!isEditF} style={{ flex: 1, fontSize: 13, padding: '7px 10px', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, background: isEditF ? '#fff' : '#f9f9f8', fontFamily: 'inherit' }} />
+              </div>
             </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 12, color: '#6b7280' }}>Warna aksen</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, border: '0.5px solid rgba(0,0,0,0.12)', background: form.warna_aksen ?? tenant.warna_aksen ?? '#EF9F27', flexShrink: 0 }} />
-              <input value={form.warna_aksen ?? tenant.warna_aksen ?? '#EF9F27'} onChange={e => set('warna_aksen', e.target.value)} readOnly={!isEditF} style={{ flex: 1, fontSize: 13, padding: '7px 10px', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, background: isEditF ? '#fff' : '#f9f9f8', fontFamily: 'inherit' }} />
+          ))}
+          {['Logo (light bg)', 'Logo (dark bg)'].map(label => (
+            <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 12, color: '#6b7280' }}>{label}</label>
+              <button style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '5px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid rgba(0,0,0,0.22)', background: 'transparent', cursor: isEditF ? 'pointer' : 'default' }}>
+                <i className="ti ti-upload" /> Upload PNG
+              </button>
             </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 12, color: '#6b7280' }}>Logo (light bg)</label>
-            <button style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '5px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid rgba(0,0,0,0.22)', background: 'transparent', cursor: isEditF ? 'pointer' : 'default' }}>
-              <i className="ti ti-upload" /> Upload PNG
-            </button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 12, color: '#6b7280' }}>Logo (dark bg)</label>
-            <button style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '5px 10px', fontSize: 12, borderRadius: 8, border: '0.5px solid rgba(0,0,0,0.22)', background: 'transparent', cursor: isEditF ? 'pointer' : 'default' }}>
-              <i className="ti ti-upload" /> Upload PNG
-            </button>
-          </div>
+          ))}
         </div>
       </Accordion>
 
-      {/* ── Footer: tombol simpan per-cluster (G21) ──────────────────────────── */}
+      {/* ── Footer: tombol simpan per-cluster ─────────────────────────────────── */}
       {editingCluster !== null && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: '1rem', paddingTop: '1rem', borderTop: '0.5px solid rgba(0,0,0,0.12)' }}>
           <button onClick={handleCancel} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '0.5px solid rgba(0,0,0,0.22)', color: '#1a1a1a', background: 'transparent' }}>

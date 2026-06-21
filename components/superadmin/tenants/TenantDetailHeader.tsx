@@ -2,21 +2,23 @@
 
 // components/superadmin/tenants/TenantDetailHeader.tsx
 // Header persisten Detail Tenant — avatar, badge, quick stats, tab nav
-// Dipasang di semua 6 tab halaman detail tenant.
+// Dipasang di semua tab halaman detail tenant.
+//
 // Dibuat: Sesi #141 — M6 Fix Fase A (G14)
-// Diupdate: Sesi #303 — label tombol: 'Non Active' (active) + 'Re Active' (suspended)
+// Diupdate: Sesi #303 — UNIFIKASI STATUS: hanya active / non_active
+//   Label tombol: "Nonaktifkan Tenant" (saat active) + "Aktifkan Kembali" (saat non_active)
 
-import type { Tenant, TenantLifecycleStatus, TenantTipe, TenantTier, TenantStatusPKP } from '@/lib/types/tenant.types'
+import type { Tenant, TenantTipe, TenantTier, TenantStatusPKP } from '@/lib/types/tenant.types'
 
-// ─── Konstanta badge ──────────────────────────────────────────────────────────
+// ─── Tipe status yang berlaku ─────────────────────────────────────────────────
 
-const STATUS_STYLE: Record<TenantLifecycleStatus, { bg: string; text: string; border: string; icon: string; label: string }> = {
-  in_registration: { bg: '#EEF2FF', text: '#3730A3', border: '#A5B4FC', icon: 'ti-file-description', label: 'Dalam Registrasi' }, // TAMBAH S#219 FIX BUG-026
-  pending:    { bg: '#FAEEDA', text: '#854F0B', border: '#EF9F27', icon: 'ti-hourglass',       label: 'Menunggu' },
-  active:     { bg: '#EAF3DE', text: '#3B6D11', border: '#97C459', icon: 'ti-circle-check',    label: 'Aktif' },
-  suspended:  { bg: '#FAEEDA', text: '#854F0B', border: '#EF9F27', icon: 'ti-player-pause',    label: 'Dinonaktifkan' },
-  expired:    { bg: '#F1EFE8', text: '#5F5E5A', border: '#B4B2A9', icon: 'ti-hourglass-empty', label: 'Kedaluwarsa' },
-  terminated: { bg: '#FCEBEB', text: '#A32D2D', border: '#F09595', icon: 'ti-circle-x',        label: 'Diakhiri' },
+type TenantStatus = 'active' | 'non_active'
+
+// ─── Konstanta badge status ───────────────────────────────────────────────────
+
+const STATUS_STYLE: Record<TenantStatus, { bg: string; text: string; border: string; icon: string; label: string }> = {
+  active:     { bg: '#EAF3DE', text: '#3B6D11', border: '#97C459', icon: 'ti-circle-check', label: 'Aktif' },
+  non_active: { bg: '#FCEBEB', text: '#A32D2D', border: '#F09595', icon: 'ti-circle-x',     label: 'Tidak Aktif' },
 }
 
 const PKP_STYLE: Record<NonNullable<TenantStatusPKP>, { bg: string; text: string; border: string; label: string }> = {
@@ -40,13 +42,13 @@ const TIER_STYLE: Record<TenantTier, { bg: string; text: string; border: string;
 export type TenantTabId = 'info' | 'kontrak' | 'kategori' | 'admintenant' | 'user' | 'config' | 'aksesmenu'
 
 const TABS: { id: TenantTabId; label: string }[] = [
-  { id: 'info',       label: 'Info Umum' },
-  { id: 'kontrak',    label: 'Kontrak Sewa' },
-  { id: 'kategori',   label: 'Kategori' },
-  { id: 'admintenant',label: 'AdminTenant' },
-  { id: 'user',       label: 'User Tenant' },
-  { id: 'config',     label: 'Override Config' },
-  { id: 'aksesmenu',  label: 'Akses Menu AT' },
+  { id: 'info',        label: 'Info Umum' },
+  { id: 'kontrak',     label: 'Kontrak Sewa' },
+  { id: 'kategori',    label: 'Kategori' },
+  { id: 'admintenant', label: 'AdminTenant' },
+  { id: 'user',        label: 'User Tenant' },
+  { id: 'config',      label: 'Override Config' },
+  { id: 'aksesmenu',   label: 'Akses Menu AT' },
 ]
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -60,13 +62,12 @@ interface QuickStats {
 }
 
 interface Props {
-  tenant:        Tenant
-  activeTab:     TenantTabId
-  onTabChange:   (tab: TenantTabId) => void
-  onSuspend:     () => void
-  onTerminate:   () => void
-  onReactivate:  () => void   // S#302: re-aktivasi dari terminated
-  quickStats:    QuickStats
+  tenant:             Tenant
+  activeTab:          TenantTabId
+  onTabChange:        (tab: TenantTabId) => void
+  onNonaktifkan:      () => void   // active → non_active
+  onAktifkanKembali:  () => void   // non_active → dialog pilihan
+  quickStats:         QuickStats
 }
 
 // ─── Helper: format tanggal Indonesia ────────────────────────────────────────
@@ -97,8 +98,10 @@ function Bdg({ bg, text, border, icon, label }: { bg: string; text: string; bord
 
 // ─── Komponen utama ───────────────────────────────────────────────────────────
 
-export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, onTerminate, onReactivate, quickStats }: Props) {
-  const statusStyle = STATUS_STYLE[tenant.lifecycle_status]   // STATUS-REDESIGN S#212 (was: tenant.status)
+export function TenantDetailHeader({ tenant, activeTab, onTabChange, onNonaktifkan, onAktifkanKembali, quickStats }: Props) {
+  // Normalkan status ke 2 nilai: active atau non_active
+  const status: TenantStatus = tenant.lifecycle_status === 'active' ? 'active' : 'non_active'
+  const statusStyle = STATUS_STYLE[status]
   const initials    = (tenant.nama_brand ?? 'T').substring(0, 2).toUpperCase()
 
   const userDisplay = tenant.tier === 'enterprise'
@@ -118,15 +121,11 @@ export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, 
         {tenant.nama_brand}
       </div>
 
-      {/* ── Satu card container: info + quick stats + tab nav ──────────────── */}
+      {/* ── Card container ─────────────────────────────────────────────────── */}
       <div style={{
         background: '#fff',
-        borderWidth: '0.5px',
-        borderStyle: 'solid',
-        borderColor: 'rgba(0,0,0,0.12)',
-        borderRadius: 12,
-        overflow: 'hidden',
-        marginBottom: '1.25rem',
+        borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)',
+        borderRadius: 12, overflow: 'hidden', marginBottom: '1.25rem',
       }}>
 
         {/* Info & tombol aksi */}
@@ -163,26 +162,22 @@ export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, 
               </div>
             </div>
 
-            {/* Kanan: tombol aksi */}
-            <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
-              {tenant.lifecycle_status === 'active' && (
-                <button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#EF9F27', color: '#854F0B', background: 'transparent' }}>
-                  <i className="ti ti-player-pause" /> Non Active
+            {/* Kanan: tombol aksi — 1 tombol sesuai status */}
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+              {status === 'active' && (
+                <button
+                  onClick={onNonaktifkan}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#F09595', color: '#A32D2D', background: 'transparent' }}
+                >
+                  <i className="ti ti-circle-x" /> Nonaktifkan Tenant
                 </button>
               )}
-              {tenant.lifecycle_status === 'suspended' && (
-                <button onClick={onSuspend} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#97C459', color: '#3B6D11', background: 'transparent' }}>
-                  <i className="ti ti-refresh" /> Re Active
-                </button>
-              )}
-              {tenant.lifecycle_status === 'terminated' && (   // S#302: tombol re-aktivasi
-                <button onClick={onReactivate} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#97C459', color: '#3B6D11', background: 'transparent' }}>
-                  <i className="ti ti-rotate-clockwise" /> Aktifkan Kembali
-                </button>
-              )}
-              {tenant.lifecycle_status !== 'terminated' && (   // STATUS-REDESIGN S#212
-                <button onClick={onTerminate} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#F09595', color: '#A32D2D', background: 'transparent' }}>
-                  <i className="ti ti-circle-x" /> Akhiri tenant
+              {status === 'non_active' && (
+                <button
+                  onClick={onAktifkanKembali}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#97C459', color: '#3B6D11', background: 'transparent' }}
+                >
+                  <i className="ti ti-circle-check" /> Aktifkan Kembali
                 </button>
               )}
             </div>
@@ -190,10 +185,7 @@ export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, 
         </div>
 
         {/* Quick stats */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8,
-          padding: '0 1.25rem 1rem',
-        }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, padding: '0 1.25rem 1rem' }}>
           {[
             { label: 'Kategori dipegang', value: String(quickStats.kategori_aktif) },
             { label: 'User aktif',        value: userDisplay },
@@ -207,15 +199,12 @@ export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, 
           ))}
         </div>
 
-        {/* Tab navigation — bagian dari card, borderTop sebagai pemisah */}
+        {/* Tab navigation */}
         <div
           className="hide-scrollbar"
           style={{
-            display: 'flex',
-            overflowX: 'auto',
-            borderTopWidth: '0.5px',
-            borderTopStyle: 'solid',
-            borderTopColor: 'rgba(0,0,0,0.12)',
+            display: 'flex', overflowX: 'auto',
+            borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)',
             padding: '0 1.25rem',
           }}>
           {TABS.map(tab => {
@@ -225,27 +214,16 @@ export function TenantDetailHeader({ tenant, activeTab, onTabChange, onSuspend, 
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
                 style={{
-                  padding: '10px 16px',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
+                  padding: '10px 16px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
                   color: isActive ? '#1a1a1a' : '#6b7280',
                   fontWeight: isActive ? 500 : 400,
                   background: 'transparent',
-                  // ← gunakan HANYA non-shorthand, tidak campur dengan borderBottom shorthand
-                  borderTopWidth: 0,
-                  borderTopStyle: 'solid',
-                  borderTopColor: 'transparent',
-                  borderLeftWidth: 0,
-                  borderLeftStyle: 'solid',
-                  borderLeftColor: 'transparent',
-                  borderRightWidth: 0,
-                  borderRightStyle: 'solid',
-                  borderRightColor: 'transparent',
-                  borderBottomWidth: 2,
-                  borderBottomStyle: 'solid',
+                  borderTopWidth: 0, borderTopStyle: 'solid', borderTopColor: 'transparent',
+                  borderLeftWidth: 0, borderLeftStyle: 'solid', borderLeftColor: 'transparent',
+                  borderRightWidth: 0, borderRightStyle: 'solid', borderRightColor: 'transparent',
+                  borderBottomWidth: 2, borderBottomStyle: 'solid',
                   borderBottomColor: isActive ? '#1a1a1a' : 'transparent',
-                  marginBottom: -0.5,   // overlap border card
+                  marginBottom: -0.5,
                 }}
               >
                 {tab.label}

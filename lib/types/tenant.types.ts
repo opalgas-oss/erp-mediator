@@ -6,13 +6,8 @@
 
 // ─── Literal Types ────────────────────────────────────────────────────────────
 
-export type TenantLifecycleStatus =
-  | 'in_registration' // TAMBAH S#219 FIX BUG-026 — nilai awal saat tenant baru daftar (sesuai keputusan S#214)
-  | 'pending'
-  | 'active'
-  | 'suspended'
-  | 'expired'
-  | 'terminated'
+// S#303 UNIFIKASI STATUS: hanya 2 nilai — active dan non_active
+export type TenantLifecycleStatus = 'active' | 'non_active'
 
 // STATUS-REDESIGN S#212 — status registrasi/onboarding tenant
 export type TenantRegisterStatus =
