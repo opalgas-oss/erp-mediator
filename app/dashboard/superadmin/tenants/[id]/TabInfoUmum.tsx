@@ -6,13 +6,14 @@
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
 // Diupdate: Sesi #141 — M6 Fix Fase A
 // Diupdate: Sesi #303 — UNIFIKASI STATUS (2-state, visual only) — DIBATALKAN
-// Diupdate: Sesi #305 — RESTORE: kembalikan LifecycleViz ke diagram alur 3-state
-//   (active / non_active / pending) + tombol "Aktifkan Tenant" saat status pending.
+// Diupdate: Sesi #305 — RESTORE: kembalikan LifecycleViz ke diagram alur 6 tahap
+//   Visual bisnis lifecycle (in_registration/pending/active/suspended/expired/terminated)
+//   DB constraint (active|non_active|pending) = operasi tombol header, BUKAN acuan diagram.
 //   S#303 mengubah ini tanpa perintah — pelanggaran LL#9 + ATURAN 7.
 
 import { useState } from 'react'
 import { toast }    from 'sonner'
-import type { Tenant, UpdateTenantInfoPayload, TenantLifecycleStatus } from '@/lib/types/tenant.types'
+import type { Tenant, UpdateTenantInfoPayload } from '@/lib/types/tenant.types'
 
 interface Props { tenant: Tenant; onRefresh: () => void }
 
@@ -158,15 +159,20 @@ function FSelect({ label, value, onChange, options, fullWidth }: {
   )
 }
 
-// ─── Lifecycle Visualization — diagram alur 3-state ──────────────────────────
-// S#305 RESTORE: kembalikan ke diagram alur (was: 2 lingkaran di S#303)
-// 3 state aktual: non_active → pending → active
-// Tombol "Aktifkan Tenant" muncul hanya saat status = pending
+// ─── Lifecycle Visualization — diagram alur 6 tahap (bisnis lifecycle) ─────────
+// S#305 FIX: 6 tahap visual bisnis — BUKAN driven by DB constraint
+// DB constraint (active|non_active|pending) = untuk operasi tombol header saja
+// Diagram ini murni visual representasi lifecycle bisnis lengkap
 
-const LC_STATES: { key: TenantLifecycleStatus; label: string; icon: string }[] = [
-  { key: 'non_active', label: 'Tidak Aktif',      icon: 'ti-circle-x'    },
-  { key: 'pending',    label: 'Menunggu Aktivasi', icon: 'ti-hourglass'   },
-  { key: 'active',     label: 'Aktif',             icon: 'ti-circle-check'},
+type LCStatus = 'in_registration' | 'pending' | 'active' | 'suspended' | 'expired' | 'terminated'
+
+const LC_STATES: { key: LCStatus; label: string; icon: string }[] = [
+  { key: 'in_registration', label: 'Dalam Registrasi',  icon: 'ti-file-description' },
+  { key: 'pending',         label: 'Menunggu aktivasi', icon: 'ti-hourglass'        },
+  { key: 'active',          label: 'Aktif',             icon: 'ti-circle-check'     },
+  { key: 'suspended',       label: 'Dinonaktifkan',     icon: 'ti-player-pause'     },
+  { key: 'expired',         label: 'Kedaluwarsa',       icon: 'ti-hourglass-empty'  },
+  { key: 'terminated',      label: 'Diakhiri',          icon: 'ti-circle-x'         },
 ]
 
 function LifecycleViz({
@@ -174,11 +180,20 @@ function LifecycleViz({
   onAktifkan,
   saving,
 }: {
-  status:     TenantLifecycleStatus
+  status:     string
   onAktifkan: () => void
   saving:     boolean
 }) {
-  const currentIdx = LC_STATES.findIndex(s => s.key === status)
+  // Map dari DB status ke posisi visual 6-tahap
+  const statusToLCKey = (s: string): LCStatus => {
+    if (s === 'non_active') return 'suspended'
+    if (s === 'active')     return 'active'
+    if (s === 'pending')    return 'pending'
+    return 'in_registration'
+  }
+
+  const currentKey = statusToLCKey(status)
+  const currentIdx = LC_STATES.findIndex(s => s.key === currentKey)
 
   const getCircleStyle = (idx: number) => {
     if (idx < currentIdx) return { background: '#EAF3DE', border: '0.5px solid #97C459', color: '#3B6D11' }
@@ -195,7 +210,7 @@ function LifecycleViz({
     <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 12, padding: 16, marginBottom: 10 }}>
       <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>Status lifecycle tenant</div>
 
-      {/* Diagram alur 3-state */}
+      {/* Diagram alur 6 tahap — visual bisnis lifecycle */}
       <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 14 }}>
         {LC_STATES.map((state, idx) => (
           <div key={state.key} style={{ display: 'contents' }}>
@@ -212,7 +227,7 @@ function LifecycleViz({
                 fontSize: 11,
                 color: idx === currentIdx ? '#1a1a1a' : '#6b7280',
                 fontWeight: idx === currentIdx ? 500 : 400,
-                marginTop: 5, textAlign: 'center', maxWidth: 80, lineHeight: 1.3,
+                marginTop: 5, textAlign: 'center', maxWidth: 70, lineHeight: 1.3,
               }}>
                 {state.label}
               </div>
