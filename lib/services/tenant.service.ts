@@ -135,7 +135,8 @@ export async function TenantService_updateLifecycleStatus(
 
   const validTransitions: Record<TenantLifecycleStatus, TenantLifecycleStatus[]> = {
     active:     ['non_active'],
-    non_active: ['active', 'non_active'],  // non_active → active (langsung) atau tetap non_active (via pending UI)
+    non_active: ['active', 'pending'],   // aktifkan langsung atau pending review dulu
+    pending:    ['active'],              // setelah SA review, aktifkan
   }
 
   if (!validTransitions[tenant.lifecycle_status]?.includes(newStatus)) {

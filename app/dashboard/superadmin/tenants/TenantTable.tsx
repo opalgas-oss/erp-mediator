@@ -17,6 +17,7 @@ import { TENANT_LIFECYCLE_LABEL } from '@/lib/constants/tenant.constant'
 const STATUS_STYLE: Record<TenantLifecycleStatus, { bg: string; text: string; border: string; icon: string }> = {
   active:     { bg: '#EAF3DE', text: '#3B6D11', border: '#97C459', icon: 'ti-circle-check' },
   non_active: { bg: '#FCEBEB', text: '#A32D2D', border: '#F09595', icon: 'ti-circle-x' },
+  pending:    { bg: '#FAEEDA', text: '#854F0B', border: '#EF9F27', icon: 'ti-hourglass' },   // S#304 — menunggu review SA
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────

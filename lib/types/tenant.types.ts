@@ -6,8 +6,9 @@
 
 // ─── Literal Types ────────────────────────────────────────────────────────────
 
-// S#303 UNIFIKASI STATUS: hanya 2 nilai — active dan non_active
-export type TenantLifecycleStatus = 'active' | 'non_active'
+// S#303 UNIFIKASI STATUS: active dan non_active
+// S#304 FIX BUG-B06-PENDING: tambah 'pending' — SA review dulu sebelum aktifkan kembali
+export type TenantLifecycleStatus = 'active' | 'non_active' | 'pending'
 
 // STATUS-REDESIGN S#212 — status registrasi/onboarding tenant
 export type TenantRegisterStatus =

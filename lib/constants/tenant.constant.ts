@@ -9,6 +9,7 @@
 export const TENANT_STATUS = {
   ACTIVE:     'active',
   NON_ACTIVE: 'non_active',
+  PENDING:    'pending',   // S#304 — menunggu review SA sebelum aktif
 } as const
 
 export type TenantStatusValue = typeof TENANT_STATUS[keyof typeof TENANT_STATUS]
@@ -17,6 +18,7 @@ export type TenantStatusValue = typeof TENANT_STATUS[keyof typeof TENANT_STATUS]
 export const TENANT_STATUS_LABELS: Record<TenantStatusValue, string> = {
   active:     'Aktif',
   non_active: 'Tidak Aktif',
+  pending:    'Menunggu Review',
 }
 
 /** Warna badge per status (sesuai DESIGN_TOKEN_M6) */
@@ -25,6 +27,7 @@ export const TENANT_STATUS_COLORS: Record<TenantStatusValue, {
 }> = {
   active:     { bg: '#EAF3DE', text: '#3B6D11', border: '#97C459' },
   non_active: { bg: '#FCEBEB', text: '#A32D2D', border: '#F09595' },
+  pending:    { bg: '#FAEEDA', text: '#854F0B', border: '#EF9F27' },   // S#304
 }
 
 // Tipe Tenant
