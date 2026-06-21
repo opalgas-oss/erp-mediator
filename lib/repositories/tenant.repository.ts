@@ -208,7 +208,7 @@ export async function tenantRepo_create(
       tipe:        payload.tipe,
       npwp:        payload.npwp,
       // admintenant_* fields tidak diset di sini — diupdate oleh sp_tambah_admintenant via p_update_kontak=TRUE
-      lifecycle_status: 'in_registration',   // FIX TEN-1 (CASE SESI-11): nilai awal saat tenant submit register
+      lifecycle_status: 'non_active',   // S#303: status awal tenant baru = non_active (belum diaktifkan SA)
       register_status: 'pending',             // nilai awal saat submit — belum di-review SA
       tier:        payload.tier ?? 'starter',
       created_by:  createdBy,

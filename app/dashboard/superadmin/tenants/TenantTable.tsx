@@ -15,12 +15,8 @@ import { TENANT_LIFECYCLE_LABEL } from '@/lib/constants/tenant.constant'
 // ─── Status style (DESIGN_TOKEN_M6) ───────────────────────────────────────────
 
 const STATUS_STYLE: Record<TenantLifecycleStatus, { bg: string; text: string; border: string; icon: string }> = {
-  in_registration: { bg: '#EEF2FF', text: '#3730A3', border: '#A5B4FC', icon: 'ti-file-description' }, // TAMBAH S#219 FIX BUG-026
   active:     { bg: '#EAF3DE', text: '#3B6D11', border: '#97C459', icon: 'ti-circle-check' },
-  pending:    { bg: '#FAEEDA', text: '#854F0B', border: '#EF9F27', icon: 'ti-hourglass' },
-  suspended:  { bg: '#FAEEDA', text: '#854F0B', border: '#EF9F27', icon: 'ti-player-pause' },
-  expired:    { bg: '#F1EFE8', text: '#5F5E5A', border: '#B4B2A9', icon: 'ti-hourglass-empty' },
-  terminated: { bg: '#FCEBEB', text: '#A32D2D', border: '#F09595', icon: 'ti-circle-x' },
+  non_active: { bg: '#FCEBEB', text: '#A32D2D', border: '#F09595', icon: 'ti-circle-x' },
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -76,7 +72,7 @@ export function TenantTable({ data, loading, onRowClick }: Props) {
         </thead>
         <tbody>
           {data.map(tenant => {
-            const status = STATUS_STYLE[tenant.lifecycle_status] ?? STATUS_STYLE.pending   // STATUS-REDESIGN S#212
+            const status = STATUS_STYLE[tenant.lifecycle_status] ?? STATUS_STYLE['non_active']
             const isInternal = tenant.tipe === 'internal'
 
             return (
@@ -171,8 +167,7 @@ export function TenantTable({ data, loading, onRowClick }: Props) {
                       {[
                         { icon: 'ti-external-link', label: 'Lihat Detail',           color: '#1a1a1a', disabled: false, action: () => onRowClick(tenant.id) },
                         null,
-                        { icon: 'ti-player-pause',  label: 'Nonaktifkan Sementara', color: '#854F0B', disabled: tenant.lifecycle_status !== 'active', action: () => {} },   // STATUS-REDESIGN S#212
-                        { icon: 'ti-circle-x',      label: 'Akhiri Tenant',          color: '#A32D2D', disabled: tenant.lifecycle_status === 'terminated', action: () => {} },   // STATUS-REDESIGN S#212
+                        { icon: 'ti-circle-x', label: 'Nonaktifkan Tenant', color: '#A32D2D', disabled: tenant.lifecycle_status !== 'active', action: () => {} },
                       ].map((item, idx) =>
                         item === null ? (
                           <div key={idx} style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '2px 0' }} />

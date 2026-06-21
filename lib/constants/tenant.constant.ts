@@ -2,41 +2,29 @@
 // Konstanta untuk M6 Tenant Management - status, tipe, tier, kontrak
 // Dipakai oleh: tenant.service.ts, API routes, UI komponen
 // Dibuat: Sesi #132 - M6 FASE 3 Step 3.5
-// Update: Sesi #219 - FIX BUG-026: tambah 'in_registration' ke semua status map
+// Update: Sesi #303 - UNIFIKASI STATUS: hanya active / non_active
 
 // Status Lifecycle Tenant
 
 export const TENANT_STATUS = {
-  IN_REGISTRATION: 'in_registration', // TAMBAH S#219 FIX BUG-026 - nilai awal (keputusan S#214)
-  PENDING:    'pending',
   ACTIVE:     'active',
-  SUSPENDED:  'suspended',
-  EXPIRED:    'expired',
-  TERMINATED: 'terminated',
+  NON_ACTIVE: 'non_active',
 } as const
 
 export type TenantStatusValue = typeof TENANT_STATUS[keyof typeof TENANT_STATUS]
 
 /** Label UI Bahasa Indonesia per status */
 export const TENANT_STATUS_LABELS: Record<TenantStatusValue, string> = {
-  in_registration: 'Dalam Registrasi', // TAMBAH S#219 FIX BUG-026
-  pending:    'Menunggu aktivasi',
   active:     'Aktif',
-  suspended:  'Dinonaktifkan sementara',
-  expired:    'Kedaluwarsa',
-  terminated: 'Diakhiri',
+  non_active: 'Tidak Aktif',
 }
 
 /** Warna badge per status (sesuai DESIGN_TOKEN_M6) */
 export const TENANT_STATUS_COLORS: Record<TenantStatusValue, {
   bg: string; text: string; border: string
 }> = {
-  in_registration: { bg: '#EEF2FF', text: '#3730A3', border: '#A5B4FC' }, // TAMBAH S#219 FIX BUG-026
-  pending:    { bg: '#FAEEDA', text: '#854F0B', border: '#EF9F27' },
   active:     { bg: '#EAF3DE', text: '#3B6D11', border: '#97C459' },
-  suspended:  { bg: '#FAEEDA', text: '#854F0B', border: '#EF9F27' },
-  expired:    { bg: '#F1EFE8', text: '#5F5E5A', border: '#B4B2A9' },
-  terminated: { bg: '#FCEBEB', text: '#A32D2D', border: '#F09595' },
+  non_active: { bg: '#FCEBEB', text: '#A32D2D', border: '#F09595' },
 }
 
 // Tipe Tenant
