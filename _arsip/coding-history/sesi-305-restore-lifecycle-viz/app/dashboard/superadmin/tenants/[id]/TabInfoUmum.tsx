@@ -1,18 +1,17 @@
 'use client'
 
 // app/dashboard/superadmin/tenants/[id]/TabInfoUmum.tsx
-// Tab Info Umum — 5 cluster accordion + lifecycle visualization 3-state
+// Tab Info Umum — 5 cluster accordion + lifecycle visualization 2-state (visual only)
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
 // Diupdate: Sesi #141 — M6 Fix Fase A
-// Diupdate: Sesi #303 — UNIFIKASI STATUS (2-state, visual only) — DIBATALKAN
-// Diupdate: Sesi #305 — RESTORE: kembalikan LifecycleViz ke diagram alur 3-state
-//   (active / non_active / pending) + tombol "Aktifkan Tenant" saat status pending.
-//   S#303 mengubah ini tanpa perintah — pelanggaran LL#9 + ATURAN 7.
+// Diupdate: Sesi #303 — UNIFIKASI STATUS: LifecycleViz murni visual 2-state (active / non_active)
+//   Semua tombol aksi lifecycle dipindah ke TenantDetailHeader.
+//   DialogAktivasi dihapus — tidak diperlukan lagi.
 
 import { useState } from 'react'
 import { toast }    from 'sonner'
-import type { Tenant, UpdateTenantInfoPayload, TenantLifecycleStatus } from '@/lib/types/tenant.types'
+import type { Tenant, UpdateTenantInfoPayload } from '@/lib/types/tenant.types'
 
 interface Props { tenant: Tenant; onRefresh: () => void }
 
@@ -158,98 +157,63 @@ function FSelect({ label, value, onChange, options, fullWidth }: {
   )
 }
 
-// ─── Lifecycle Visualization — diagram alur 3-state ──────────────────────────
-// S#305 RESTORE: kembalikan ke diagram alur (was: 2 lingkaran di S#303)
-// 3 state aktual: non_active → pending → active
-// Tombol "Aktifkan Tenant" muncul hanya saat status = pending
+// ─── Lifecycle Visualization — MURNI VISUAL, tidak ada tombol aksi ────────────
+// S#303 UNIFIKASI: hanya 2 state — active dan non_active
+// Semua aksi lifecycle ada di TenantDetailHeader
 
-const LC_STATES: { key: TenantLifecycleStatus; label: string; icon: string }[] = [
-  { key: 'non_active', label: 'Tidak Aktif',      icon: 'ti-circle-x'    },
-  { key: 'pending',    label: 'Menunggu Aktivasi', icon: 'ti-hourglass'   },
-  { key: 'active',     label: 'Aktif',             icon: 'ti-circle-check'},
-]
+type TenantStatus = 'active' | 'non_active'
 
-function LifecycleViz({
-  status,
-  onAktifkan,
-  saving,
-}: {
-  status:     TenantLifecycleStatus
-  onAktifkan: () => void
-  saving:     boolean
-}) {
-  const currentIdx = LC_STATES.findIndex(s => s.key === status)
-
-  const getCircleStyle = (idx: number) => {
-    if (idx < currentIdx) return { background: '#EAF3DE', border: '0.5px solid #97C459', color: '#3B6D11' }
-    if (idx === currentIdx) return { background: '#185FA5', border: '0.5px solid #185FA5', color: '#fff' }
-    return { background: '#f9f9f8', border: '0.5px solid rgba(0,0,0,0.12)', color: '#9ca3af' }
-  }
-
-  const getLineStyle = (idx: number) => ({
-    flex: 1, height: 1,
-    background: idx < currentIdx ? '#97C459' : 'rgba(0,0,0,0.12)',
-  })
+function LifecycleViz({ status }: { status: TenantStatus }) {
+  const isActive = status === 'active'
 
   return (
     <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 12, padding: 16, marginBottom: 10 }}>
-      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>Status lifecycle tenant</div>
+      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>Status tenant</div>
 
-      {/* Diagram alur 3-state */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 14 }}>
-        {LC_STATES.map((state, idx) => (
-          <div key={state.key} style={{ display: 'contents' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-              <div style={{
-                width: 28, height: 28, borderRadius: '50%',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13, position: 'relative', zIndex: 1,
-                ...getCircleStyle(idx),
-              }}>
-                <i className={`ti ${state.icon}`} style={{ fontSize: 14 }} />
-              </div>
-              <div style={{
-                fontSize: 11,
-                color: idx === currentIdx ? '#1a1a1a' : '#6b7280',
-                fontWeight: idx === currentIdx ? 500 : 400,
-                marginTop: 5, textAlign: 'center', maxWidth: 80, lineHeight: 1.3,
-              }}>
-                {state.label}
-              </div>
-            </div>
-            {idx < LC_STATES.length - 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', paddingTop: 14, flex: 0.5 }}>
-                <div style={getLineStyle(idx)} />
-              </div>
-            )}
+      {/* Visual 2-state */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+
+        {/* State: Aktif */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
+            background: isActive ? '#185FA5' : '#f9f9f8',
+            border: isActive ? '0.5px solid #185FA5' : '0.5px solid rgba(0,0,0,0.12)',
+            color: isActive ? '#fff' : '#9ca3af',
+          }}>
+            <i className="ti ti-circle-check" />
           </div>
-        ))}
+          <div style={{ fontSize: 12, fontWeight: isActive ? 600 : 400, color: isActive ? '#1a1a1a' : '#9ca3af', textAlign: 'center' }}>
+            Aktif
+          </div>
+        </div>
+
+        {/* Garis penghubung */}
+        <div style={{ flex: 1, height: 1, background: 'rgba(0,0,0,0.12)' }} />
+
+        {/* State: Tidak Aktif */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
+            background: !isActive ? '#185FA5' : '#f9f9f8',
+            border: !isActive ? '0.5px solid #185FA5' : '0.5px solid rgba(0,0,0,0.12)',
+            color: !isActive ? '#fff' : '#9ca3af',
+          }}>
+            <i className="ti ti-circle-x" />
+          </div>
+          <div style={{ fontSize: 12, fontWeight: !isActive ? 600 : 400, color: !isActive ? '#1a1a1a' : '#9ca3af', textAlign: 'center' }}>
+            Tidak Aktif
+          </div>
+        </div>
       </div>
 
-      {/* Tombol aksi — hanya muncul saat pending */}
-      {status === 'pending' && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-          <button
-            onClick={onAktifkan}
-            disabled={saving}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '6px 14px', borderRadius: 8, fontSize: 13,
-              cursor: saving ? 'not-allowed' : 'pointer',
-              border: '0.5px solid #97C459', color: '#3B6D11', background: 'transparent',
-              opacity: saving ? 0.7 : 1,
-            }}
-          >
-            <i className="ti ti-circle-check" /> {saving ? 'Memproses...' : 'Aktifkan Tenant'}
-          </button>
-        </div>
-      )}
-
-      {/* Note */}
-      <div style={{ background: '#f9f9f8', borderLeft: '3px solid rgba(0,0,0,0.22)', padding: '8px 12px', borderRadius: '0 8px 8px 0', fontSize: 12, color: '#6b7280' }}>
-        {status === 'active'     && 'Tenant aktif — AdminTenant dapat login dan operasi bisnis berjalan normal.'}
-        {status === 'non_active' && 'Tenant tidak aktif — AdminTenant tidak dapat login. Klik "Re Active" di header untuk mengaktifkan kembali.'}
-        {status === 'pending'    && 'Tenant menunggu aktivasi SA — klik tombol "Aktifkan Tenant" di atas untuk mengaktifkan.'}
+      {/* Keterangan status aktual */}
+      <div style={{ marginTop: 12, background: isActive ? '#EAF3DE' : '#FCEBEB', border: `0.5px solid ${isActive ? '#97C459' : '#F09595'}`, borderRadius: 8, padding: '8px 12px', fontSize: 12, color: isActive ? '#3B6D11' : '#A32D2D' }}>
+        <i className={`ti ${isActive ? 'ti-circle-check' : 'ti-circle-x'}`} style={{ marginRight: 6 }} />
+        {isActive
+          ? 'Tenant aktif — AdminTenant dapat login dan operasi bisnis berjalan normal.'
+          : 'Tenant tidak aktif — AdminTenant tidak dapat login. Klik "Aktifkan Kembali" di header untuk mengaktifkan.'
+        }
       </div>
     </div>
   )
@@ -260,7 +224,6 @@ function LifecycleViz({
 export function TabInfoUmum({ tenant, onRefresh }: Props) {
   const [editingCluster, setEditingCluster] = useState<ClusterId | null>(null)
   const [saving,         setSaving]         = useState(false)
-  const [savingStatus,   setSavingStatus]   = useState(false)
   const [form,           setForm]           = useState<Partial<UpdateTenantInfoPayload>>({})
 
   const handleOpenEdit = (id: ClusterId) => { setForm({}); setEditingCluster(id) }
@@ -288,25 +251,8 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
     }
   }
 
-  // Aktifkan Tenant: pending → active
-  const handleAktifkan = async () => {
-    setSavingStatus(true)
-    try {
-      const res  = await fetch(`/api/superadmin/tenants/${tenant.id}/status`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ status: 'active', alasan: 'Diaktifkan oleh SuperAdmin' }),
-      })
-      const json = await res.json()
-      if (!json.success) throw new Error(json.message)
-      toast.success('Tenant berhasil diaktifkan')
-      onRefresh()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Gagal mengaktifkan tenant')
-    } finally {
-      setSavingStatus(false)
-    }
-  }
+  // Normalkan status ke 2 nilai
+  const status: TenantStatus = tenant.lifecycle_status === 'active' ? 'active' : 'non_active'
 
   const isEditA = editingCluster === 'A'
   const isEditB = editingCluster === 'B'
@@ -524,12 +470,8 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
         </FRow>
       </Accordion>
 
-      {/* ── Status Lifecycle — diagram alur 3-state (S#305 RESTORE) ──────────── */}
-      <LifecycleViz
-        status={tenant.lifecycle_status}
-        onAktifkan={handleAktifkan}
-        saving={savingStatus}
-      />
+      {/* ── Status Lifecycle — MURNI VISUAL ───────────────────────────────────── */}
+      <LifecycleViz status={status} />
 
       {/* ── Cluster F: Pengaturan tambahan & catatan internal ─────────────────── */}
       <Accordion id="F" icon="ti-settings-2" iconBg="#F1EFE8" iconColor="#5F5E5A"
