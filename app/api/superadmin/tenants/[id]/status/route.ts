@@ -40,9 +40,9 @@ export async function PATCH(
       )
     }
 
-    // Konfirmasi 2-step: nama tenant harus diketik ulang untuk suspend/terminate
-    const aкsiDangerouus: TenantLifecycleStatus[] = ['suspended', 'terminated']
-    if (aкsiDangerouus.includes(body.status)) {
+    // Konfirmasi 2-step: nama tenant harus diketik ulang untuk non_active
+    const aksiKonfirmasi: TenantLifecycleStatus[] = ['non_active']
+    if (aksiKonfirmasi.includes(body.status)) {
       const tenant = await TenantService_getById(id)
       if (!tenant) {
         return NextResponse.json(

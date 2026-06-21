@@ -134,27 +134,18 @@ export async function TenantService_updateLifecycleStatus(
   if (!tenant) throw new Error('Tenant tidak ditemukan')
 
   const validTransitions: Record<TenantLifecycleStatus, TenantLifecycleStatus[]> = {
-    in_registration: ['terminated'], // S#302: SA bisa batalkan tenant yang masih registrasi
-    pending:    ['active', 'terminated'],
-    active:     ['suspended', 'terminated'],
-    suspended:  ['active', 'terminated'],
-    expired:    ['active', 'terminated'],
-    terminated: ['pending'],   // S#302: SA bisa re-aktivasi ke pending untuk review ulang
+    active:     ['non_active'],
+    non_active: ['active', 'non_active'],  // non_active → active (langsung) atau tetap non_active (via pending UI)
   }
 
-  if (!validTransitions[tenant.lifecycle_status].includes(newStatus)) {
+  if (!validTransitions[tenant.lifecycle_status]?.includes(newStatus)) {
     throw new Error(
       `Tidak bisa mengubah status dari "${tenant.lifecycle_status}" ke "${newStatus}"`
     )
   }
 
-  if (['suspended', 'terminated'].includes(newStatus) && !alasan?.trim()) {
-    throw new Error('Alasan wajib diisi untuk aksi ini')
-  }
-
-  // S#302: re-aktivasi dari terminated juga wajib alasan
-  if (tenant.lifecycle_status === 'terminated' && !alasan?.trim()) {
-    throw new Error('Alasan re-aktivasi wajib diisi')
+  if (newStatus === 'non_active' && !alasan?.trim()) {
+    // alasan opsional untuk non_active — tidak wajib
   }
 
   const ok = await tenantRepo_updateStatus(tenantId, newStatus, updatedBy, tenant.lifecycle_status, alasan ?? null)
