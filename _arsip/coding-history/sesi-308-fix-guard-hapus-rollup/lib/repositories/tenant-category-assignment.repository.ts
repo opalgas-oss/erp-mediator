@@ -121,9 +121,6 @@ export async function getSummaryByTenantId(
   const allAreas          = data.flatMap(a => a.coverage_areas ?? [])
   const uniqueAreas       = [...new Set(allAreas)]
 
-  // Bedakan 2 kondisi:
-  // - Belum ada assignment sama sekali (totalAktif===0) → 'BELUM_SETTING' → UI tampil "Belum disetting"
-  // - Ada assignment tapi tidak ada coverage spesifik → 'Seluruh Indonesia' (memang by design)
   const coverageSummary   = totalAktif === 0
     ? 'BELUM_SETTING'
     : uniqueAreas.length === 0
@@ -138,9 +135,6 @@ export async function getSummaryByTenantId(
 }
 
 // ─── FUNGSI: findById ─────────────────────────────────────────────────────────
-/**
- * Ambil satu assignment berdasarkan ID.
- */
 export async function findById(
   id: string
 ): Promise<TenantCategoryAssignment | null> {
@@ -157,10 +151,6 @@ export async function findById(
 }
 
 // ─── FUNGSI: assignViaSP ──────────────────────────────────────────────────────
-/**
- * Assign kategori ke tenant via SP sp_assign_category_to_tenant.
- * SP menangani konflik (cek kategori sudah dipegang tenant lain).
- */
 export async function assignViaSP(
   payload: AssignKategoriPayload,
   assignedBy: string
@@ -180,9 +170,6 @@ export async function assignViaSP(
 }
 
 // ─── FUNGSI: suspendAssignment ────────────────────────────────────────────────
-/**
- * Tangguhkan sementara assignment (status → 'suspended').
- */
 export async function suspendAssignment(
   id: string,
   payload: SuspendAssignmentPayload,
@@ -207,9 +194,6 @@ export async function suspendAssignment(
 }
 
 // ─── FUNGSI: aktivasiKembali ──────────────────────────────────────────────────
-/**
- * Aktifkan kembali assignment yang ditangguhkan (status → 'active').
- */
 export async function aktivasiKembali(
   id: string,
   updatedBy: string
@@ -233,9 +217,6 @@ export async function aktivasiKembali(
 }
 
 // ─── FUNGSI: revokeViaSP ──────────────────────────────────────────────────────
-/**
- * Cabut assignment via SP sp_revoke_category_from_tenant (soft delete).
- */
 export async function revokeViaSP(
   assignmentId: string,
   payload: RevokeAssignmentPayload,
@@ -253,9 +234,6 @@ export async function revokeViaSP(
 }
 
 // ─── FUNGSI: initHandoverViaSP ────────────────────────────────────────────────
-/**
- * Inisiasi handover via SP sp_transfer_category_between_tenants.
- */
 export async function initHandoverViaSP(
   fromAssignmentId: string,
   toTenantId: string,
@@ -273,13 +251,6 @@ export async function initHandoverViaSP(
 }
 
 // --- FUNGSI: tcaRepo_insertCoverageAreas -----------------------------------
-/**
- * Insert baris coverage area untuk satu assignment.
- * Dibuat: Sesi #179 - PV-07: pindah dari TCAService_assign ke repository layer.
- * Dipanggil oleh: TCAService_assign (tenant-category-assignment.service.ts)
- * @param assignmentId - UUID assignment yang baru dibuat
- * @param entries      - Array province+city yang di-cover
- */
 export async function tcaRepo_insertCoverageAreas(
   assignmentId: string,
   entries: Array<{ province_id: string; city_id?: string | null }>
@@ -300,12 +271,6 @@ export async function tcaRepo_insertCoverageAreas(
 }
 
 // --- FUNGSI: tcaRepo_updateOverrideKomisi ----------------------------------
-/**
- * Update override komisi, coverage areas, dan SLA untuk satu assignment.
- * Dibuat: Sesi #179 - PV-08: pindah dari TCAService_updateOverrideKomisi ke repository layer.
- * Dipanggil oleh: TCAService_updateOverrideKomisi (tenant-category-assignment.service.ts)
- * @returns true jika berhasil, false jika error
- */
 export async function tcaRepo_updateOverrideKomisi(
   assignmentId: string,
   payload: {
@@ -331,17 +296,7 @@ export async function tcaRepo_updateOverrideKomisi(
   return !error
 }
 
-// --- FUNGSI: categoryAssignmentRepo_countActiveByCategory ------------------────
-/**
- * Hitung jumlah assignment aktif untuk satu kategori.
- * Status yang dihitung: active, suspended, pending_handover.
- *
- * Dipakai oleh: CategoryService_hapus() sebagai guard sebelum soft delete
- * khusus untuk sub-kategori (level 2).
- * Memindahkan query DB dari service layer ke repository layer (fix PV-03 S#177).
- *
- * @returns Jumlah assignment aktif (0 = aman dihapus)
- */
+// --- FUNGSI: categoryAssignmentRepo_countActiveByCategory ------------------
 export async function categoryAssignmentRepo_countActiveByCategory(
   categoryId: string
 ): Promise<number> {
@@ -350,49 +305,6 @@ export async function categoryAssignmentRepo_countActiveByCategory(
     .from('tenant_category_assignments')
     .select('id', { count: 'exact', head: true })
     .eq('category_id', categoryId)
-    .in('status', ['active', 'suspended', 'pending_handover'])
-    .is('deleted_at', null)
-
-  return count ?? 0
-}
-
-// --- FUNGSI: categoryAssignmentRepo_countActiveByRoot -----------------------
-/**
- * Hitung jumlah assignment aktif untuk root kategori + semua sub-kategorinya.
- * Status yang dihitung: active, suspended, pending_handover.
- *
- * Dipakai oleh: CategoryService_hapus() sebagai guard sebelum soft delete
- * khusus untuk root kategori (level 1) — rollup mencakup semua sub.
- *
- * Logika:
- *   1. Hitung assignment langsung di root (category_id = rootId)
- *   2. Hitung assignment di sub-kategori mana pun yang parent_id = rootId
- *   3. Jumlahkan keduanya
- *
- * Dibuat: Sesi #308 — Fix TEMUAN-S307-01
- * @returns Jumlah assignment aktif di root + semua sub (0 = aman dihapus)
- */
-export async function categoryAssignmentRepo_countActiveByRoot(
-  rootId: string
-): Promise<number> {
-  const db = createServerSupabaseClient()
-
-  // Step 1: ambil ID semua sub-kategori yang parent_id = rootId
-  const { data: subs } = await db
-    .from('categories')
-    .select('id')
-    .eq('parent_id', rootId)
-    .is('deleted_at', null)
-
-  const subIds = (subs ?? []).map((s: { id: string }) => s.id)
-
-  // Step 2: hitung assignment aktif di root + semua subnya sekaligus
-  const allIds = [rootId, ...subIds]
-
-  const { count } = await db
-    .from('tenant_category_assignments')
-    .select('id', { count: 'exact', head: true })
-    .in('category_id', allIds)
     .in('status', ['active', 'suspended', 'pending_handover'])
     .is('deleted_at', null)
 

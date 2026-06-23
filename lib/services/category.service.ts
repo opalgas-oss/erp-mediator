@@ -25,7 +25,10 @@ import {
   findAllDenganSub,
   buildTreeForAssignDialog,
 } from '@/lib/repositories/category-tree.repository'
-import { categoryAssignmentRepo_countActiveByCategory } from '@/lib/repositories/tenant-category-assignment.repository'
+import {
+  categoryAssignmentRepo_countActiveByCategory,
+  categoryAssignmentRepo_countActiveByRoot,
+} from '@/lib/repositories/tenant-category-assignment.repository'
 import type {
   Category,
   CategoryDenganSub,
@@ -204,8 +207,14 @@ export async function CategoryService_hapus(
   const kategori = await findById(id)
   if (!kategori) throw new Error('Kategori tidak ditemukan')
 
-  // Cek assignment aktif via repository layer (PV-03 fix S#177)
-  const jumlahAktif = await categoryAssignmentRepo_countActiveByCategory(id)
+  // Cek assignment aktif via repository layer
+  // Root (level 1): rollup ke sub-kategori juga (Fix TEMUAN-S307-01, S#308)
+  // Sub (level 2): cek langsung di kategori ini saja (PV-03 fix S#177)
+  const isRoot     = kategori.level === 1
+  const jumlahAktif = isRoot
+    ? await categoryAssignmentRepo_countActiveByRoot(id)
+    : await categoryAssignmentRepo_countActiveByCategory(id)
+
   if (jumlahAktif > 0) {
     throw new Error(
       'Kategori tidak bisa dihapus karena masih dipegang tenant aktif. ' +
@@ -213,8 +222,7 @@ export async function CategoryService_hapus(
     )
   }
 
-  const isRoot  = kategori.level === 1
-  const ok      = await softDelete(id, deletedBy, isRoot)
+  const ok = await softDelete(id, deletedBy, isRoot)
   if (!ok) throw new Error('Gagal menghapus kategori')
 }
 
