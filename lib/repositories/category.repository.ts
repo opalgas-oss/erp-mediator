@@ -96,10 +96,14 @@ export async function findListItemsWithStats(
   if (error || !data) return { data: [], total: 0 }
 
   // Ambil assignment counts secara terpisah
+  // CATATAN (S#309): tenant_category_assignments punya 2 FK ke tenants
+  // (tenant_id + handover_to_tenant_id). Embed `tenants(...)` tanpa spesifikasi
+  // FK menjadi ambigu di PostgREST -> null -> total_tenants selalu 0.
+  // Solusi: spesifikasikan FK eksplisit via nama constraint.
   const ids = (data as Category[]).map(c => c.id)
   const { data: assigns } = await db
     .from('tenant_category_assignments')
-    .select('category_id, tenants(nama_brand)')
+    .select('category_id, tenants!tenant_category_assignments_tenant_id_fkey(nama_brand)')
     .in('category_id', ids)
     .eq('status', 'active')
     .is('deleted_at', null)
