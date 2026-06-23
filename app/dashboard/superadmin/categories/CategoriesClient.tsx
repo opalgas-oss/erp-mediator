@@ -168,7 +168,10 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
     }
   }
 
-  // ─── Aksi Hapus — cek assignment dulu ────────────────────────────────────
+  // ─── Aksi Hapus — langsung hit API, tidak pakai dialog konfirmasi dulu ────
+  // Fix TEMUAN-S307-02 (S#308): sebelumnya kebab Hapus tampil dialog konfirmasi dulu
+  // baru hit API → user harus klik 2x sia-sia sebelum tahu apakah bisa dihapus atau tidak.
+  // Sekarang: klik Hapus di kebab → langsung DELETE → 409 = blocked dialog, OK = refresh.
 
   const doHapus = async (item: CategoryListItem) => {
     setActionLoading(true)
@@ -177,7 +180,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
       const json = await res.json()
 
       if (res.status === 409) {
-        // Sudah dipakai tenant → tawaran nonaktif
+        // Dipakai tenant → langsung tampil dialog blocked
         setKonfirmasi({ type: 'blocked_nonaktif', item })
         return
       }
@@ -185,7 +188,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
 
       toast.success(`Kategori "${item.display_name}" berhasil dihapus`)
       setKonfirmasi({ type: 'none' })
-      await fetchData(search)   // auto-refresh
+      await fetchData(search)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Gagal menghapus kategori')
     } finally {
@@ -606,12 +609,12 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                                   <i className="ti ti-circle-check" /> Aktifkan kembali
                                 </button>
                               )}
-                              {/* Hapus */}
+                              {/* Hapus — langsung hit API, tidak dialog konfirmasi dulu */}
                               <button
-                                onClick={() => { setOpenKebab(null); setKonfirmasi({ type: 'confirm_hapus', item: root }) }}
-                                disabled={(root.total_tenants ?? 0) > 0}
-                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: (root.total_tenants ?? 0) > 0 ? 'not-allowed' : 'pointer', fontSize: 13, color: '#A32D2D', fontFamily: 'inherit', textAlign: 'left', opacity: (root.total_tenants ?? 0) > 0 ? 0.4 : 1 }}>
-                                <i className="ti ti-trash" /> Hapus{(root.total_tenants ?? 0) > 0 ? ' (ada assignment)' : ''}
+                                onClick={() => { setOpenKebab(null); doHapus(root) }}
+                                disabled={actionLoading}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: actionLoading ? 'not-allowed' : 'pointer', fontSize: 13, color: '#A32D2D', fontFamily: 'inherit', textAlign: 'left', opacity: actionLoading ? 0.6 : 1 }}>
+                                <i className="ti ti-trash" /> Hapus
                               </button>
                             </div>
                           )}
