@@ -238,24 +238,6 @@ export async function softDelete(
   return !error
 }
 
-// ─── nonaktifkanSubByRoot ───────────────────────────────────────────────────
-/**
- * Nonaktifkan semua sub-kategori milik root tertentu (cascade is_active=false).
- * Dipanggil dari service layer sebelum nonaktifkan root itu sendiri.
- * Ditambah: Sesi #309 — KOREKSI-1 cascade nonaktifkan
- */
-export async function nonaktifkanSubByRoot(
-  rootId:    string,
-  updatedBy: string
-): Promise<void> {
-  const db = createServerSupabaseClient()
-  await db
-    .from('categories')
-    .update({ is_active: false, updated_by: updatedBy, updated_at: new Date().toISOString() })
-    .eq('parent_id', rootId)
-    .is('deleted_at', null)
-}
-
 // ─── cekSlugUnique ───────────────────────────────────────────────────────────
 /**
  * Cek apakah slug sudah dipakai.

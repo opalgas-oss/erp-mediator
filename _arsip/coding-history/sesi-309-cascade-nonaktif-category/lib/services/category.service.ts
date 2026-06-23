@@ -9,7 +9,6 @@
 // Update: Sesi #177 — PV-03: hapus direct DB query di CategoryService_hapus()
 //   Sebelum: createServerSupabaseClient() langsung di service layer
 //   Sesudah: panggil categoryAssignmentRepo_countActiveByCategory() dari repository
-// Update: Sesi #309 — KOREKSI-1: cascade nonaktifkan sub saat root dinonaktifkan
 
 import 'server-only'
 import {
@@ -21,7 +20,6 @@ import {
   update,
   softDelete,
   cekSlugUnique,
-  nonaktifkanSubByRoot,
 } from '@/lib/repositories/category.repository'
 import {
   findAllDenganSub,
@@ -42,13 +40,13 @@ import type {
   CategoryListResponse,
 } from '@/lib/types/category.types'
 
-// --- Validation Helpers ------------------------------------------------------
+// ─── Validation Helpers ──────────────────────────────────────────────────────
 
 const SLUG_REGEX = /^[a-z][a-z0-9-]*$/
 
 function validateSlugKategori(slug: string): void {
   if (!slug || slug.length < 2 || slug.length > 80) {
-    throw new Error('Slug kategori harus 2-80 karakter')
+    throw new Error('Slug kategori harus 2–80 karakter')
   }
   // Cek slug tanpa prefix root (untuk sub: 'root/sub')
   const parts = slug.split('/')
@@ -66,7 +64,7 @@ function validateDisplayName(name: string): void {
   if (name.trim().length > 100) throw new Error('Nama kategori maksimal 100 karakter')
 }
 
-// --- CategoryService_list ----------------------------------------------------
+// ─── CategoryService_list ─────────────────────────────────────────────────────
 /**
  * Ambil list kategori dengan stats assignment (untuk halaman List Categories).
  */
@@ -87,7 +85,7 @@ export async function CategoryService_list(
   }
 }
 
-// --- CategoryService_getById -------------------------------------------------
+// ─── CategoryService_getById ──────────────────────────────────────────────────
 export async function CategoryService_getById(
   id: string
 ): Promise<Category | null> {
@@ -95,7 +93,7 @@ export async function CategoryService_getById(
   return findById(id)
 }
 
-// --- CategoryService_getAllDenganSub ------------------------------------------
+// ─── CategoryService_getAllDenganSub ──────────────────────────────────────────
 /**
  * Ambil semua kategori aktif beserta sub-nya (untuk dropdown dan tree sederhana).
  */
@@ -103,7 +101,7 @@ export async function CategoryService_getAllDenganSub(): Promise<CategoryDenganS
   return findAllDenganSub()
 }
 
-// --- CategoryService_getTreeForAssign ----------------------------------------
+// ─── CategoryService_getTreeForAssign ────────────────────────────────────────
 /**
  * Bangun tree dengan status per node untuk Dialog Assign Kategori.
  */
@@ -114,7 +112,7 @@ export async function CategoryService_getTreeForAssign(
   return buildTreeForAssignDialog(tenantId)
 }
 
-// --- CategoryService_buatRoot ------------------------------------------------
+// ─── CategoryService_buatRoot ─────────────────────────────────────────────────
 /**
  * Buat root kategori baru.
  */
@@ -140,7 +138,7 @@ export async function CategoryService_buatRoot(
   return result
 }
 
-// --- CategoryService_buatSub -------------------------------------------------
+// ─── CategoryService_buatSub ──────────────────────────────────────────────────
 /**
  * Buat sub-kategori baru di bawah root tertentu.
  */
@@ -174,11 +172,9 @@ export async function CategoryService_buatSub(
   return result
 }
 
-// --- CategoryService_update --------------------------------------------------
+// ─── CategoryService_update ───────────────────────────────────────────────────
 /**
  * Update field kategori. Slug immutable jika sudah ada assignment aktif.
- * Jika payload.is_active===false dan kategori adalah root (level 1),
- * cascade nonaktifkan semua sub-kategorinya terlebih dahulu. (S#309 KOREKSI-1)
  */
 export async function CategoryService_update(
   id:        string,
@@ -194,20 +190,12 @@ export async function CategoryService_update(
     if (!unik) throw new Error(`Slug "${payload.slug}" sudah digunakan kategori lain`)
   }
 
-  // Cascade nonaktifkan sub jika root dinonaktifkan (S#309 KOREKSI-1)
-  if (payload.is_active === false) {
-    const kategori = await findById(id)
-    if (kategori && kategori.level === 1) {
-      await nonaktifkanSubByRoot(id, updatedBy)
-    }
-  }
-
   const result = await update(id, payload, updatedBy)
   if (!result) throw new Error('Gagal mengupdate kategori. Pastikan kategori masih aktif.')
   return result
 }
 
-// --- CategoryService_hapus ---------------------------------------------------
+// ─── CategoryService_hapus ────────────────────────────────────────────────────
 /**
  * Hapus kategori (soft delete). Hanya jika tidak ada assignment aktif.
  * Jika kategori root, cascade hapus sub-kategorinya.
@@ -222,7 +210,7 @@ export async function CategoryService_hapus(
   // Cek assignment aktif via repository layer
   // Root (level 1): rollup ke sub-kategori juga (Fix TEMUAN-S307-01, S#308)
   // Sub (level 2): cek langsung di kategori ini saja (PV-03 fix S#177)
-  const isRoot      = kategori.level === 1
+  const isRoot     = kategori.level === 1
   const jumlahAktif = isRoot
     ? await categoryAssignmentRepo_countActiveByRoot(id)
     : await categoryAssignmentRepo_countActiveByCategory(id)
@@ -238,12 +226,12 @@ export async function CategoryService_hapus(
   if (!ok) throw new Error('Gagal menghapus kategori')
 }
 
-// --- CategoryService_cekSlug -------------------------------------------------
+// ─── CategoryService_cekSlug ──────────────────────────────────────────────────
 /**
  * Cek ketersediaan slug kategori (untuk validasi realtime di form).
  */
 export async function CategoryService_cekSlug(
-  slug:       string,
+  slug:      string,
   excludeId?: string
 ): Promise<{ tersedia: boolean }> {
   try { validateSlugKategori(slug) }
@@ -253,10 +241,10 @@ export async function CategoryService_cekSlug(
   return { tersedia: unik }
 }
 
-// --- CategoryService_generateSlug --------------------------------------------
+// ─── CategoryService_generateSlug ────────────────────────────────────────────
 /**
  * Auto-generate slug dari display_name.
- * Contoh: "Servis Mobil" -> "servis-mobil"
+ * Contoh: "Servis Mobil" → "servis-mobil"
  */
 export function CategoryService_generateSlug(
   displayName: string,
