@@ -5,13 +5,17 @@
 // Style: konsisten dengan Tab Info Umum (inline design tokens)
 // Fix: G47 (2 tombol terpisah), G48 (8 kolom), G49 (tenant detail), G50 (level badge),
 //      G51 (ikon root), G52 (kebab kondisional), G53 (4 filter), G54 (Expand semua)
+//      S306: kebab dropdown adaptive direction (atas/bawah otomatis)
+//      S306: sort kolom via useSortableTable (standar S5_PERILAKU.md)
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
 // Diupdate: Sesi #141 — M6 Fix Fase F
+// Diupdate: Sesi #306 — Fix kebab terpotong + sort kolom
 
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import { DialogBuatKategori } from './DialogBuatKategori'
+import { useSortableTable } from '@/lib/hooks/useSortableTable'
 import type { CategoryListItem, CategoryStats } from '@/lib/types/category.types'
 
 interface Props {
@@ -31,8 +35,6 @@ const ICON_COLORS = [
   { bg: '#F1EFE8', color: '#5F5E5A' }, // abu
 ]
 
-// Default ikon per slug root kategori (fallback kalau icon_name di DB null/kosong).
-// Slug yang tidak ada di mapping ini → default 'ti-tag' (ikon tag generic).
 const DEFAULT_ICON_BY_SLUG: Record<string, string> = {
   otomotif:        'ti-car',
   'rumah-properti':'ti-home',
@@ -57,7 +59,6 @@ const DEFAULT_ICON_BY_SLUG: Record<string, string> = {
 function resolveIcon(iconName: string | null, slug: string): string {
   if (iconName && iconName.startsWith('ti-')) return iconName
   if (iconName)                                return `ti-${iconName}`
-  // Cari berdasarkan slug — exact match dulu, lalu prefix match
   if (DEFAULT_ICON_BY_SLUG[slug])              return DEFAULT_ICON_BY_SLUG[slug]
   for (const [key, icon] of Object.entries(DEFAULT_ICON_BY_SLUG)) {
     if (slug.startsWith(key)) return icon
@@ -68,9 +69,19 @@ function resolveIcon(iconName: string | null, slug: string): string {
 // ─── Style helpers ────────────────────────────────────────────────────────────
 
 const S = {
-  card:  { background: '#fff', borderWidth: '0.5px', borderStyle: 'solid' as const, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 12 } as React.CSSProperties,
-  input: { padding: '7px 10px 7px 28px', borderWidth: '0.5px', borderStyle: 'solid' as const, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff' } as React.CSSProperties,
+  card:   { background: '#fff', borderWidth: '0.5px', borderStyle: 'solid' as const, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 12 } as React.CSSProperties,
+  input:  { padding: '7px 10px 7px 28px', borderWidth: '0.5px', borderStyle: 'solid' as const, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff' } as React.CSSProperties,
   select: { padding: '7px 10px', borderWidth: '0.5px', borderStyle: 'solid' as const, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff' } as React.CSSProperties,
+  // Header tabel yang sortable
+  thSort: { padding: '10px 14px', fontSize: 11, fontWeight: 500, color: '#6b7280', textAlign: 'left' as const, cursor: 'pointer', userSelect: 'none' as const, whiteSpace: 'nowrap' as const } as React.CSSProperties,
+  thPlain:{ padding: '10px 14px', fontSize: 11, fontWeight: 500, color: '#6b7280', textAlign: 'left' as const } as React.CSSProperties,
+}
+
+// ─── Dropdown direction — deteksi apakah ada ruang cukup di bawah button ──────
+function getDropdownDir(btn: HTMLButtonElement): 'up' | 'down' {
+  const rect = btn.getBoundingClientRect()
+  const spaceBelow = window.innerHeight - rect.bottom
+  return spaceBelow < 180 ? 'up' : 'down'
 }
 
 // ─── Komponen ─────────────────────────────────────────────────────────────────
@@ -89,6 +100,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
   const [editTarget, setEditTarget] = useState<CategoryListItem | null>(null)
   const [expanded,   setExpanded]   = useState<Set<string>>(new Set())
   const [openKebab,  setOpenKebab]  = useState<string | null>(null)
+  const [kebabDir,   setKebabDir]   = useState<'up' | 'down'>('down')
 
   const fetchData = useCallback(async (q?: string) => {
     setLoading(true)
@@ -116,6 +128,17 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
     setDialogOpen(true)
   }
 
+  const handleKebabClick = (id: string, e: React.MouseEvent<HTMLButtonElement>) => {
+    if (openKebab === id) {
+      setOpenKebab(null)
+    } else {
+      setKebabDir(getDropdownDir(e.currentTarget))
+      setOpenKebab(id)
+    }
+  }
+
+  // ─── Filter ────────────────────────────────────────────────────────────────
+
   const filtered = data.filter(c => {
     if (search && !c.display_name.toLowerCase().includes(search.toLowerCase())) return false
     if (filterLvl && String(c.level) !== filterLvl) return false
@@ -126,8 +149,20 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
     return true
   })
 
-  const roots = filtered.filter(c => c.level === 1)
-  const subs  = filtered.filter(c => c.level === 2)
+  // ─── Sort — hanya di level root (S5_PERILAKU: ≤50 baris = client-side) ────
+  const roots_raw = filtered.filter(c => c.level === 1)
+  const subs      = filtered.filter(c => c.level === 2)
+
+  const { sorted: roots, handleSort, sortIcon, sortIconClass } = useSortableTable(
+    roots_raw,
+    'display_name',
+    'asc',
+  )
+
+  // Posisi dropdown berdasarkan arah yang terdeteksi
+  const dropdownPos = kebabDir === 'up'
+    ? { bottom: '100%', top: 'auto', marginBottom: 4 }
+    : { top: '100%', bottom: 'auto', marginTop: 4 }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 24 }}>
@@ -200,7 +235,8 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
       </div>
 
       {/* Tabel — 8 kolom (G48) */}
-      <div style={{ ...S.card, overflow: 'hidden' }}>
+      {/* overflow: 'visible' agar dropdown kebab tidak terpotong (S306) */}
+      <div style={{ ...S.card, overflow: 'visible' }}>
         {loading ? (
           <div style={{ padding: 24, textAlign: 'center', color: '#6b7280', fontSize: 13 }}>Memuat data kategori…</div>
         ) : roots.length === 0 ? (
@@ -211,194 +247,240 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
           </div>
         ) : (
           <>
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 13 }}>
-              <colgroup>
-                <col style={{ width: '4%'  }} />
-                <col style={{ width: '30%' }} />
-                <col style={{ width: '9%'  }} />
-                <col style={{ width: '17%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '8%'  }} />
-                <col style={{ width: '6%'  }} />
-              </colgroup>
-              <thead>
-                <tr style={{ background: '#f9f9f8' }}>
-                  {['', 'Nama kategori', 'Level', 'Tenant yang memegang', 'Vendor aktif', 'Status', 'Dibuat', ''].map((h, i) => (
-                    <th key={i} style={{ padding: '10px 14px', fontSize: 11, fontWeight: 500, color: '#6b7280', textAlign: 'left' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {roots.map((root, rootIdx) => {
-                  const subList = subs.filter(s => s.parent_id === root.id)
-                  const isOpen  = expanded.has(root.id)
-                  const iconColor = ICON_COLORS[rootIdx % ICON_COLORS.length]
+            {/* overflow-x: 'auto' di wrapper table agar scroll horizontal tetap bisa */}
+            <div style={{ overflowX: 'auto', borderRadius: 12 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 13 }}>
+                <colgroup>
+                  <col style={{ width: '4%'  }} />
+                  <col style={{ width: '30%' }} />
+                  <col style={{ width: '9%'  }} />
+                  <col style={{ width: '17%' }} />
+                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '8%'  }} />
+                  <col style={{ width: '6%'  }} />
+                </colgroup>
+                <thead>
+                  <tr style={{ background: '#f9f9f8' }}>
+                    {/* Kolom expand — tidak sortable */}
+                    <th style={S.thPlain}></th>
 
-                  return [
-                    /* Root row */
-                    <tr key={root.id}
-                      style={{ borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)', background: '#fff', opacity: root.is_active ? 1 : 0.7 }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#f9f9f8')}
-                      onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
-                    >
-                      {/* Expand */}
-                      <td style={{ textAlign: 'center', padding: '11px 0' }}>
-                        {subList.length > 0 && (
-                          <button onClick={() => toggleExpand(root.id)}
-                            style={{ background: 'transparent', borderWidth: 0, cursor: 'pointer', padding: '3px 5px', color: '#6b7280', fontSize: 14, transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
-                            <i className="ti ti-chevron-right" />
-                          </button>
-                        )}
-                      </td>
+                    {/* Nama kategori — sortable */}
+                    <th style={S.thSort} onClick={() => handleSort('display_name')}>
+                      Nama kategori <span className={sortIconClass('display_name')}>{sortIcon('display_name')}</span>
+                    </th>
 
-                      {/* Nama kategori dengan ikon (G51) */}
-                      <td style={{ padding: '11px 14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, background: iconColor.bg, color: iconColor.color }}>
-                            <i className={`ti ${resolveIcon(root.icon_name, root.slug)}`} />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 500 }}>{root.display_name}</div>
-                            <div style={{ fontSize: 11, color: '#6b7280', fontFamily: 'monospace', marginTop: 1 }}>{root.slug}</div>
-                          </div>
-                        </div>
-                      </td>
+                    {/* Level — sortable */}
+                    <th style={S.thSort} onClick={() => handleSort('level')}>
+                      Level <span className={sortIconClass('level')}>{sortIcon('level')}</span>
+                    </th>
 
-                      {/* Level badge (G50) */}
-                      <td style={{ padding: '11px 14px' }}>
-                        <span style={{ display: 'inline-flex', padding: '2px 7px', borderRadius: 100, fontSize: 10, fontWeight: 500, borderWidth: '0.5px', borderStyle: 'solid', background: '#E6F1FB', color: '#185FA5', borderColor: '#85B7EB' }}>
-                          Root
-                        </span>
-                      </td>
+                    {/* Tenant — sortable by total_tenants */}
+                    <th style={S.thSort} onClick={() => handleSort('total_tenants')}>
+                      Tenant yang memegang <span className={sortIconClass('total_tenants')}>{sortIcon('total_tenants')}</span>
+                    </th>
 
-                      {/* Tenant (G49) */}
-                      <td style={{ padding: '11px 14px' }}>
-                        {(root.total_tenants ?? 0) === 0 ? (
-                          <span style={{ color: '#9ca3af', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <i className="ti ti-minus" style={{ fontSize: 11 }} /> Belum di-assign
-                          </span>
-                        ) : (
-                          <>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#97C459' }} />
-                              {root.total_tenants} tenant
-                            </div>
-                            {root.tenant_names && root.tenant_names.length > 0 && (
-                              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
-                                {root.tenant_names.slice(0, 2).join(', ')}
-                                {root.tenant_names.length > 2 && ` +${root.tenant_names.length - 2}`}
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </td>
+                    {/* Vendor — sortable by total_vendors */}
+                    <th style={S.thSort} onClick={() => handleSort('total_vendors')}>
+                      Vendor aktif <span className={sortIconClass('total_vendors')}>{sortIcon('total_vendors')}</span>
+                    </th>
 
-                      {/* Vendor aktif (G48) */}
-                      <td style={{ padding: '11px 14px', fontSize: 13 }}>
-                        {root.total_vendors ?? 0} vendor
-                      </td>
+                    {/* Status — sortable by is_active */}
+                    <th style={S.thSort} onClick={() => handleSort('is_active')}>
+                      Status <span className={sortIconClass('is_active')}>{sortIcon('is_active')}</span>
+                    </th>
 
-                      {/* Status */}
-                      <td style={{ padding: '11px 14px' }}>
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px',
-                          borderRadius: 100, fontSize: 11, fontWeight: 500,
-                          borderWidth: '0.5px', borderStyle: 'solid',
-                          background:  root.is_active ? '#EAF3DE' : '#f9f9f8',
-                          color:       root.is_active ? '#3B6D11' : '#6b7280',
-                          borderColor: root.is_active ? '#97C459' : 'rgba(0,0,0,0.12)',
-                        }}>
-                          <i className={`ti ${root.is_active ? 'ti-circle-check' : 'ti-eye-off'}`} style={{ fontSize: 10 }} />
-                          {root.is_active ? 'Aktif' : 'Nonaktif'}
-                        </span>
-                      </td>
+                    {/* Dibuat — sortable by created_at */}
+                    <th style={S.thSort} onClick={() => handleSort('created_at')}>
+                      Dibuat <span className={sortIconClass('created_at')}>{sortIcon('created_at')}</span>
+                    </th>
 
-                      {/* Dibuat (G48) */}
-                      <td style={{ padding: '11px 14px', fontSize: 12, color: '#6b7280' }}>
-                        {new Date(root.created_at).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })}
-                      </td>
+                    {/* Aksi — tidak sortable */}
+                    <th style={S.thPlain}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roots.map((root, rootIdx) => {
+                    const subList   = subs.filter(s => s.parent_id === root.id)
+                    const isOpen    = expanded.has(root.id)
+                    const iconColor = ICON_COLORS[rootIdx % ICON_COLORS.length]
 
-                      {/* Kebab (G52) */}
-                      <td style={{ padding: '11px 8px', position: 'relative' }}>
-                        <button onClick={() => setOpenKebab(openKebab === root.id ? null : root.id)}
-                          style={{ padding: '4px 8px', borderWidth: 0, background: 'transparent', cursor: 'pointer', borderRadius: 6, fontSize: 16, color: '#6b7280' }}>
-                          <i className="ti ti-dots-vertical" />
-                        </button>
-                        {openKebab === root.id && (
-                          <div style={{ position: 'absolute', right: 8, top: '100%', background: '#fff', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, minWidth: 200, overflow: 'hidden' }}
-                            onMouseLeave={() => setOpenKebab(null)}>
-                            <button onClick={() => { setOpenKebab(null); openDialog('root', root) }}
-                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left' }}>
-                              <i className="ti ti-edit" /> Edit kategori
-                            </button>
-                            <button onClick={() => { setOpenKebab(null); openDialog('sub') }}
-                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left' }}>
-                              <i className="ti ti-plus" /> Tambah sub-kategori
-                            </button>
-                            <div style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '2px 0' }} />
-                            <button onClick={() => { setOpenKebab(null); toast.info('Segera tersedia') }}
-                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#854F0B', fontFamily: 'inherit', textAlign: 'left' }}>
-                              <i className="ti ti-eye-off" /> {root.is_active ? 'Nonaktifkan' : 'Aktifkan kembali'}
-                            </button>
-                            <button disabled={(root.total_tenants ?? 0) > 0}
-                              onClick={() => { setOpenKebab(null); toast.info('Segera tersedia') }}
-                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: (root.total_tenants ?? 0) > 0 ? 'not-allowed' : 'pointer', fontSize: 13, color: '#A32D2D', fontFamily: 'inherit', textAlign: 'left', opacity: (root.total_tenants ?? 0) > 0 ? 0.4 : 1 }}>
-                              <i className="ti ti-trash" /> Hapus{(root.total_tenants ?? 0) > 0 ? ' (ada assignment)' : ''}
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>,
-
-                    /* Sub rows */
-                    ...(isOpen ? subList.map(sub => (
-                      <tr key={sub.id}
-                        style={{ borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)', background: '#f9f9f8' }}
+                    return [
+                      /* Root row */
+                      <tr key={root.id}
+                        style={{ borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)', background: '#fff', opacity: root.is_active ? 1 : 0.7 }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#f9f9f8')}
+                        onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
                       >
-                        <td />
-                        <td style={{ padding: '10px 14px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 28 }}>
-                            <div style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, background: '#fff', color: '#6b7280', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)' }}>
-                              <i className={`ti ${sub.icon_name ? (sub.icon_name.startsWith('ti-') ? sub.icon_name : `ti-${sub.icon_name}`) : 'ti-tag'}`} />
+                        {/* Expand */}
+                        <td style={{ textAlign: 'center', padding: '11px 0' }}>
+                          {subList.length > 0 && (
+                            <button onClick={() => toggleExpand(root.id)}
+                              style={{ background: 'transparent', borderWidth: 0, cursor: 'pointer', padding: '3px 5px', color: '#6b7280', fontSize: 14, transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
+                              <i className="ti ti-chevron-right" />
+                            </button>
+                          )}
+                        </td>
+
+                        {/* Nama kategori dengan ikon (G51) */}
+                        <td style={{ padding: '11px 14px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, background: iconColor.bg, color: iconColor.color }}>
+                              <i className={`ti ${resolveIcon(root.icon_name, root.slug)}`} />
                             </div>
                             <div>
-                              <div style={{ fontSize: 13 }}>{sub.display_name}</div>
-                              <div style={{ fontSize: 11, color: '#6b7280', fontFamily: 'monospace' }}>{sub.slug}</div>
+                              <div style={{ fontSize: 13, fontWeight: 500 }}>{root.display_name}</div>
+                              <div style={{ fontSize: 11, color: '#6b7280', fontFamily: 'monospace', marginTop: 1 }}>{root.slug}</div>
                             </div>
                           </div>
                         </td>
-                        <td style={{ padding: '10px 14px' }}>
-                          <span style={{ display: 'inline-flex', padding: '2px 7px', borderRadius: 100, fontSize: 10, fontWeight: 500, borderWidth: '0.5px', borderStyle: 'solid', background: '#f9f9f8', color: '#6b7280', borderColor: 'rgba(0,0,0,0.12)' }}>
-                            Sub
+
+                        {/* Level badge (G50) */}
+                        <td style={{ padding: '11px 14px' }}>
+                          <span style={{ display: 'inline-flex', padding: '2px 7px', borderRadius: 100, fontSize: 10, fontWeight: 500, borderWidth: '0.5px', borderStyle: 'solid', background: '#E6F1FB', color: '#185FA5', borderColor: '#85B7EB' }}>
+                            Root
                           </span>
                         </td>
-                        <td style={{ padding: '10px 14px', fontSize: 12 }}>
-                          {(sub.total_tenants ?? 0) === 0
-                            ? <span style={{ color: '#9ca3af' }}>—</span>
-                            : `${sub.total_tenants} tenant`}
+
+                        {/* Tenant (G49) */}
+                        <td style={{ padding: '11px 14px' }}>
+                          {(root.total_tenants ?? 0) === 0 ? (
+                            <span style={{ color: '#9ca3af', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <i className="ti ti-minus" style={{ fontSize: 11 }} /> Belum di-assign
+                            </span>
+                          ) : (
+                            <>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#97C459' }} />
+                                {root.total_tenants} tenant
+                              </div>
+                              {root.tenant_names && root.tenant_names.length > 0 && (
+                                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                                  {root.tenant_names.slice(0, 2).join(', ')}
+                                  {root.tenant_names.length > 2 && ` +${root.tenant_names.length - 2}`}
+                                </div>
+                              )}
+                            </>
+                          )}
                         </td>
-                        <td style={{ padding: '10px 14px', fontSize: 13 }}>{sub.total_vendors ?? 0} vendor</td>
-                        <td style={{ padding: '10px 14px' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 500, borderWidth: '0.5px', borderStyle: 'solid', background: sub.is_active ? '#EAF3DE' : '#f9f9f8', color: sub.is_active ? '#3B6D11' : '#6b7280', borderColor: sub.is_active ? '#97C459' : 'rgba(0,0,0,0.12)' }}>
-                            <i className={`ti ${sub.is_active ? 'ti-circle-check' : 'ti-eye-off'}`} style={{ fontSize: 10 }} />
-                            {sub.is_active ? 'Aktif' : 'Nonaktif'}
+
+                        {/* Vendor aktif (G48) */}
+                        <td style={{ padding: '11px 14px', fontSize: 13 }}>
+                          {root.total_vendors ?? 0} vendor
+                        </td>
+
+                        {/* Status */}
+                        <td style={{ padding: '11px 14px' }}>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px',
+                            borderRadius: 100, fontSize: 11, fontWeight: 500,
+                            borderWidth: '0.5px', borderStyle: 'solid',
+                            background:  root.is_active ? '#EAF3DE' : '#f9f9f8',
+                            color:       root.is_active ? '#3B6D11' : '#6b7280',
+                            borderColor: root.is_active ? '#97C459' : 'rgba(0,0,0,0.12)',
+                          }}>
+                            <i className={`ti ${root.is_active ? 'ti-circle-check' : 'ti-eye-off'}`} style={{ fontSize: 10 }} />
+                            {root.is_active ? 'Aktif' : 'Nonaktif'}
                           </span>
                         </td>
-                        <td style={{ padding: '10px 14px', fontSize: 12, color: '#6b7280' }}>
-                          {new Date(sub.created_at).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })}
+
+                        {/* Dibuat (G48) */}
+                        <td style={{ padding: '11px 14px', fontSize: 12, color: '#6b7280' }}>
+                          {new Date(root.created_at).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })}
                         </td>
-                        <td style={{ padding: '10px 8px' }}>
-                          <button onClick={() => openDialog('sub', sub)} style={{ padding: '4px 8px', borderWidth: 0, background: 'transparent', cursor: 'pointer', borderRadius: 6, fontSize: 16, color: '#6b7280' }}>
+
+                        {/* Kebab (G52) — S306: adaptive direction */}
+                        <td style={{ padding: '11px 8px', position: 'relative' }}>
+                          <button
+                            onClick={(e) => handleKebabClick(root.id, e)}
+                            style={{ padding: '4px 8px', borderWidth: 0, background: 'transparent', cursor: 'pointer', borderRadius: 6, fontSize: 16, color: '#6b7280' }}
+                          >
                             <i className="ti ti-dots-vertical" />
                           </button>
+                          {openKebab === root.id && (
+                            <div
+                              style={{
+                                position: 'absolute', right: 8,
+                                ...dropdownPos,
+                                background: '#fff',
+                                borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)',
+                                borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                                zIndex: 100, minWidth: 200, overflow: 'hidden'
+                              }}
+                              onMouseLeave={() => setOpenKebab(null)}
+                            >
+                              <button onClick={() => { setOpenKebab(null); openDialog('root', root) }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left' }}>
+                                <i className="ti ti-edit" /> Edit kategori
+                              </button>
+                              <button onClick={() => { setOpenKebab(null); openDialog('sub') }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left' }}>
+                                <i className="ti ti-plus" /> Tambah sub-kategori
+                              </button>
+                              <div style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '2px 0' }} />
+                              <button onClick={() => { setOpenKebab(null); toast.info('Segera tersedia') }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#854F0B', fontFamily: 'inherit', textAlign: 'left' }}>
+                                <i className="ti ti-eye-off" /> {root.is_active ? 'Nonaktifkan' : 'Aktifkan kembali'}
+                              </button>
+                              <button disabled={(root.total_tenants ?? 0) > 0}
+                                onClick={() => { setOpenKebab(null); toast.info('Segera tersedia') }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: (root.total_tenants ?? 0) > 0 ? 'not-allowed' : 'pointer', fontSize: 13, color: '#A32D2D', fontFamily: 'inherit', textAlign: 'left', opacity: (root.total_tenants ?? 0) > 0 ? 0.4 : 1 }}>
+                                <i className="ti ti-trash" /> Hapus{(root.total_tenants ?? 0) > 0 ? ' (ada assignment)' : ''}
+                              </button>
+                            </div>
+                          )}
                         </td>
-                      </tr>
-                    )) : []),
-                  ]
-                })}
-              </tbody>
-            </table>
+                      </tr>,
+
+                      /* Sub rows — ikut urutan parent, tidak di-sort terpisah */
+                      ...(isOpen ? subList.map(sub => (
+                        <tr key={sub.id}
+                          style={{ borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)', background: '#f9f9f8' }}
+                        >
+                          <td />
+                          <td style={{ padding: '10px 14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 28 }}>
+                              <div style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, background: '#fff', color: '#6b7280', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)' }}>
+                                <i className={`ti ${sub.icon_name ? (sub.icon_name.startsWith('ti-') ? sub.icon_name : `ti-${sub.icon_name}`) : 'ti-tag'}`} />
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 13 }}>{sub.display_name}</div>
+                                <div style={{ fontSize: 11, color: '#6b7280', fontFamily: 'monospace' }}>{sub.slug}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span style={{ display: 'inline-flex', padding: '2px 7px', borderRadius: 100, fontSize: 10, fontWeight: 500, borderWidth: '0.5px', borderStyle: 'solid', background: '#f9f9f8', color: '#6b7280', borderColor: 'rgba(0,0,0,0.12)' }}>
+                              Sub
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 14px', fontSize: 12 }}>
+                            {(sub.total_tenants ?? 0) === 0
+                              ? <span style={{ color: '#9ca3af' }}>—</span>
+                              : `${sub.total_tenants} tenant`}
+                          </td>
+                          <td style={{ padding: '10px 14px', fontSize: 13 }}>{sub.total_vendors ?? 0} vendor</td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 500, borderWidth: '0.5px', borderStyle: 'solid', background: sub.is_active ? '#EAF3DE' : '#f9f9f8', color: sub.is_active ? '#3B6D11' : '#6b7280', borderColor: sub.is_active ? '#97C459' : 'rgba(0,0,0,0.12)' }}>
+                              <i className={`ti ${sub.is_active ? 'ti-circle-check' : 'ti-eye-off'}`} style={{ fontSize: 10 }} />
+                              {sub.is_active ? 'Aktif' : 'Nonaktif'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 14px', fontSize: 12, color: '#6b7280' }}>
+                            {new Date(sub.created_at).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })}
+                          </td>
+                          <td style={{ padding: '10px 8px' }}>
+                            <button onClick={() => openDialog('sub', sub)} style={{ padding: '4px 8px', borderWidth: 0, background: 'transparent', cursor: 'pointer', borderRadius: 6, fontSize: 16, color: '#6b7280' }}>
+                              <i className="ti ti-dots-vertical" />
+                            </button>
+                          </td>
+                        </tr>
+                      )) : []),
+                    ]
+                  })}
+                </tbody>
+              </table>
+            </div>
 
             {/* Footer tabel (G54) */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)' }}>
