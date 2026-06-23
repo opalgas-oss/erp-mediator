@@ -715,7 +715,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                                 style={{ position: 'absolute', right: 8, ...dropdownPosSub, background: '#fff', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, minWidth: 220, overflow: 'hidden' }}
                                 onMouseLeave={() => setOpenKebabSub(null)}
                               >
-                                {/* KOREKSI-2 S#309 v2: kebab sub — matrix 4 kondisi */}
+                                {/* KOREKSI-2 S#309 v3: kebab sub — matrix 4 kondisi, Hapus hanya jika belum dipakai */}
                                 {sub.is_active ? (
                                   (sub.total_tenants ?? 0) === 0 ? (
                                     /* Sub AKTIF, belum dipakai: Edit | --- | Nonaktifkan | Hapus */
@@ -739,7 +739,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                                       </button>
                                     </>
                                   ) : (
-                                    /* Sub AKTIF, sudah dipakai: Edit | Nonaktifkan */
+                                    /* Sub AKTIF, sudah dipakai: Edit | Nonaktifkan (tanpa Hapus) */
                                     <>
                                       <button onClick={() => { setOpenKebabSub(null); openDialog('sub', sub) }}
                                         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left' }}>
@@ -772,7 +772,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                                       </button>
                                     </>
                                   ) : (
-                                    /* Sub NONAKTIF, sudah dipakai: Aktifkan kembali (saja) */
+                                    /* Sub NONAKTIF, sudah dipakai: Aktifkan kembali saja (tanpa Hapus) */
                                     <button
                                       onClick={() => { setOpenKebabSub(null); setKonfirmasi({ type: 'confirm_aktifkan', item: sub }) }}
                                       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#3B6D11', fontFamily: 'inherit', textAlign: 'left' }}
