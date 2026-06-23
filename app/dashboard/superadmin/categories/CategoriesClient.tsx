@@ -79,6 +79,7 @@ const S = {
 type DialogState =
   | { type: 'none' }
   | { type: 'confirm_nonaktif';  item: CategoryListItem }
+  | { type: 'confirm_aktifkan';  item: CategoryListItem }
   | { type: 'blocked_nonaktif';  item: CategoryListItem }   // sudah dipakai → tawarkan nonaktif
   | { type: 'confirm_hapus';     item: CategoryListItem }
 
@@ -122,6 +123,28 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
     } catch { toast.error('Gagal memuat data kategori') }
     finally { setLoading(false) }
   }, [])
+
+  // ─── Aksi Aktifkan Kembali ──────────────────────────────────────────────────
+
+  const doAktifkan = async (item: CategoryListItem) => {
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/superadmin/categories/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: true }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.message ?? 'Gagal mengaktifkan kategori')
+      toast.success(`Kategori "${item.display_name}" berhasil diaktifkan kembali`)
+      setKonfirmasi({ type: 'none' })
+      await fetchData(search)   // auto-refresh
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Gagal mengaktifkan kategori')
+    } finally {
+      setActionLoading(false)
+    }
+  }
 
   // ─── Aksi Nonaktifkan ─────────────────────────────────────────────────────
 
@@ -219,6 +242,38 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 24 }}>
+
+      {/* ── Dialog Konfirmasi Aktifkan Kembali ────────────────────────────── */}
+      {konfirmasi.type === 'confirm_aktifkan' && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: '24px 28px', maxWidth: 440, width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <i className="ti ti-circle-check" style={{ fontSize: 20, color: '#3B6D11' }} />
+              <div style={{ fontSize: 15, fontWeight: 600 }}>Aktifkan Kembali Kategori</div>
+            </div>
+            <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, marginBottom: 20 }}>
+              Anda akan mengaktifkan kembali kategori <strong>&quot;{konfirmasi.item.display_name}&quot;</strong>.
+              Kategori akan muncul kembali untuk vendor dan customer. Lanjutkan?
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setKonfirmasi({ type: 'none' })}
+                disabled={actionLoading}
+                style={{ padding: '7px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', background: 'transparent', color: '#1a1a1a' }}
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => doAktifkan(konfirmasi.item)}
+                disabled={actionLoading}
+                style={{ padding: '7px 16px', borderRadius: 8, fontSize: 13, cursor: actionLoading ? 'not-allowed' : 'pointer', borderWidth: 0, background: '#3B6D11', color: '#fff', opacity: actionLoading ? 0.7 : 1 }}
+              >
+                {actionLoading ? 'Memproses…' : 'Ya, Aktifkan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Dialog Konfirmasi Nonaktifkan ──────────────────────────────── */}
       {konfirmasi.type === 'confirm_nonaktif' && (
@@ -536,12 +591,21 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                               </button>
                               <div style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '2px 0' }} />
                               {/* Nonaktifkan / Aktifkan */}
-                              <button
-                                onClick={() => { setOpenKebab(null); setKonfirmasi({ type: 'confirm_nonaktif', item: root }) }}
-                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#854F0B', fontFamily: 'inherit', textAlign: 'left' }}
-                              >
-                                <i className="ti ti-eye-off" /> {root.is_active ? 'Nonaktifkan' : 'Aktifkan kembali'}
-                              </button>
+                              {root.is_active ? (
+                                <button
+                                  onClick={() => { setOpenKebab(null); setKonfirmasi({ type: 'confirm_nonaktif', item: root }) }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#854F0B', fontFamily: 'inherit', textAlign: 'left' }}
+                                >
+                                  <i className="ti ti-eye-off" /> Nonaktifkan
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => { setOpenKebab(null); setKonfirmasi({ type: 'confirm_aktifkan', item: root }) }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#3B6D11', fontFamily: 'inherit', textAlign: 'left' }}
+                                >
+                                  <i className="ti ti-circle-check" /> Aktifkan kembali
+                                </button>
+                              )}
                               {/* Hapus */}
                               <button
                                 onClick={() => { setOpenKebab(null); setKonfirmasi({ type: 'confirm_hapus', item: root }) }}
