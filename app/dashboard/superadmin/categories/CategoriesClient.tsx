@@ -715,44 +715,71 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                                 style={{ position: 'absolute', right: 8, ...dropdownPosSub, background: '#fff', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, minWidth: 220, overflow: 'hidden' }}
                                 onMouseLeave={() => setOpenKebabSub(null)}
                               >
-                                {/* KOREKSI-2 S#309: kebab sub kondisional */}
+                                {/* KOREKSI-2 S#309 v2: kebab sub — matrix 4 kondisi */}
                                 {sub.is_active ? (
-                                  /* Sub AKTIF: Edit | --- | Nonaktifkan */
-                                  <>
-                                    <button onClick={() => { setOpenKebabSub(null); openDialog('sub', sub) }}
-                                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left' }}>
-                                      <i className="ti ti-edit" /> Edit sub-kategori
-                                    </button>
-                                    <div style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '2px 0' }} />
-                                    <button
-                                      onClick={() => { setOpenKebabSub(null); setKonfirmasi({ type: 'confirm_nonaktif', item: sub }) }}
-                                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#854F0B', fontFamily: 'inherit', textAlign: 'left' }}
-                                    >
-                                      <i className="ti ti-eye-off" /> Nonaktifkan
-                                    </button>
-                                  </>
-                                ) : root.is_active ? (
-                                  /* Sub NONAKTIF, Root AKTIF: Aktifkan kembali | Edit */
-                                  <>
+                                  (sub.total_tenants ?? 0) === 0 ? (
+                                    /* Sub AKTIF, belum dipakai: Edit | --- | Nonaktifkan | Hapus */
+                                    <>
+                                      <button onClick={() => { setOpenKebabSub(null); openDialog('sub', sub) }}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left' }}>
+                                        <i className="ti ti-edit" /> Edit sub-kategori
+                                      </button>
+                                      <div style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '2px 0' }} />
+                                      <button
+                                        onClick={() => { setOpenKebabSub(null); setKonfirmasi({ type: 'confirm_nonaktif', item: sub }) }}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#854F0B', fontFamily: 'inherit', textAlign: 'left' }}
+                                      >
+                                        <i className="ti ti-eye-off" /> Nonaktifkan
+                                      </button>
+                                      <button
+                                        onClick={() => { setOpenKebabSub(null); doHapus(sub) }}
+                                        disabled={actionLoading}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: actionLoading ? 'not-allowed' : 'pointer', fontSize: 13, color: '#A32D2D', fontFamily: 'inherit', textAlign: 'left', opacity: actionLoading ? 0.6 : 1 }}>
+                                        <i className="ti ti-trash" /> Hapus
+                                      </button>
+                                    </>
+                                  ) : (
+                                    /* Sub AKTIF, sudah dipakai: Edit | Nonaktifkan */
+                                    <>
+                                      <button onClick={() => { setOpenKebabSub(null); openDialog('sub', sub) }}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left' }}>
+                                        <i className="ti ti-edit" /> Edit sub-kategori
+                                      </button>
+                                      <div style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '2px 0' }} />
+                                      <button
+                                        onClick={() => { setOpenKebabSub(null); setKonfirmasi({ type: 'confirm_nonaktif', item: sub }) }}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#854F0B', fontFamily: 'inherit', textAlign: 'left' }}
+                                      >
+                                        <i className="ti ti-eye-off" /> Nonaktifkan
+                                      </button>
+                                    </>
+                                  )
+                                ) : (
+                                  (sub.total_tenants ?? 0) === 0 ? (
+                                    /* Sub NONAKTIF, belum dipakai: Aktifkan kembali | Hapus */
+                                    <>
+                                      <button
+                                        onClick={() => { setOpenKebabSub(null); setKonfirmasi({ type: 'confirm_aktifkan', item: sub }) }}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#3B6D11', fontFamily: 'inherit', textAlign: 'left' }}
+                                      >
+                                        <i className="ti ti-circle-check" /> Aktifkan kembali
+                                      </button>
+                                      <button
+                                        onClick={() => { setOpenKebabSub(null); doHapus(sub) }}
+                                        disabled={actionLoading}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: actionLoading ? 'not-allowed' : 'pointer', fontSize: 13, color: '#A32D2D', fontFamily: 'inherit', textAlign: 'left', opacity: actionLoading ? 0.6 : 1 }}>
+                                        <i className="ti ti-trash" /> Hapus
+                                      </button>
+                                    </>
+                                  ) : (
+                                    /* Sub NONAKTIF, sudah dipakai: Aktifkan kembali (saja) */
                                     <button
                                       onClick={() => { setOpenKebabSub(null); setKonfirmasi({ type: 'confirm_aktifkan', item: sub }) }}
                                       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#3B6D11', fontFamily: 'inherit', textAlign: 'left' }}
                                     >
                                       <i className="ti ti-circle-check" /> Aktifkan kembali
                                     </button>
-                                    <button onClick={() => { setOpenKebabSub(null); openDialog('sub', sub) }}
-                                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left' }}>
-                                      <i className="ti ti-edit" /> Edit sub-kategori
-                                    </button>
-                                  </>
-                                ) : (
-                                  /* Sub NONAKTIF, Root NONAKTIF: hanya info */
-                                  <button
-                                    onClick={() => { setOpenKebabSub(null); setInfoSub({ display_name: sub.display_name }) }}
-                                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#185FA5', fontFamily: 'inherit', textAlign: 'left' }}
-                                  >
-                                    <i className="ti ti-info-circle" /> Aktifkan induk dulu
-                                  </button>
+                                  )
                                 )}
                               </div>
                             )}
