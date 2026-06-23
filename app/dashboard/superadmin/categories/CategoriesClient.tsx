@@ -2,15 +2,13 @@
 
 // app/dashboard/superadmin/categories/CategoriesClient.tsx
 // Orchestrator halaman List Categories — toolbar + 8-kolom tabel + kebab kondisional
-// Style: konsisten dengan Tab Info Umum (inline design tokens)
 // Fix: G47 (2 tombol terpisah), G48 (8 kolom), G49 (tenant detail), G50 (level badge),
 //      G51 (ikon root), G52 (kebab kondisional), G53 (4 filter), G54 (Expand semua)
-//      S306: kebab dropdown adaptive direction (atas/bawah otomatis)
-//      S306: sort kolom via useSortableTable (standar S5_PERILAKU.md)
+//      S306: kebab adaptive direction, sort kolom, nonaktifkan+hapus+auto-refresh
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
 // Diupdate: Sesi #141 — M6 Fix Fase F
-// Diupdate: Sesi #306 — Fix kebab terpotong + sort kolom
+// Diupdate: Sesi #306 — Fix kebab terpotong + sort + nonaktif/hapus + auto-refresh
 
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
@@ -27,12 +25,12 @@ interface Props {
 // ─── Ikon + warna per root (cycling) ──────────────────────────────────────────
 
 const ICON_COLORS = [
-  { bg: '#E6F1FB', color: '#185FA5' }, // biru
-  { bg: '#FBEAF0', color: '#993556' }, // pink
-  { bg: '#EAF3DE', color: '#3B6D11' }, // hijau
-  { bg: '#FAEEDA', color: '#854F0B' }, // amber
-  { bg: '#EEEDFE', color: '#534AB7' }, // ungu
-  { bg: '#F1EFE8', color: '#5F5E5A' }, // abu
+  { bg: '#E6F1FB', color: '#185FA5' },
+  { bg: '#FBEAF0', color: '#993556' },
+  { bg: '#EAF3DE', color: '#3B6D11' },
+  { bg: '#FAEEDA', color: '#854F0B' },
+  { bg: '#EEEDFE', color: '#534AB7' },
+  { bg: '#F1EFE8', color: '#5F5E5A' },
 ]
 
 const DEFAULT_ICON_BY_SLUG: Record<string, string> = {
@@ -72,16 +70,23 @@ const S = {
   card:   { background: '#fff', borderWidth: '0.5px', borderStyle: 'solid' as const, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 12 } as React.CSSProperties,
   input:  { padding: '7px 10px 7px 28px', borderWidth: '0.5px', borderStyle: 'solid' as const, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff' } as React.CSSProperties,
   select: { padding: '7px 10px', borderWidth: '0.5px', borderStyle: 'solid' as const, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff' } as React.CSSProperties,
-  // Header tabel yang sortable
   thSort: { padding: '10px 14px', fontSize: 11, fontWeight: 500, color: '#6b7280', textAlign: 'left' as const, cursor: 'pointer', userSelect: 'none' as const, whiteSpace: 'nowrap' as const } as React.CSSProperties,
   thPlain:{ padding: '10px 14px', fontSize: 11, fontWeight: 500, color: '#6b7280', textAlign: 'left' as const } as React.CSSProperties,
 }
 
-// ─── Dropdown direction — deteksi apakah ada ruang cukup di bawah button ──────
+// ─── Dialog state type ────────────────────────────────────────────────────────
+
+type DialogState =
+  | { type: 'none' }
+  | { type: 'confirm_nonaktif';  item: CategoryListItem }
+  | { type: 'blocked_nonaktif';  item: CategoryListItem }   // sudah dipakai → tawarkan nonaktif
+  | { type: 'confirm_hapus';     item: CategoryListItem }
+
+// ─── Dropdown direction ───────────────────────────────────────────────────────
+
 function getDropdownDir(btn: HTMLButtonElement): 'up' | 'down' {
   const rect = btn.getBoundingClientRect()
-  const spaceBelow = window.innerHeight - rect.bottom
-  return spaceBelow < 180 ? 'up' : 'down'
+  return (window.innerHeight - rect.bottom) < 180 ? 'up' : 'down'
 }
 
 // ─── Komponen ─────────────────────────────────────────────────────────────────
@@ -91,6 +96,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
   const [stats,      setStats]      = useState<CategoryStats>(initialStats)
   const [total,      setTotal]      = useState(initialTotal)
   const [loading,    setLoading]    = useState(false)
+  const [actionLoading, setActionLoading] = useState(false)
   const [search,     setSearch]     = useState('')
   const [filterLvl,  setFilterLvl]  = useState('')
   const [filterStat, setFilterStat] = useState('')
@@ -101,6 +107,9 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
   const [expanded,   setExpanded]   = useState<Set<string>>(new Set())
   const [openKebab,  setOpenKebab]  = useState<string | null>(null)
   const [kebabDir,   setKebabDir]   = useState<'up' | 'down'>('down')
+  const [konfirmasi, setKonfirmasi] = useState<DialogState>({ type: 'none' })
+
+  // ─── Fetch / refresh data ─────────────────────────────────────────────────
 
   const fetchData = useCallback(async (q?: string) => {
     setLoading(true)
@@ -113,6 +122,55 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
     } catch { toast.error('Gagal memuat data kategori') }
     finally { setLoading(false) }
   }, [])
+
+  // ─── Aksi Nonaktifkan ─────────────────────────────────────────────────────
+
+  const doNonaktifkan = async (item: CategoryListItem) => {
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/superadmin/categories/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: false }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.message ?? 'Gagal nonaktifkan kategori')
+      toast.success(`Kategori "${item.display_name}" berhasil dinonaktifkan`)
+      setKonfirmasi({ type: 'none' })
+      await fetchData(search)   // auto-refresh
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Gagal nonaktifkan kategori')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // ─── Aksi Hapus — cek assignment dulu ────────────────────────────────────
+
+  const doHapus = async (item: CategoryListItem) => {
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/superadmin/categories/${item.id}`, { method: 'DELETE' })
+      const json = await res.json()
+
+      if (res.status === 409) {
+        // Sudah dipakai tenant → tawaran nonaktif
+        setKonfirmasi({ type: 'blocked_nonaktif', item })
+        return
+      }
+      if (!res.ok) throw new Error(json.message ?? 'Gagal menghapus kategori')
+
+      toast.success(`Kategori "${item.display_name}" berhasil dihapus`)
+      setKonfirmasi({ type: 'none' })
+      await fetchData(search)   // auto-refresh
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Gagal menghapus kategori')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // ─── Helper UI ────────────────────────────────────────────────────────────
 
   const toggleExpand = (id: string) => {
     setExpanded(prev => {
@@ -129,15 +187,12 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
   }
 
   const handleKebabClick = (id: string, e: React.MouseEvent<HTMLButtonElement>) => {
-    if (openKebab === id) {
-      setOpenKebab(null)
-    } else {
-      setKebabDir(getDropdownDir(e.currentTarget))
-      setOpenKebab(id)
-    }
+    if (openKebab === id) { setOpenKebab(null); return }
+    setKebabDir(getDropdownDir(e.currentTarget))
+    setOpenKebab(id)
   }
 
-  // ─── Filter ────────────────────────────────────────────────────────────────
+  // ─── Filter + Sort ────────────────────────────────────────────────────────
 
   const filtered = data.filter(c => {
     if (search && !c.display_name.toLowerCase().includes(search.toLowerCase())) return false
@@ -149,31 +204,127 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
     return true
   })
 
-  // ─── Sort — hanya di level root (S5_PERILAKU: ≤50 baris = client-side) ────
   const roots_raw = filtered.filter(c => c.level === 1)
   const subs      = filtered.filter(c => c.level === 2)
 
   const { sorted: roots, handleSort, sortIcon, sortIconClass } = useSortableTable(
-    roots_raw,
-    'display_name',
-    'asc',
+    roots_raw, 'display_name', 'asc',
   )
 
-  // Posisi dropdown berdasarkan arah yang terdeteksi
   const dropdownPos = kebabDir === 'up'
     ? { bottom: '100%', top: 'auto', marginBottom: 4 }
     : { top: '100%', bottom: 'auto', marginTop: 4 }
 
+  // ─── Render ───────────────────────────────────────────────────────────────
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 24 }}>
 
-      {/* Header — 2 tombol terpisah (G47) */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
-            {stats.total_root} kategori root · {stats.total_sub} sub-kategori
-          </p>
+      {/* ── Dialog Konfirmasi Nonaktifkan ──────────────────────────────── */}
+      {konfirmasi.type === 'confirm_nonaktif' && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: '24px 28px', maxWidth: 440, width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <i className="ti ti-eye-off" style={{ fontSize: 20, color: '#854F0B' }} />
+              <div style={{ fontSize: 15, fontWeight: 600 }}>Nonaktifkan Kategori</div>
+            </div>
+            <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, marginBottom: 20 }}>
+              Anda akan menonaktifkan kategori <strong>&quot;{konfirmasi.item.display_name}&quot;</strong>.
+              Kategori tidak akan muncul untuk vendor dan customer, namun data tetap tersimpan.
+              Lanjutkan?
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setKonfirmasi({ type: 'none' })}
+                disabled={actionLoading}
+                style={{ padding: '7px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', background: 'transparent', color: '#1a1a1a' }}
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => doNonaktifkan(konfirmasi.item)}
+                disabled={actionLoading}
+                style={{ padding: '7px 16px', borderRadius: 8, fontSize: 13, cursor: actionLoading ? 'not-allowed' : 'pointer', borderWidth: 0, background: '#854F0B', color: '#fff', opacity: actionLoading ? 0.7 : 1 }}
+              >
+                {actionLoading ? 'Memproses…' : 'Ya, Nonaktifkan'}
+              </button>
+            </div>
+          </div>
         </div>
+      )}
+
+      {/* ── Dialog Hapus ──────────────────────────────────────────────── */}
+      {konfirmasi.type === 'confirm_hapus' && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: '24px 28px', maxWidth: 440, width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <i className="ti ti-trash" style={{ fontSize: 20, color: '#A32D2D' }} />
+              <div style={{ fontSize: 15, fontWeight: 600 }}>Hapus Kategori</div>
+            </div>
+            <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, marginBottom: 20 }}>
+              Anda akan menghapus kategori <strong>&quot;{konfirmasi.item.display_name}&quot;</strong> secara permanen.
+              Tindakan ini tidak dapat dibatalkan.
+              Lanjutkan?
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setKonfirmasi({ type: 'none' })}
+                disabled={actionLoading}
+                style={{ padding: '7px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', background: 'transparent', color: '#1a1a1a' }}
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => doHapus(konfirmasi.item)}
+                disabled={actionLoading}
+                style={{ padding: '7px 16px', borderRadius: 8, fontSize: 13, cursor: actionLoading ? 'not-allowed' : 'pointer', borderWidth: 0, background: '#A32D2D', color: '#fff', opacity: actionLoading ? 0.7 : 1 }}
+              >
+                {actionLoading ? 'Memproses…' : 'Ya, Hapus'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Dialog Blocked — sudah dipakai, tawaran nonaktif ─────────── */}
+      {konfirmasi.type === 'blocked_nonaktif' && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: '24px 28px', maxWidth: 460, width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <i className="ti ti-info-circle" style={{ fontSize: 20, color: '#185FA5' }} />
+              <div style={{ fontSize: 15, fontWeight: 600 }}>Kategori Tidak Bisa Dihapus</div>
+            </div>
+            <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, marginBottom: 20 }}>
+              Kategori <strong>&quot;{konfirmasi.item.display_name}&quot;</strong> telah digunakan oleh tenant aktif,
+              sehingga tidak bisa dihapus. Anda hanya bisa melakukan <strong>nonaktifkan</strong>.
+              <br /><br />
+              Apakah Anda akan melanjutkan nonaktifkan kategori ini?
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setKonfirmasi({ type: 'none' })}
+                disabled={actionLoading}
+                style={{ padding: '7px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', background: 'transparent', color: '#1a1a1a' }}
+              >
+                Tidak
+              </button>
+              <button
+                onClick={() => doNonaktifkan(konfirmasi.item)}
+                disabled={actionLoading}
+                style={{ padding: '7px 16px', borderRadius: 8, fontSize: 13, cursor: actionLoading ? 'not-allowed' : 'pointer', borderWidth: 0, background: '#854F0B', color: '#fff', opacity: actionLoading ? 0.7 : 1 }}
+              >
+                {actionLoading ? 'Memproses…' : 'Ya, Nonaktifkan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <p style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+          {stats.total_root} kategori root · {stats.total_sub} sub-kategori
+        </p>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => openDialog('sub')}
@@ -190,13 +341,13 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
         </div>
       </div>
 
-      {/* Stats — 4 kartu */}
+      {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
         {[
-          { label: 'Total kategori root',      val: stats.total_root,        sub: 'Pilar utama platform' },
-          { label: 'Total sub-kategori',       val: stats.total_sub,         sub: `Di bawah ${stats.total_root} root` },
-          { label: 'Kategori aktif di-assign', val: stats.total_assigned,    sub: 'Dipegang minimal 1 tenant' },
-          { label: 'Kategori belum di-assign', val: stats.total_unassigned,  sub: 'Tersedia di pool platform' },
+          { label: 'Total kategori root',      val: stats.total_root,       sub: 'Pilar utama platform' },
+          { label: 'Total sub-kategori',       val: stats.total_sub,        sub: `Di bawah ${stats.total_root} root` },
+          { label: 'Kategori aktif di-assign', val: stats.total_assigned,   sub: 'Dipegang minimal 1 tenant' },
+          { label: 'Kategori belum di-assign', val: stats.total_unassigned, sub: 'Tersedia di pool platform' },
         ].map(({ label, val, sub }) => (
           <div key={label} style={{ ...S.card, padding: '12px 14px' }}>
             <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 3 }}>{label}</div>
@@ -206,7 +357,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
         ))}
       </div>
 
-      {/* Toolbar — 4 filter (G53) */}
+      {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative' }}>
           <i className="ti ti-search" style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: '#9ca3af' }} />
@@ -217,7 +368,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
             style={{ ...S.input, width: 220 }}
           />
         </div>
-        <select value={filterLvl} onChange={e => setFilterLvl(e.target.value)} style={S.select}>
+        <select value={filterLvl}  onChange={e => setFilterLvl(e.target.value)}  style={S.select}>
           <option value="">Semua level</option>
           <option value="1">Root saja</option>
           <option value="2">Sub-kategori saja</option>
@@ -234,8 +385,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
         </select>
       </div>
 
-      {/* Tabel — 8 kolom (G48) */}
-      {/* overflow: 'visible' agar dropdown kebab tidak terpotong (S306) */}
+      {/* Tabel */}
       <div style={{ ...S.card, overflow: 'visible' }}>
         {loading ? (
           <div style={{ padding: 24, textAlign: 'center', color: '#6b7280', fontSize: 13 }}>Memuat data kategori…</div>
@@ -247,7 +397,6 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
           </div>
         ) : (
           <>
-            {/* overflow-x: 'auto' di wrapper table agar scroll horizontal tetap bisa */}
             <div style={{ overflowX: 'auto', borderRadius: 12 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 13 }}>
                 <colgroup>
@@ -262,40 +411,25 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                 </colgroup>
                 <thead>
                   <tr style={{ background: '#f9f9f8' }}>
-                    {/* Kolom expand — tidak sortable */}
                     <th style={S.thPlain}></th>
-
-                    {/* Nama kategori — sortable */}
                     <th style={S.thSort} onClick={() => handleSort('display_name')}>
                       Nama kategori <span className={sortIconClass('display_name')}>{sortIcon('display_name')}</span>
                     </th>
-
-                    {/* Level — sortable */}
                     <th style={S.thSort} onClick={() => handleSort('level')}>
                       Level <span className={sortIconClass('level')}>{sortIcon('level')}</span>
                     </th>
-
-                    {/* Tenant — sortable by total_tenants */}
                     <th style={S.thSort} onClick={() => handleSort('total_tenants')}>
                       Tenant yang memegang <span className={sortIconClass('total_tenants')}>{sortIcon('total_tenants')}</span>
                     </th>
-
-                    {/* Vendor — sortable by total_vendors */}
                     <th style={S.thSort} onClick={() => handleSort('total_vendors')}>
                       Vendor aktif <span className={sortIconClass('total_vendors')}>{sortIcon('total_vendors')}</span>
                     </th>
-
-                    {/* Status — sortable by is_active */}
                     <th style={S.thSort} onClick={() => handleSort('is_active')}>
                       Status <span className={sortIconClass('is_active')}>{sortIcon('is_active')}</span>
                     </th>
-
-                    {/* Dibuat — sortable by created_at */}
                     <th style={S.thSort} onClick={() => handleSort('created_at')}>
                       Dibuat <span className={sortIconClass('created_at')}>{sortIcon('created_at')}</span>
                     </th>
-
-                    {/* Aksi — tidak sortable */}
                     <th style={S.thPlain}></th>
                   </tr>
                 </thead>
@@ -306,7 +440,6 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                     const iconColor = ICON_COLORS[rootIdx % ICON_COLORS.length]
 
                     return [
-                      /* Root row */
                       <tr key={root.id}
                         style={{ borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)', background: '#fff', opacity: root.is_active ? 1 : 0.7 }}
                         onMouseEnter={e => (e.currentTarget.style.background = '#f9f9f8')}
@@ -322,7 +455,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                           )}
                         </td>
 
-                        {/* Nama kategori dengan ikon (G51) */}
+                        {/* Nama */}
                         <td style={{ padding: '11px 14px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, background: iconColor.bg, color: iconColor.color }}>
@@ -335,14 +468,12 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                           </div>
                         </td>
 
-                        {/* Level badge (G50) */}
+                        {/* Level */}
                         <td style={{ padding: '11px 14px' }}>
-                          <span style={{ display: 'inline-flex', padding: '2px 7px', borderRadius: 100, fontSize: 10, fontWeight: 500, borderWidth: '0.5px', borderStyle: 'solid', background: '#E6F1FB', color: '#185FA5', borderColor: '#85B7EB' }}>
-                            Root
-                          </span>
+                          <span style={{ display: 'inline-flex', padding: '2px 7px', borderRadius: 100, fontSize: 10, fontWeight: 500, borderWidth: '0.5px', borderStyle: 'solid', background: '#E6F1FB', color: '#185FA5', borderColor: '#85B7EB' }}>Root</span>
                         </td>
 
-                        {/* Tenant (G49) */}
+                        {/* Tenant */}
                         <td style={{ padding: '11px 14px' }}>
                           {(root.total_tenants ?? 0) === 0 ? (
                             <span style={{ color: '#9ca3af', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -354,7 +485,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#97C459' }} />
                                 {root.total_tenants} tenant
                               </div>
-                              {root.tenant_names && root.tenant_names.length > 0 && (
+                              {root.tenant_names?.length > 0 && (
                                 <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
                                   {root.tenant_names.slice(0, 2).join(', ')}
                                   {root.tenant_names.length > 2 && ` +${root.tenant_names.length - 2}`}
@@ -364,32 +495,23 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                           )}
                         </td>
 
-                        {/* Vendor aktif (G48) */}
-                        <td style={{ padding: '11px 14px', fontSize: 13 }}>
-                          {root.total_vendors ?? 0} vendor
-                        </td>
+                        {/* Vendor */}
+                        <td style={{ padding: '11px 14px', fontSize: 13 }}>{root.total_vendors ?? 0} vendor</td>
 
                         {/* Status */}
                         <td style={{ padding: '11px 14px' }}>
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px',
-                            borderRadius: 100, fontSize: 11, fontWeight: 500,
-                            borderWidth: '0.5px', borderStyle: 'solid',
-                            background:  root.is_active ? '#EAF3DE' : '#f9f9f8',
-                            color:       root.is_active ? '#3B6D11' : '#6b7280',
-                            borderColor: root.is_active ? '#97C459' : 'rgba(0,0,0,0.12)',
-                          }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 500, borderWidth: '0.5px', borderStyle: 'solid', background: root.is_active ? '#EAF3DE' : '#f9f9f8', color: root.is_active ? '#3B6D11' : '#6b7280', borderColor: root.is_active ? '#97C459' : 'rgba(0,0,0,0.12)' }}>
                             <i className={`ti ${root.is_active ? 'ti-circle-check' : 'ti-eye-off'}`} style={{ fontSize: 10 }} />
                             {root.is_active ? 'Aktif' : 'Nonaktif'}
                           </span>
                         </td>
 
-                        {/* Dibuat (G48) */}
+                        {/* Dibuat */}
                         <td style={{ padding: '11px 14px', fontSize: 12, color: '#6b7280' }}>
                           {new Date(root.created_at).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })}
                         </td>
 
-                        {/* Kebab (G52) — S306: adaptive direction */}
+                        {/* Kebab */}
                         <td style={{ padding: '11px 8px', position: 'relative' }}>
                           <button
                             onClick={(e) => handleKebabClick(root.id, e)}
@@ -399,31 +521,31 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                           </button>
                           {openKebab === root.id && (
                             <div
-                              style={{
-                                position: 'absolute', right: 8,
-                                ...dropdownPos,
-                                background: '#fff',
-                                borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)',
-                                borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                                zIndex: 100, minWidth: 200, overflow: 'hidden'
-                              }}
+                              style={{ position: 'absolute', right: 8, ...dropdownPos, background: '#fff', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, minWidth: 200, overflow: 'hidden' }}
                               onMouseLeave={() => setOpenKebab(null)}
                             >
+                              {/* Edit */}
                               <button onClick={() => { setOpenKebab(null); openDialog('root', root) }}
                                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left' }}>
                                 <i className="ti ti-edit" /> Edit kategori
                               </button>
+                              {/* Tambah sub */}
                               <button onClick={() => { setOpenKebab(null); openDialog('sub') }}
                                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left' }}>
                                 <i className="ti ti-plus" /> Tambah sub-kategori
                               </button>
                               <div style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '2px 0' }} />
-                              <button onClick={() => { setOpenKebab(null); toast.info('Segera tersedia') }}
-                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#854F0B', fontFamily: 'inherit', textAlign: 'left' }}>
+                              {/* Nonaktifkan / Aktifkan */}
+                              <button
+                                onClick={() => { setOpenKebab(null); setKonfirmasi({ type: 'confirm_nonaktif', item: root }) }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: 'pointer', fontSize: 13, color: '#854F0B', fontFamily: 'inherit', textAlign: 'left' }}
+                              >
                                 <i className="ti ti-eye-off" /> {root.is_active ? 'Nonaktifkan' : 'Aktifkan kembali'}
                               </button>
-                              <button disabled={(root.total_tenants ?? 0) > 0}
-                                onClick={() => { setOpenKebab(null); toast.info('Segera tersedia') }}
+                              {/* Hapus */}
+                              <button
+                                onClick={() => { setOpenKebab(null); setKonfirmasi({ type: 'confirm_hapus', item: root }) }}
+                                disabled={(root.total_tenants ?? 0) > 0}
                                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: (root.total_tenants ?? 0) > 0 ? 'not-allowed' : 'pointer', fontSize: 13, color: '#A32D2D', fontFamily: 'inherit', textAlign: 'left', opacity: (root.total_tenants ?? 0) > 0 ? 0.4 : 1 }}>
                                 <i className="ti ti-trash" /> Hapus{(root.total_tenants ?? 0) > 0 ? ' (ada assignment)' : ''}
                               </button>
@@ -432,11 +554,9 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                         </td>
                       </tr>,
 
-                      /* Sub rows — ikut urutan parent, tidak di-sort terpisah */
+                      /* Sub rows */
                       ...(isOpen ? subList.map(sub => (
-                        <tr key={sub.id}
-                          style={{ borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)', background: '#f9f9f8' }}
-                        >
+                        <tr key={sub.id} style={{ borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)', background: '#f9f9f8' }}>
                           <td />
                           <td style={{ padding: '10px 14px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 28 }}>
@@ -450,14 +570,10 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
                             </div>
                           </td>
                           <td style={{ padding: '10px 14px' }}>
-                            <span style={{ display: 'inline-flex', padding: '2px 7px', borderRadius: 100, fontSize: 10, fontWeight: 500, borderWidth: '0.5px', borderStyle: 'solid', background: '#f9f9f8', color: '#6b7280', borderColor: 'rgba(0,0,0,0.12)' }}>
-                              Sub
-                            </span>
+                            <span style={{ display: 'inline-flex', padding: '2px 7px', borderRadius: 100, fontSize: 10, fontWeight: 500, borderWidth: '0.5px', borderStyle: 'solid', background: '#f9f9f8', color: '#6b7280', borderColor: 'rgba(0,0,0,0.12)' }}>Sub</span>
                           </td>
                           <td style={{ padding: '10px 14px', fontSize: 12 }}>
-                            {(sub.total_tenants ?? 0) === 0
-                              ? <span style={{ color: '#9ca3af' }}>—</span>
-                              : `${sub.total_tenants} tenant`}
+                            {(sub.total_tenants ?? 0) === 0 ? <span style={{ color: '#9ca3af' }}>—</span> : `${sub.total_tenants} tenant`}
                           </td>
                           <td style={{ padding: '10px 14px', fontSize: 13 }}>{sub.total_vendors ?? 0} vendor</td>
                           <td style={{ padding: '10px 14px' }}>
@@ -482,7 +598,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
               </table>
             </div>
 
-            {/* Footer tabel (G54) */}
+            {/* Footer */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)' }}>
               <span style={{ fontSize: 12, color: '#6b7280' }}>
                 Menampilkan {roots.length} root · {subs.length} sub-kategori
