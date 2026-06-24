@@ -260,7 +260,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 24, minHeight: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 24, flex: 1 }}>
 
       {/* ── Dialog Konfirmasi Aktifkan Kembali ────────────────────────────── */}
       {konfirmasi.type === 'confirm_aktifkan' && (
