@@ -486,7 +486,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
       </div>
 
       {/* Tabel */}
-      <div style={{ ...S.card, overflow: 'visible' }}>
+      <div style={{ ...S.card, overflow: 'visible', flex: 1, display: 'flex', flexDirection: 'column' }}>
         {loading ? (
           <div style={{ padding: 24, textAlign: 'center', color: '#6b7280', fontSize: 13 }}>Memuat data kategori…</div>
         ) : roots.length === 0 ? (
@@ -497,7 +497,7 @@ export function CategoriesClient({ initialData, initialStats, initialTotal }: Pr
           </div>
         ) : (
           <>
-            <div style={{ overflowX: 'auto', borderRadius: 12 }}>
+            <div style={{ overflowX: 'auto', borderRadius: 12, flex: 1 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 13 }}>
                 <colgroup>
                   <col style={{ width: '4%'  }} />
