@@ -199,7 +199,7 @@ export function SidebarNav({ brandName, messages, featureKeys, menuGroups }: Sid
                   <div className="mt-0.5 mb-1 md:hidden lg:block">
                     {subItems.map(item => {
                       const href       = resolveHref(item.routePath, item.featureFlag)
-                      const itemActive = pathname === href || pathname.startsWith(href + '/')
+                      const itemActive = pathname === href
                       return (
                         <Link
                           key={item.menuKey}
@@ -257,7 +257,7 @@ export function SidebarNav({ brandName, messages, featureKeys, menuGroups }: Sid
                   <div className="mt-0.5 mb-1 md:hidden lg:block">
                     {subItems.map(item => {
                       const href       = navItemToPath(item)
-                      const itemActive = pathname === href || pathname.startsWith(href + '/')
+                      const itemActive = pathname === href
                       return (
                         <Link
                           key={item.key}
