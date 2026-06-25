@@ -340,10 +340,8 @@ export function TabAksesMenuAT({ tenantId, tenantNama }: Props) {
       }}>
         <i className="ti ti-info-circle" style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }} />
         <div>
-          Menu yang Anda aktifkan di sini akan tampil di Dashboard AdminTenant Level Penanggung Jawab -{' '}
-          <strong>{tenantNama}</strong>, untuk Level lainnya saat Login tampilan Dashboard hanya menampilkan
-          Profil Perusahaan, untuk menu lain harus di setting oleh Level Penanggung Jawab -{' '}
-          <strong>{tenantNama}</strong> dahulu. Menu yang dinonaktifkan tidak akan muncul sama sekali untuk tenant ini.
+          Menu yang Anda aktifkan di sini akan tampil di Dashboard AdminTenant{' '}
+          <strong>{tenantNama}</strong>. Menu yang dinonaktifkan tidak akan muncul sama sekali untuk tenant ini.
         </div>
       </div>
 
