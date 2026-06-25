@@ -34,6 +34,8 @@ export interface TenantDraft {
   tipe:                string
   tier:                string
   refund_auto_approve: boolean
+  region_coverage:     string
+  tags:                string      // comma-separated di UI, array di server
   // Cluster F
   timezone:            string
   bahasa:              string
@@ -64,6 +66,8 @@ export function buildDraft(t: Tenant): TenantDraft {
     tipe:                t.tipe               ?? 'eksternal',
     tier:                t.tier               ?? 'starter',
     refund_auto_approve: t.refund_auto_approve ?? false,
+    region_coverage:     t.region_coverage    ?? '',
+    tags:                (t.tags ?? []).join(', '),
     timezone:            t.timezone           ?? 'Asia/Jakarta',
     bahasa:              t.bahasa             ?? 'id-ID',
     catatan_internal:    t.catatan_internal   ?? '',
@@ -92,7 +96,9 @@ export function buildDiffPayload(
   for (const k of keys) {
     if (String(draft[k]) === String(baseline[k])) continue
 
-    if (k === 'refund_auto_approve') {
+    if (k === 'tags') {
+      diff[k] = draft.tags.split(',').map(t => t.trim()).filter(Boolean)
+    } else if (k === 'refund_auto_approve') {
       diff[k] = draft.refund_auto_approve
     } else {
       diff[k] = draft[k]
