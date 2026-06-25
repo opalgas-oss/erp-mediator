@@ -232,7 +232,8 @@ export function TabInfoUmum({ tenant, onRefresh }: Props) {
             ]} />
           )}
 
-
+          <FInput label="Region / area coverage"       value={draft.region_coverage} onChange={v => set('region_coverage', v)} helpText="Opsional. Kosong = seluruh Indonesia" />
+          <FInput label="Tags / label internal (opsional)" value={draft.tags} onChange={v => set('tags', v)} fullWidth placeholder="Contoh: jabodetabek-coverage, pilot-tenant" helpText="Opsional. Tidak terlihat AdminTenant" />
         </FRow>
       </Accordion>
 
