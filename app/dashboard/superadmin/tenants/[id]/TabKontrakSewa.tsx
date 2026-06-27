@@ -43,18 +43,20 @@ interface KontrakDraft {
 // ─── buildDraft — inisialisasi draft dari data tenant ─────────────────────────
 
 function buildDraft(t: Tenant): KontrakDraft {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const x = t as any // field kontrak belum semua masuk Tenant interface
   return {
     contract_start_date:   t.contract_start_date?.split('T')[0] ?? '',
     contract_end_date:     t.contract_end_date?.split('T')[0]   ?? '',
-    biaya_awal:            String(t.biaya_awal            ?? '0'),
-    biaya_langganan:       String(t.biaya_langganan       ?? '0'),
-    siklus_tagihan:        t.siklus_tagihan               ?? '',
-    pajak_langganan:       String(t.pajak_langganan       ?? ''),
+    biaya_awal:            String(x.biaya_awal            ?? '0'),
+    biaya_langganan:       String(x.biaya_langganan       ?? '0'),
+    siklus_tagihan:        x.siklus_tagihan               ?? '',
+    pajak_langganan:       String(x.pajak_langganan       ?? ''),
     auto_renewal:          t.auto_renewal                 ?? false,
     renewal_notice_days:   String(t.renewal_notice_days   ?? '30'),
-    notif_days:            (t.notif_days as number[])     ?? DEFAULT_NOTIF_DAYS,
+    notif_days:            (x.notif_days as number[])     ?? DEFAULT_NOTIF_DAYS,
     early_termination_fee: String(t.early_termination_fee ?? ''),
-    kebijakan_refund:      t.kebijakan_refund             ?? 'Refund prorata untuk sisa hari belum dipakai',
+    kebijakan_refund:      x.kebijakan_refund             ?? 'Refund prorata untuk sisa hari belum dipakai',
   }
 }
 
