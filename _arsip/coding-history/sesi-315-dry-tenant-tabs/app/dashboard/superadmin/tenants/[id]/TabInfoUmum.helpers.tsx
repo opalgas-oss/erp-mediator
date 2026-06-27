@@ -1,22 +1,13 @@
 'use client'
 
 // app/dashboard/superadmin/tenants/[id]/TabInfoUmum.helpers.tsx
-// Sub-komponen untuk TabInfoUmum: TenantDraft, helpers bisnis, LifecycleViz
+// Sub-komponen untuk TabInfoUmum: Accordion, field helpers, LifecycleViz
 //
 // Dibuat: Sesi #312 — split dari TabInfoUmum.tsx (32.8 KB → pecah by kategori ATURAN 9)
 // Pola lama (editingCluster per-cluster) DIHAPUS — ganti pola simpan terpadu S#312
-// Refactor S#315 — H-DRY-TENANT-TABS:
-//   Accordion, FRow, FReadOnly, FInput, FSelect → dipindah ke _shared/tenant-tab-ui.tsx
-//   formatTglLengkap, formatTglWaktu → diganti formatDateIdLong, formatDateIdDateTime
-//   dari lib/utils-client.ts
-//   File ini hanya berisi: TenantDraft, buildDraft, detectHasChanges,
-//   buildDiffPayload, LifecycleViz (semua spesifik TabInfoUmum)
 
-import type { Tenant }                           from '@/lib/types/tenant.types'
-import { formatDateIdLong, formatDateIdDateTime } from '@/lib/utils-client'
-
-// Re-export shared komponen agar TabInfoUmum.tsx tidak perlu ubah import path
-export { Accordion, FRow, FReadOnly, FInput, FSelect } from './_shared/tenant-tab-ui'
+import { useState }   from 'react'
+import type { Tenant } from '@/lib/types/tenant.types'
 
 // ─── Tipe draft (semua field yang bisa diubah) ────────────────────────────────
 
@@ -111,8 +102,137 @@ export function buildDiffPayload(
   return diff
 }
 
-// ─── Re-export format tanggal agar TabInfoUmum.tsx tidak perlu ubah import ────
-export { formatDateIdLong as formatTglLengkap, formatDateIdDateTime as formatTglWaktu }
+// ─── Helper: format tanggal ───────────────────────────────────────────────────
+
+export function formatTglLengkap(isoStr: string | null | undefined): string {
+  if (!isoStr) return '—'
+  return new Date(isoStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+export function formatTglWaktu(isoStr: string | null | undefined): string {
+  if (!isoStr) return '—'
+  const d   = new Date(isoStr)
+  const tgl = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+  const jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  return `${tgl}, ${jam} WIB`
+}
+
+// ─── Sub-komponen: Accordion ──────────────────────────────────────────────────
+// Pola baru: hanya chevron di kanan (tanpa tombol Edit)
+// Chevron punya onClick sendiri — tidak dalam stopPropagation wrapper
+
+export function Accordion({
+  icon, iconBg, iconColor, title, defaultOpen, children,
+}: {
+  icon:         string
+  iconBg:       string
+  iconColor:    string
+  title:        string
+  defaultOpen?: boolean
+  children:     React.ReactNode
+}) {
+  const [open, setOpen] = useState(!!defaultOpen)
+
+  return (
+    <div style={{ border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 12, overflow: 'hidden', marginBottom: 10 }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', cursor: 'pointer', background: '#fff', userSelect: 'none' }}
+        onMouseEnter={e => (e.currentTarget.style.background = '#f9f9f8')}
+        onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 500, fontSize: 14 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: iconBg, color: iconColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>
+            <i className={`ti ${icon}`} />
+          </div>
+          {title}
+        </div>
+        {/* Chevron: onClick langsung toggle — tidak dibungkus stopPropagation */}
+        <i
+          className="ti ti-chevron-down"
+          onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
+          style={{ fontSize: 16, color: '#6b7280', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', cursor: 'pointer' }}
+        />
+      </div>
+      {open && (
+        <div style={{ padding: '0 16px 16px', background: '#fff' }}>
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Sub-komponen: Field layout helpers ──────────────────────────────────────
+
+export function FRow({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 20px', marginTop: 12 }}>{children}</div>
+}
+
+export function FReadOnly({ label, value, fullWidth, children }: {
+  label:      string
+  value?:     string | null
+  fullWidth?: boolean
+  children?:  React.ReactNode
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: fullWidth ? '1/-1' : undefined }}>
+      <label style={{ fontSize: 12, color: '#6b7280' }}>{label}</label>
+      {children ?? (
+        <input
+          readOnly
+          value={value ?? ''}
+          style={{ fontSize: 13, padding: '7px 10px', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, background: '#f9f9f8', color: '#6b7280', width: '100%', fontFamily: 'inherit' }}
+        />
+      )}
+    </div>
+  )
+}
+
+export function FInput({ label, value, onChange, fullWidth, placeholder, type, helpText }: {
+  label:        string
+  value:        string
+  onChange:     (v: string) => void
+  fullWidth?:   boolean
+  placeholder?: string
+  type?:        string
+  helpText?:    string
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: fullWidth ? '1/-1' : undefined }}>
+      <label style={{ fontSize: 12, color: '#6b7280' }}>{label}</label>
+      <input
+        type={type ?? 'text'}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ fontSize: 13, padding: '7px 10px', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, background: '#fff', color: '#1a1a1a', width: '100%', fontFamily: 'inherit' }}
+      />
+      {helpText && <span style={{ fontSize: 11, color: '#9ca3af' }}>{helpText}</span>}
+    </div>
+  )
+}
+
+export function FSelect({ label, value, onChange, options, fullWidth }: {
+  label:      string
+  value:      string
+  onChange:   (v: string) => void
+  options:    { val: string; label: string }[]
+  fullWidth?: boolean
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, gridColumn: fullWidth ? '1/-1' : undefined }}>
+      <label style={{ fontSize: 12, color: '#6b7280' }}>{label}</label>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{ fontSize: 13, padding: '7px 10px', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, background: '#fff', color: '#1a1a1a', width: '100%', fontFamily: 'inherit' }}
+      >
+        {options.map(o => <option key={o.val} value={o.val}>{o.label}</option>)}
+      </select>
+    </div>
+  )
+}
 
 // ─── Lifecycle Visualization — diagram alur 6 tahap (bisnis lifecycle) ─────────
 // S#305 FIX (dikembalikan): 6 tahap visual bisnis — BUKAN driven by DB constraint

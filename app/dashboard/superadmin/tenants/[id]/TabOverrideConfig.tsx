@@ -8,11 +8,9 @@
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
 // Diupdate: Sesi #141 — style konsistensi mockup
 
-interface Props { tenantId: string }
+import { S } from './_shared/tenant-tab-ui'
 
-const S = {
-  card: { background: '#fff', borderWidth: '0.5px', borderStyle: 'solid' as const, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 12 } as React.CSSProperties,
-}
+interface Props { tenantId: string }
 
 export function TabOverrideConfig({ tenantId: _tenantId }: Props) {
   return (

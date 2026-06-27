@@ -10,6 +10,7 @@
 import { useState } from 'react'
 import type { AdminTenantKartu, AdminTenantHistory } from '@/lib/types/admin-tenant.types'
 import { cs, JABATAN_LABEL, fmtTgl } from './tab-admintenant-history.styles'
+import { formatDateIdShort } from '@/lib/utils-client'
 
 // ─── DialogKirimUlang ─────────────────────────────────────────────────────────
 
@@ -229,9 +230,7 @@ export function TabelAktif({ loading, aktif, tenantId, tenantNama, onEdit, onTam
                           </span>}
                     </td>
                     <td style={{ ...cs.td, fontSize: 12, color: '#6b7280' }}>
-                      {new Date(at.started_at).toLocaleDateString('id-ID', {
-                        day: 'numeric', month: 'short', year: 'numeric',
-                      })}
+                      {formatDateIdShort(at.started_at)}
                     </td>
                     <td style={{ ...cs.td, textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>

@@ -1,6 +1,12 @@
 // app/dashboard/superadmin/tenants/[id]/tab-admintenant-history.styles.ts
 // Style constants untuk TabAdminTenantHistory — dipisah agar parts.tsx < 10 KB
 // Dibuat: Sesi #240
+// Refactor S#316 B-04: fmtTgl() lokal diganti re-export formatDateIdDateTime dari lib/utils-client
+
+import { formatDateIdDateTime } from '@/lib/utils-client'
+
+// Re-export agar parts.tsx tidak perlu ubah import
+export { formatDateIdDateTime as fmtTgl }
 
 export const cs = {
   card:      { background: '#fff', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 12, padding: '1.25rem', marginBottom: '1rem' },
@@ -33,9 +39,3 @@ export const JABATAN_LABEL: Record<string, string> = {
   lainnya:   'Lainnya',
 }
 
-export function fmtTgl(iso: string) {
-  return new Date(iso).toLocaleString('id-ID', {
-    day: 'numeric', month: 'long', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  }) + ' WIB'
-}

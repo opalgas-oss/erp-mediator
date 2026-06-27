@@ -9,6 +9,7 @@
 // Diupdate: Sesi #141 — style konsistensi mockup
 
 import type { TenantTier } from '@/lib/types/tenant.types'
+import { S }               from './_shared/tenant-tab-ui'
 
 interface Props { tenantId: string; tier: TenantTier }
 
@@ -16,10 +17,6 @@ const TIER_INFO: Record<TenantTier, { quota: number; label: string; bg: string; 
   starter:    { quota: 5,    label: 'Starter (maks. 5 user)',        bg: '#F1EFE8', text: '#5F5E5A', border: '#B4B2A9' },
   growth:     { quota: 20,   label: 'Growth (maks. 20 user)',        bg: '#E6F1FB', text: '#185FA5', border: '#85B7EB' },
   enterprise: { quota: 9999, label: 'Enterprise (tidak terbatas)',   bg: '#EAF3DE', text: '#3B6D11', border: '#97C459' },
-}
-
-const S = {
-  card: { background: '#fff', borderWidth: '0.5px', borderStyle: 'solid' as const, borderColor: 'rgba(0,0,0,0.12)', borderRadius: 12 } as React.CSSProperties,
 }
 
 export function TabUserTenant({ tenantId: _tenantId, tier }: Props) {

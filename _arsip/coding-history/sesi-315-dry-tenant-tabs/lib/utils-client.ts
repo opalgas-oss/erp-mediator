@@ -67,46 +67,6 @@ export function formatDateIdShort(iso: string): string {
  * @param s - Input nomor WA mentah (boleh mengandung spasi/tanda)
  * @returns Nomor WA ter-normalisasi (hanya digit, prefix 62)
  */
-
-/**
- * Format ISO timestamp → tanggal panjang bahasa Indonesia.
- * Contoh: '2026-05-04T16:36:54Z' → '4 Mei 2026'
- *
- * Menggantikan formatTglLengkap() lokal di TabInfoUmum.helpers.tsx
- * dan fmt() lokal di TabKontrakSewa.tsx.
- *
- * DIBUAT: Sesi #315 — DRY refactor tenant tabs.
- *
- * @param iso - ISO timestamp string atau null/undefined
- * @returns Tanggal terformat: '4 Mei 2026', atau '—' jika input kosong
- */
-export function formatDateIdLong(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('id-ID', {
-    day: 'numeric', month: 'long', year: 'numeric',
-  })
-}
-
-/**
- * Format ISO timestamp → tanggal panjang + jam WIB bahasa Indonesia.
- * Contoh: '2026-05-04T16:36:54Z' → '4 Mei 2026, 23:36 WIB'
- *
- * Menggantikan formatTglWaktu() lokal di TabInfoUmum.helpers.tsx
- * dan fmtTgl() lokal di tab-admintenant-history.parts.tsx.
- *
- * DIBUAT: Sesi #315 — DRY refactor tenant tabs.
- *
- * @param iso - ISO timestamp string atau null/undefined
- * @returns Tanggal + jam terformat: '4 Mei 2026, 23:36 WIB', atau '—' jika input kosong
- */
-export function formatDateIdDateTime(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const d   = new Date(iso)
-  const tgl = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
-  const jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-  return `${tgl}, ${jam} WIB`
-}
-
 export function autoCorrectWA(s: string): string {
   const digits = s.replace(/\D/g, '')
   if (digits.startsWith('08')) return '62' + digits.slice(1)

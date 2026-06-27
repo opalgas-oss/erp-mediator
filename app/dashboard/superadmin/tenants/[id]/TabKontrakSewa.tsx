@@ -1,59 +1,139 @@
 'use client'
 
 // app/dashboard/superadmin/tenants/[id]/TabKontrakSewa.tsx
-// Tab Kontrak Sewa — summary banner + 5 accordion section + simulator
-// Fix: G22 (ContractSummaryBanner), G23 (RenewalWarning), G24 (FeeTable),
-//      G25 (FeeChangeForm), G26 (FeeHistoryTimeline), G27 (FeeSimulator),
-//      G28 (PDF upload), G29 (tanda tangan digital), G30 (chip notifikasi)
+// Tab Kontrak Sewa — pola simpan terpadu (refactor S#318 — H-DRY-TENANT-TABS Blok C)
 //
-// Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
-// Diupdate: Sesi #141 — M6 Fix Fase B
+// Dibuat:   Sesi #132 — M6 FASE 3 Step 3.7
+// Updated:  Sesi #141 — M6 Fix Fase B
+// Refactor: Sesi #318 — C-01: ganti editingCluster per-section
+//           → draft + baseline + detectHasChanges (pola sama TabInfoUmum S#312)
+//   - Hapus: editingCluster, BtnEdit, openEdit, cancel, isA/isB/isD
+//   - Semua field langsung editable (tanpa tombol Edit per-section)
+//   - Footer sticky bottom-0: Simpan + Batalkan, nonaktif saat !hasChanges
+//   - handleSave kirim DIFF only via buildDiffPayload
 
-import { useState, useEffect, useCallback } from 'react'
-import { toast } from 'sonner'
-import type { Tenant } from '@/lib/types/tenant.types'
+import { useState, useCallback }          from 'react'
+import { toast }                           from 'sonner'
+import type { Tenant }                     from '@/lib/types/tenant.types'
+import { Accordion as AccordionBase }      from './_shared/tenant-tab-ui'
+import { FInput, FSelect }                 from './_shared/tenant-tab-ui'
+import { formatDateIdLong }                from '@/lib/utils-client'
 
 interface Props { tenant: Tenant; onRefresh: () => void }
+
+// ─── KontrakDraft — semua field yang bisa diubah ──────────────────────────────
+
+interface KontrakDraft {
+  // Section A
+  contract_start_date:    string
+  contract_end_date:      string
+  // Section B
+  biaya_awal:             string
+  biaya_langganan:        string
+  siklus_tagihan:         string
+  pajak_langganan:        string
+  // Section D
+  auto_renewal:           boolean
+  renewal_notice_days:    string
+  notif_days:             number[]
+  early_termination_fee:  string
+  kebijakan_refund:       string
+}
+
+// ─── buildDraft — inisialisasi draft dari data tenant ─────────────────────────
+
+function buildDraft(t: Tenant): KontrakDraft {
+  return {
+    contract_start_date:   t.contract_start_date?.split('T')[0] ?? '',
+    contract_end_date:     t.contract_end_date?.split('T')[0]   ?? '',
+    biaya_awal:            String(t.biaya_awal            ?? '0'),
+    biaya_langganan:       String(t.biaya_langganan       ?? '0'),
+    siklus_tagihan:        t.siklus_tagihan               ?? '',
+    pajak_langganan:       String(t.pajak_langganan       ?? ''),
+    auto_renewal:          t.auto_renewal                 ?? false,
+    renewal_notice_days:   String(t.renewal_notice_days   ?? '30'),
+    notif_days:            (t.notif_days as number[])     ?? DEFAULT_NOTIF_DAYS,
+    early_termination_fee: String(t.early_termination_fee ?? ''),
+    kebijakan_refund:      t.kebijakan_refund             ?? 'Refund prorata untuk sisa hari belum dipakai',
+  }
+}
+
+// ─── detectHasChanges ─────────────────────────────────────────────────────────
+
+function detectHasChanges(draft: KontrakDraft, baseline: KontrakDraft): boolean {
+  const keys = Object.keys(draft) as (keyof KontrakDraft)[]
+  return keys.some(k => {
+    if (k === 'notif_days') {
+      return JSON.stringify(draft.notif_days) !== JSON.stringify(baseline.notif_days)
+    }
+    return String(draft[k]) !== String(baseline[k])
+  })
+}
+
+// ─── buildDiffPayload — hanya field yang berubah ─────────────────────────────
+
+function buildDiffPayload(
+  draft:    KontrakDraft,
+  baseline: KontrakDraft,
+): Record<string, unknown> {
+  const diff: Record<string, unknown> = {}
+  const keys = Object.keys(draft) as (keyof KontrakDraft)[]
+
+  for (const k of keys) {
+    const changed = k === 'notif_days'
+      ? JSON.stringify(draft.notif_days) !== JSON.stringify(baseline.notif_days)
+      : String(draft[k]) !== String(baseline[k])
+
+    if (!changed) continue
+
+    if (k === 'auto_renewal') {
+      diff[k] = draft.auto_renewal
+    } else if (k === 'notif_days') {
+      diff[k] = draft.notif_days
+    } else {
+      diff[k] = draft[k]
+    }
+  }
+
+  return diff
+}
 
 // ─── Shared style helpers ─────────────────────────────────────────────────────
 
 const S = {
-  card: { background: '#fff', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 12 } as React.CSSProperties,
-  grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 20px' } as React.CSSProperties,
-  label: { fontSize: 12, color: '#6b7280' } as React.CSSProperties,
-  input: (editable: boolean): React.CSSProperties => ({
+  card:   { background: '#fff', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 12 } as React.CSSProperties,
+  grid2:  { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 20px' } as React.CSSProperties,
+  label:  { fontSize: 12, color: '#6b7280' } as React.CSSProperties,
+  input:  (editable: boolean): React.CSSProperties => ({
     fontSize: 13, padding: '7px 10px', borderWidth: '0.5px', borderStyle: 'solid',
     borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, width: '100%', fontFamily: 'inherit',
     background: editable ? '#fff' : '#f9f9f8', color: editable ? '#1a1a1a' : '#6b7280',
   }),
-  select: (editable: boolean): React.CSSProperties => ({
-    fontSize: 13, padding: '7px 10px', borderWidth: '0.5px', borderStyle: 'solid',
-    borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, width: '100%', fontFamily: 'inherit',
-    background: editable ? '#fff' : '#f9f9f8', color: editable ? '#1a1a1a' : '#6b7280',
-  }),
-  help: { fontSize: 11, color: '#9ca3af', marginTop: 2 } as React.CSSProperties,
+  help:    { fontSize: 11, color: '#9ca3af', marginTop: 2 } as React.CSSProperties,
   divider: { height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '14px 0' } as React.CSSProperties,
 }
 
-// ─── Accordion — sama pola dengan TabInfoUmum ─────────────────────────────────
+// ─── Accordion wrapper (passthrough ke AccordionBase atau custom dengan rightContent) ──
 
-type ClusterId = 'A' | 'B' | 'C' | 'D' | 'E'
-
-interface AccordionProps {
-  id:             ClusterId
-  icon:           string
-  iconBg:         string
-  iconColor:      string
-  title:          string
-  defaultOpen?:   boolean
-  rightContent?:  React.ReactNode
-  children:       React.ReactNode
-}
-
-function Accordion({ icon, iconBg, iconColor, title, defaultOpen, rightContent, children }: AccordionProps) {
-  const [open, setOpen] = useState(!!defaultOpen)
+function Accordion({ icon, iconBg, iconColor, title, defaultOpen, rightContent, children }: {
+  icon:          string
+  iconBg:        string
+  iconColor:     string
+  title:         string
+  defaultOpen?:  boolean
+  rightContent?: React.ReactNode
+  children:      React.ReactNode
+}) {
+  if (!rightContent) {
+    return (
+      <AccordionBase icon={icon} iconBg={iconBg} iconColor={iconColor} title={title} defaultOpen={defaultOpen}>
+        {children}
+      </AccordionBase>
+    )
+  }
+  const [open, setOpen] = useState(defaultOpen ?? false)
   return (
-    <div style={{ ...S.card, overflow: 'hidden', marginBottom: 10 }}>
+    <div style={{ border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 12, overflow: 'hidden', marginBottom: 10 }}>
       <div
         onClick={() => setOpen(o => !o)}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', cursor: 'pointer', background: '#fff', userSelect: 'none' }}
@@ -68,21 +148,15 @@ function Accordion({ icon, iconBg, iconColor, title, defaultOpen, rightContent, 
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }} onClick={e => e.stopPropagation()}>
           {rightContent}
-          <i className="ti ti-chevron-down" style={{ fontSize: 16, color: '#6b7280', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+          <i
+            className="ti ti-chevron-down"
+            onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
+            style={{ fontSize: 16, color: '#6b7280', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', cursor: 'pointer' }}
+          />
         </div>
       </div>
       {open && <div style={{ padding: '0 16px 16px', background: '#fff' }}>{children}</div>}
     </div>
-  )
-}
-
-// ─── Button helpers ───────────────────────────────────────────────────────────
-
-function BtnEdit({ onClick }: { onClick: () => void }) {
-  return (
-    <button onClick={onClick} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12, borderRadius: 8, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#85B7EB', color: '#185FA5', background: 'transparent' }}>
-      <i className="ti ti-edit" /> Edit
-    </button>
   )
 }
 
@@ -107,12 +181,9 @@ function FRO({ label, value, fullWidth }: { label: string; value: string | null 
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
 
-function fmt(d: string | null | undefined): string {
-  if (!d) return '—'
-  return new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
-}
+const fmt = formatDateIdLong
 
-function daysUntil(d: string | null): number | null {
+function daysUntil(d: string | null | undefined): number | null {
   if (!d) return null
   const diff = new Date(d).getTime() - Date.now()
   return Math.ceil(diff / 86400000)
@@ -128,7 +199,8 @@ const DEFAULT_NOTIF_DAYS = [90, 60, 30, 7]
 const NOTIF_OPTIONS      = [90, 60, 30, 14, 7]
 
 function NotifChips({ value, onChange }: { value: number[]; onChange: (v: number[]) => void }) {
-  const toggle = (d: number) => onChange(value.includes(d) ? value.filter(x => x !== d) : [...value, d])
+  const toggle = (d: number) =>
+    onChange(value.includes(d) ? value.filter(x => x !== d) : [...value, d])
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
       {NOTIF_OPTIONS.map(d => {
@@ -137,9 +209,9 @@ function NotifChips({ value, onChange }: { value: number[]; onChange: (v: number
           <button key={d} onClick={() => toggle(d)} style={{
             padding: '3px 10px', borderRadius: 100, fontSize: 12, cursor: 'pointer',
             borderWidth: '0.5px', borderStyle: 'solid',
-            background: on ? '#E6F1FB' : '#f9f9f8',
-            color:      on ? '#185FA5' : '#6b7280',
-            borderColor: on ? '#85B7EB' : 'rgba(0,0,0,0.12)',
+            background:   on ? '#E6F1FB' : '#f9f9f8',
+            color:        on ? '#185FA5' : '#6b7280',
+            borderColor:  on ? '#85B7EB' : 'rgba(0,0,0,0.12)',
           }}>
             {d} hari
           </button>
@@ -150,17 +222,16 @@ function NotifChips({ value, onChange }: { value: number[]; onChange: (v: number
   )
 }
 
-// ─── FeeSimulator (G27) ───────────────────────────────────────────────────────
+// ─── FeeSimulator (G27) — tidak masuk draft/save ──────────────────────────────
 
 function FeeSimulator() {
   const [gmv,    setGmv]    = useState(0)
   const [orders, setOrders] = useState(0)
 
-  // Rate default dari fee rows (placeholder — di prod ambil dari API)
-  const komisiRate = 8        // %
-  const prosesFlat = 1250     // per order
-  const gwPercent  = 0.7      // %
-  const gwFlat     = 500      // per order
+  const komisiRate = 8
+  const prosesFlat = 1250
+  const gwPercent  = 0.7
+  const gwFlat     = 500
 
   const komisi  = gmv * (komisiRate / 100)
   const proses  = orders * prosesFlat
@@ -217,35 +288,44 @@ function FeeSimulator() {
 // ─── Komponen utama ───────────────────────────────────────────────────────────
 
 export function TabKontrakSewa({ tenant, onRefresh }: Props) {
-  const [editingCluster, setEditingCluster] = useState<ClusterId | null>(null)
-  const [saving,  setSaving]   = useState(false)
-  const [form,    setForm]     = useState<Record<string, unknown>>({})
-  const [notifDays, setNotifDays] = useState<number[]>(DEFAULT_NOTIF_DAYS)
+  const initial = buildDraft(tenant)
 
-  const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }))
-  const openEdit = (id: ClusterId) => { setForm({}); setEditingCluster(id) }
-  const cancel   = () => { setEditingCluster(null); setForm({}) }
+  const [draft,    setDraft]    = useState<KontrakDraft>(initial)
+  const [baseline, setBaseline] = useState<KontrakDraft>(JSON.parse(JSON.stringify(initial)))
+  const [saving,   setSaving]   = useState(false)
+
+  const hasChanges = detectHasChanges(draft, baseline)
+
+  const set = useCallback(<K extends keyof KontrakDraft>(k: K, v: KontrakDraft[K]) => {
+    setDraft(d => ({ ...d, [k]: v }))
+  }, [])
+
+  const handleCancel = () => {
+    setDraft(JSON.parse(JSON.stringify(baseline)))
+  }
 
   const handleSave = async () => {
+    const diff = buildDiffPayload(draft, baseline)
+    if (Object.keys(diff).length === 0) return
+
     setSaving(true)
     try {
       const res  = await fetch(`/api/superadmin/tenants/${tenant.id}?section=contract`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(diff),
       })
       const json = await res.json()
       if (!json.success) throw new Error(json.message)
       toast.success('Kontrak berhasil diperbarui')
-      setEditingCluster(null); setForm({}); onRefresh()
+      setBaseline(JSON.parse(JSON.stringify(draft)))
+      onRefresh()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Gagal menyimpan')
     } finally {
       setSaving(false)
     }
   }
-
-  const isA = editingCluster === 'A'
-  const isB = editingCluster === 'B'
-  const isD = editingCluster === 'D'
 
   const days = daysUntil(tenant.contract_end_date)
 
@@ -255,9 +335,15 @@ export function TabKontrakSewa({ tenant, onRefresh }: Props) {
   }
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
 
-      {/* G23 — Renewal Warning (kondisional ≤ 30 hari) */}
+      {/* Info bar: panduan penggunaan */}
+      <div style={{ background: '#E6F1FB', border: '0.5px solid #85B7EB', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#0C447C', marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 8, lineHeight: 1.5 }}>
+        <i className="ti ti-pencil" style={{ marginTop: 1, flexShrink: 0 }} />
+        <span>Semua section bisa langsung diisi atau diubah sekaligus. Perubahan disimpan bersama lewat tombol di footer. Field terkunci (nomor kontrak, status) tetap read-only.</span>
+      </div>
+
+      {/* G23 — Renewal Warning (kondisional <= 30 hari) */}
       {days !== null && days <= 30 && days >= 0 && (
         <div style={{ background: '#FAEEDA', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#EF9F27', borderRadius: 8, padding: '8px 14px', fontSize: 12, color: '#854F0B', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
           <i className="ti ti-clock-exclamation" />
@@ -282,33 +368,41 @@ export function TabKontrakSewa({ tenant, onRefresh }: Props) {
       </div>
 
       {/* Section A: Kontrak Master */}
-      <Accordion id="A" icon="ti-file-description" iconBg="#E6F1FB" iconColor="#185FA5"
+      <Accordion icon="ti-file-description" iconBg="#E6F1FB" iconColor="#185FA5"
         title="Section A — Kontrak master" defaultOpen
-        rightContent={<BtnEdit onClick={() => openEdit('A')} />}
       >
         <div style={{ ...S.grid2, marginTop: 12 }}>
           <FRO label="Nomor kontrak" value={tenant.contract_number ?? 'Auto-generated'} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <label style={S.label}>Status kontrak</label>
-            <input readOnly value={tenant.contract_status ? CONTRACT_STATUS_LABEL[tenant.contract_status] ?? tenant.contract_status : '—'} style={{ ...S.input(false), color: tenant.contract_status === 'aktif' ? '#3B6D11' : undefined, fontWeight: tenant.contract_status === 'aktif' ? 500 : undefined }} />
+            <input
+              readOnly
+              value={tenant.contract_status ? CONTRACT_STATUS_LABEL[tenant.contract_status] ?? tenant.contract_status : '—'}
+              style={{
+                ...S.input(false),
+                color:      tenant.contract_status === 'aktif' ? '#3B6D11' : undefined,
+                fontWeight: tenant.contract_status === 'aktif' ? 500 : undefined,
+              }}
+            />
           </div>
 
-          {isA ? (
-            <>
-              <FF label="Tanggal mulai *">
-                <input type="date" defaultValue={tenant.contract_start_date?.split('T')[0] ?? ''} onChange={e => set('contract_start_date', e.target.value)} style={S.input(true)} />
-              </FF>
-              <FF label="Tanggal berakhir">
-                <input type="date" defaultValue={tenant.contract_end_date?.split('T')[0] ?? ''} onChange={e => set('contract_end_date', e.target.value)} style={S.input(true)} />
-                <span style={S.help}>Kosongkan untuk kontrak permanen / tanpa batas waktu</span>
-              </FF>
-            </>
-          ) : (
-            <>
-              <FRO label="Tanggal mulai" value={fmt(tenant.contract_start_date)} />
-              <FRO label="Tanggal berakhir" value={tenant.contract_end_date ? fmt(tenant.contract_end_date) : 'Permanen'} />
-            </>
-          )}
+          <FF label="Tanggal mulai *">
+            <input
+              type="date"
+              value={draft.contract_start_date}
+              onChange={e => set('contract_start_date', e.target.value)}
+              style={S.input(true)}
+            />
+          </FF>
+          <FF label="Tanggal berakhir">
+            <input
+              type="date"
+              value={draft.contract_end_date}
+              onChange={e => set('contract_end_date', e.target.value)}
+              style={S.input(true)}
+            />
+            <span style={S.help}>Kosongkan untuk kontrak permanen / tanpa batas waktu</span>
+          </FF>
 
           {/* G28 — Upload file kontrak */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -319,14 +413,12 @@ export function TabKontrakSewa({ tenant, onRefresh }: Props) {
                 <a href={tenant.contract_file_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#185FA5' }}>
                   Lihat kontrak PDF
                 </a>
-                {isA && (
-                  <button style={{ padding: '3px 8px', fontSize: 11, borderRadius: 8, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', background: 'transparent', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <i className="ti ti-upload" /> Ganti
-                  </button>
-                )}
+                <button style={{ padding: '3px 8px', fontSize: 11, borderRadius: 8, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', background: 'transparent', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <i className="ti ti-upload" /> Ganti
+                </button>
               </div>
             ) : (
-              <button style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', fontSize: 12, borderRadius: 8, borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', background: 'transparent', cursor: isA ? 'pointer' : 'default', alignSelf: 'flex-start' }}>
+              <button style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', fontSize: 12, borderRadius: 8, borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', background: 'transparent', cursor: 'pointer', alignSelf: 'flex-start' }}>
                 <i className="ti ti-upload" /> Upload PDF kontrak
               </button>
             )}
@@ -351,45 +443,54 @@ export function TabKontrakSewa({ tenant, onRefresh }: Props) {
       </Accordion>
 
       {/* Section B: Biaya Setup & Langganan */}
-      <Accordion id="B" icon="ti-calendar-repeat" iconBg="#EEEDFE" iconColor="#534AB7"
+      <Accordion icon="ti-calendar-repeat" iconBg="#EEEDFE" iconColor="#534AB7"
         title="Section B — Biaya setup & langganan"
-        rightContent={<BtnEdit onClick={() => openEdit('B')} />}
       >
         <div style={{ ...S.grid2, marginTop: 12 }}>
           <FF label="Biaya awal / onboarding">
-            <input readOnly={!isB} value={isB ? (form.biaya_awal as string ?? '0') : 'Rp0'} onChange={e => set('biaya_awal', e.target.value)} placeholder="Rp 0 = tidak ada biaya awal" style={S.input(isB)} />
+            <input
+              type="number"
+              value={draft.biaya_awal}
+              onChange={e => set('biaya_awal', e.target.value)}
+              placeholder="0 = tidak ada biaya awal"
+              style={S.input(true)}
+            />
             <span style={S.help}>Opsional. Biaya implementasi awal di luar biaya transaksi.</span>
           </FF>
           <FF label="Biaya langganan berkala">
-            <input readOnly={!isB} value={isB ? (form.biaya_langganan as string ?? '0') : 'Rp0'} onChange={e => set('biaya_langganan', e.target.value)} placeholder="Rp 0 = tidak ada langganan" style={S.input(isB)} />
+            <input
+              type="number"
+              value={draft.biaya_langganan}
+              onChange={e => set('biaya_langganan', e.target.value)}
+              placeholder="0 = tidak ada langganan"
+              style={S.input(true)}
+            />
           </FF>
-          <FF label="Siklus tagihan">
-            {isB ? (
-              <select style={S.select(true)} onChange={e => set('siklus_tagihan', e.target.value)}>
-                <option value="">Tidak ada langganan</option>
-                <option value="bulanan">Bulanan</option>
-                <option value="kuartalan">Kuartalan</option>
-                <option value="tahunan">Tahunan</option>
-              </select>
-            ) : (
-              <input readOnly value="Tidak ada langganan" style={S.input(false)} />
-            )}
-          </FF>
-          <FF label="Perlakuan pajak langganan">
-            {isB ? (
-              <select style={S.select(true)} onChange={e => set('pajak_langganan', e.target.value)}>
-                <option value="inklusif">PPN Inklusif (termasuk PPN 11%)</option>
-                <option value="eksklusif">PPN Eksklusif (PPN ditambah di atas)</option>
-              </select>
-            ) : (
-              <input readOnly value="PPN Inklusif (termasuk PPN 11%)" style={S.input(false)} />
-            )}
-          </FF>
+          <FSelect
+            label="Siklus tagihan"
+            value={draft.siklus_tagihan}
+            onChange={v => set('siklus_tagihan', v)}
+            options={[
+              { val: '',           label: 'Tidak ada langganan' },
+              { val: 'bulanan',    label: 'Bulanan' },
+              { val: 'kuartalan',  label: 'Kuartalan' },
+              { val: 'tahunan',    label: 'Tahunan' },
+            ]}
+          />
+          <FSelect
+            label="Perlakuan pajak langganan"
+            value={draft.pajak_langganan}
+            onChange={v => set('pajak_langganan', v)}
+            options={[
+              { val: 'inklusif',  label: 'PPN Inklusif (termasuk PPN 11%)' },
+              { val: 'eksklusif', label: 'PPN Eksklusif (PPN ditambah di atas)' },
+            ]}
+          />
         </div>
       </Accordion>
 
-      {/* Section C: Struktur Biaya Transaksi */}
-      <Accordion id="C" icon="ti-percentage" iconBg="#EAF3DE" iconColor="#3B6D11"
+      {/* Section C: Struktur Biaya Transaksi — tetap pakai pendekatan terpisah */}
+      <Accordion icon="ti-percentage" iconBg="#EAF3DE" iconColor="#3B6D11"
         title="Section C — Struktur biaya transaksi" defaultOpen
         rightContent={
           <button style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12, borderRadius: 8, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#85B7EB', color: '#185FA5', background: '#E6F1FB' }}>
@@ -413,12 +514,14 @@ export function TabKontrakSewa({ tenant, onRefresh }: Props) {
             </thead>
             <tbody>
               {[
-                { nama: 'Komisi platform',    tipe: '% transaksi', tipeBg: '#E6F1FB', tipeColor: '#185FA5', tipeBorder: '#85B7EB', nilai: '8%',               bw: 'Per transaksi', ppn: true,  tgl: '1 Jan 2026' },
-                { nama: 'Biaya proses order', tipe: 'Flat/order',  tipeBg: '#EEEDFE', tipeColor: '#534AB7', tipeBorder: '#AFA9EC', nilai: 'Rp1.250/order',     bw: 'Per order',     ppn: true,  tgl: '1 Jan 2026' },
-                { nama: 'Biaya gateway Xendit',tipe: 'Hybrid',     tipeBg: '#EAF3DE', tipeColor: '#3B6D11', tipeBorder: '#97C459', nilai: '0.7% + Rp500',      bw: 'Per transaksi', ppn: false, tgl: '1 Jan 2026', alt: true },
-                { nama: 'PPN (informasi)',     tipe: 'Info saja',  tipeBg: '#f9f9f8', tipeColor: '#6b7280', tipeBorder: 'rgba(0,0,0,0.12)', nilai: '11% efektif (inklusif)', bw: 'Semua', ppn: null, tgl: '—' },
+                { nama: 'Komisi platform',     tipe: '% transaksi', tipeBg: '#E6F1FB', tipeColor: '#185FA5', tipeBorder: '#85B7EB',              nilai: '8%',            bw: 'Per transaksi', ppn: true,  tgl: '1 Jan 2026' },
+                { nama: 'Biaya proses order',  tipe: 'Flat/order',  tipeBg: '#EEEDFE', tipeColor: '#534AB7', tipeBorder: '#AFA9EC',              nilai: 'Rp1.250/order', bw: 'Per order',     ppn: true,  tgl: '1 Jan 2026' },
+                { nama: 'Biaya gateway Xendit',tipe: 'Hybrid',      tipeBg: '#EAF3DE', tipeColor: '#3B6D11', tipeBorder: '#97C459',              nilai: '0.7% + Rp500',  bw: 'Per transaksi', ppn: false, tgl: '1 Jan 2026', alt: true },
+                { nama: 'PPN (informasi)',      tipe: 'Info saja',   tipeBg: '#f9f9f8', tipeColor: '#6b7280', tipeBorder: 'rgba(0,0,0,0.12)',    nilai: '11% efektif (inklusif)', bw: 'Semua', ppn: null,  tgl: '—' },
               ].map((row, i) => (
-                <tr key={i} style={{ borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)', background: row.alt ? '#f9f9f8' : '#fff' }}
+                <tr
+                  key={i}
+                  style={{ borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)', background: row.alt ? '#f9f9f8' : '#fff' }}
                   onMouseEnter={e => (e.currentTarget.style.background = '#f9f9f8')}
                   onMouseLeave={e => (e.currentTarget.style.background = row.alt ? '#f9f9f8' : '#fff')}
                 >
@@ -454,7 +557,7 @@ export function TabKontrakSewa({ tenant, onRefresh }: Props) {
           <div style={{ fontSize: 12, fontWeight: 500, color: '#1a1a1a', marginBottom: 12 }}>Ubah biaya — berlaku mulai kapan?</div>
           <div style={{ ...S.grid2 }}>
             <FF label="Biaya yang diubah">
-              <select style={S.select(true)}>
+              <select style={S.input(true)}>
                 <option>Komisi platform</option>
                 <option>Biaya proses order</option>
               </select>
@@ -481,34 +584,33 @@ export function TabKontrakSewa({ tenant, onRefresh }: Props) {
       </Accordion>
 
       {/* Section D: Perpanjangan & Penghentian */}
-      <Accordion id="D" icon="ti-refresh" iconBg="#FAEEDA" iconColor="#854F0B"
+      <Accordion icon="ti-refresh" iconBg="#FAEEDA" iconColor="#854F0B"
         title="Section D — Perpanjangan & penghentian"
-        rightContent={<BtnEdit onClick={() => openEdit('D')} />}
       >
         <div style={{ ...S.grid2, marginTop: 12 }}>
-          <FF label="Auto-renewal">
-            {isD ? (
-              <select style={S.select(true)} onChange={e => set('auto_renewal', e.target.value === 'true')}>
-                <option value="true">Aktif</option>
-                <option value="false">Tidak aktif</option>
-              </select>
-            ) : (
-              <input readOnly value={tenant.auto_renewal ? 'Aktif' : 'Tidak aktif'} style={S.input(false)} />
-            )}
-          </FF>
+          <FSelect
+            label="Auto-renewal"
+            value={String(draft.auto_renewal)}
+            onChange={v => set('auto_renewal', v === 'true')}
+            options={[
+              { val: 'true',  label: 'Aktif' },
+              { val: 'false', label: 'Tidak aktif' },
+            ]}
+          />
           <FF label="Periode pemberitahuan (hari)">
-            {isD ? (
-              <input type="number" defaultValue={tenant.renewal_notice_days} onChange={e => set('renewal_notice_days', e.target.value)} style={S.input(true)} />
-            ) : (
-              <input readOnly value={`${tenant.renewal_notice_days} hari`} style={S.input(false)} />
-            )}
+            <input
+              type="number"
+              value={draft.renewal_notice_days}
+              onChange={e => set('renewal_notice_days', e.target.value)}
+              style={S.input(true)}
+            />
           </FF>
         </div>
 
         {/* G30 — Chip jadwal notifikasi */}
         <div style={{ marginTop: 14 }}>
           <label style={S.label}>Jadwal notifikasi renewal (hari sebelum)</label>
-          <NotifChips value={notifDays} onChange={setNotifDays} />
+          <NotifChips value={draft.notif_days} onChange={v => set('notif_days', v)} />
           <span style={S.help}>Klik untuk aktifkan/nonaktifkan hari tertentu.</span>
         </div>
 
@@ -516,29 +618,35 @@ export function TabKontrakSewa({ tenant, onRefresh }: Props) {
 
         <div style={{ ...S.grid2 }}>
           <FF label="Denda penghentian awal (opsional)">
-            {isD ? (
-              <input type="number" defaultValue={tenant.early_termination_fee ?? ''} onChange={e => set('early_termination_fee', e.target.value)} placeholder="0 = tidak ada denda" style={S.input(true)} />
-            ) : (
-              <input readOnly value={tenant.early_termination_fee ? `Rp${Number(tenant.early_termination_fee).toLocaleString('id-ID')}` : 'Tidak ada denda'} style={S.input(false)} />
-            )}
+            <input
+              type="number"
+              value={draft.early_termination_fee}
+              onChange={e => set('early_termination_fee', e.target.value)}
+              placeholder="0 = tidak ada denda"
+              style={S.input(true)}
+            />
           </FF>
           <FF label="Kebijakan refund (teks)">
-            <input readOnly={!isD} defaultValue="Refund prorata untuk sisa hari belum dipakai" style={S.input(isD)} />
+            <input
+              type="text"
+              value={draft.kebijakan_refund}
+              onChange={e => set('kebijakan_refund', e.target.value)}
+              style={S.input(true)}
+            />
           </FF>
         </div>
       </Accordion>
 
-      {/* Section E: Riwayat Perubahan Biaya */}
-      <Accordion id="E" icon="ti-history" iconBg="#F1EFE8" iconColor="#5F5E5A"
+      {/* Section E: Riwayat Perubahan Biaya — read-only */}
+      <Accordion icon="ti-history" iconBg="#F1EFE8" iconColor="#5F5E5A"
         title="Section E — Riwayat perubahan biaya"
       >
         <div style={{ fontSize: 12, color: '#6b7280', marginTop: 12, marginBottom: 14 }}>
           Read-only. Tersimpan minimum 36 bulan.
         </div>
 
-        {/* Timeline placeholder */}
         {[
-          { dot: 'done', tgl: '1 Jan 2026', nama: 'Philips Liemena', desc: 'Biaya awal kontrak ditetapkan — Komisi 8% + Rp1.250/order', tipe: 'Awal', tipeBg: '#E6F1FB', tipeColor: '#185FA5', tipeBorder: '#85B7EB' },
+          { tgl: '1 Jan 2026', nama: 'Philips Liemena', desc: 'Biaya awal kontrak ditetapkan — Komisi 8% + Rp1.250/order', tipe: 'Awal', tipeBg: '#E6F1FB', tipeColor: '#185FA5', tipeBorder: '#85B7EB' },
         ].map((e, i) => (
           <div key={i} style={{ display: 'flex', gap: 12, paddingBottom: 20, position: 'relative' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 32, flexShrink: 0 }}>
@@ -560,20 +668,54 @@ export function TabKontrakSewa({ tenant, onRefresh }: Props) {
         </button>
       </Accordion>
 
-      {/* G27 — FeeSimulator */}
+      {/* G27 — FeeSimulator — tidak masuk draft/save */}
       <FeeSimulator />
 
-      {/* Footer */}
-      {editingCluster !== null && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: '1rem', paddingTop: '1rem', borderTopWidth: '0.5px', borderTopStyle: 'solid', borderTopColor: 'rgba(0,0,0,0.12)' }}>
-          <button onClick={cancel} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.22)', color: '#1a1a1a', background: 'transparent' }}>
-            Batal
+      {/* Footer sticky: Simpan + Batalkan */}
+      <div style={{
+        position: 'sticky', bottom: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 16px', marginTop: 4,
+        borderTop: '0.5px solid rgba(0,0,0,0.22)',
+        background: 'rgba(249,249,248,0.97)', backdropFilter: 'blur(4px)',
+      }}>
+        <span style={{ fontSize: 11, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <i className="ti ti-pin" />
+          {hasChanges
+            ? <span style={{ fontWeight: 500, color: '#854F0B' }}>Ada perubahan yang belum disimpan</span>
+            : 'Tidak ada perubahan'}
+        </span>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={handleCancel}
+            disabled={!hasChanges || saving}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 14px', borderRadius: 8, fontSize: 13,
+              border: '0.5px solid rgba(0,0,0,0.22)', color: '#1a1a1a', background: 'transparent',
+              cursor: (!hasChanges || saving) ? 'not-allowed' : 'pointer',
+              opacity: (!hasChanges || saving) ? 0.5 : 1,
+            }}
+          >
+            Batalkan
           </button>
-          <button onClick={handleSave} disabled={saving} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#85B7EB', color: '#185FA5', background: '#E6F1FB' }}>
-            <i className="ti ti-device-floppy" /> {saving ? 'Menyimpan...' : 'Simpan perubahan'}
+          <button
+            onClick={handleSave}
+            disabled={!hasChanges || saving}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 14px', borderRadius: 8, fontSize: 13,
+              border: '0.5px solid #85B7EB', color: '#185FA5', background: '#E6F1FB',
+              cursor: (!hasChanges || saving) ? 'not-allowed' : 'pointer',
+              opacity: (!hasChanges || saving) ? 0.5 : 1,
+            }}
+          >
+            <i className="ti ti-device-floppy" />
+            {saving ? 'Menyimpan...' : 'Simpan perubahan'}
           </button>
         </div>
-      )}
+      </div>
+
     </div>
   )
 }

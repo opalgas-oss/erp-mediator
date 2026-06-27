@@ -8,6 +8,7 @@
 // Dibuat: CASE SESI-27 — A-F9 UI Ceiling SA
 
 import { useState, useEffect, useCallback } from 'react'
+import { S } from './_shared/tenant-tab-ui'
 
 // ─── CSS variables (sesuai design token platform) ────────────────────────────
 
@@ -388,9 +389,8 @@ export function TabAksesMenuAT({ tenantId, tenantNama }: Props) {
             : `${group.items.length} submenu`
 
           return (
-            <div key={group.groupKey} style={card}>
-              {/* Card header */}
-              <div style={cardHdr}>
+            <div key={group.groupKey} style={S.card}>
+              <div style={S.cardHdr}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 600 }}>
                   <i className={`ti ${group.icon}`} style={{ fontSize: 14, color: C.blue }} />
                   {group.label}
@@ -438,8 +438,8 @@ export function TabAksesMenuAT({ tenantId, tenantNama }: Props) {
         })}
 
         {/* Khusus PJ — full width */}
-        <div style={{ ...card, gridColumn: '1 / -1' }}>
-          <div style={cardHdr}>
+        <div style={{ ...S.card, gridColumn: '1 / -1' }}>
+          <div style={S.cardHdr}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 600 }}>
               <i className="ti ti-shield-lock" style={{ fontSize: 14, color: C.blue }} />
               Khusus Penanggung Jawab (PJ)
@@ -515,19 +515,6 @@ export function TabAksesMenuAT({ tenantId, tenantNama }: Props) {
 }
 
 // ─── Style helpers ─────────────────────────────────────────────────────────────
-
-const card: React.CSSProperties = {
-  background: '#fff',
-  borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)',
-  borderRadius: 12, overflow: 'hidden',
-}
-
-const cardHdr: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  padding: '11px 16px',
-  borderBottom: '0.5px solid rgba(0,0,0,0.12)',
-  background: '#f9f9f8',
-}
 
 const btnBase: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,

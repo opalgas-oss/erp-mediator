@@ -10,7 +10,9 @@
 import { useState, useEffect } from 'react'
 import { toast }               from 'sonner'
 import type { AssignmentTabData, AssignmentDenganKategori } from '@/lib/types/tenant-category-assignment.types'
-import { DialogTambahKategori } from './DialogTambahKategori'
+import { DialogTambahKategori }  from './DialogTambahKategori'
+import { S }                     from './_shared/tenant-tab-ui'
+import { formatDateIdShort }     from '@/lib/utils-client'
 
 interface Props { tenantId: string }
 
@@ -24,11 +26,6 @@ const ASSIGNMENT_STATUS_STYLE: Record<string, { bg: string; text: string; border
 }
 
 // ─── Shared style helpers ─────────────────────────────────────────────────────
-
-const S = {
-  card: { background: '#fff', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 12 } as React.CSSProperties,
-  label: { fontSize: 12, color: '#6b7280' } as React.CSSProperties,
-}
 
 // ─── Badge status ─────────────────────────────────────────────────────────────
 
@@ -193,7 +190,7 @@ export function TabKategori({ tenantId }: Props) {
                     </div>
                     <div style={{ fontSize: 11, color: '#6b7280', marginTop: 3 }}>
                       {a.kategori.level === 1 ? 'Root kategori' : 'Sub-kategori'}
-                      {' · '}{new Date(a.assigned_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {' · '}{formatDateIdShort(a.assigned_at)}
                     </div>
                   </td>
 
@@ -234,7 +231,7 @@ export function TabKategori({ tenantId }: Props) {
 
                   {/* Ditugaskan */}
                   <td style={{ padding: '12px 12px', verticalAlign: 'middle', fontSize: 12, color: '#6b7280' }}>
-                    {new Date(a.assigned_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {formatDateIdShort(a.assigned_at)}
                   </td>
 
                   {/* Kebab menu (G34) */}
