@@ -370,8 +370,8 @@ export function TabKategori({ tenantId }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div><strong>Aturan penugasan:</strong></div>
           <div>1. Satu kategori per area hanya bisa dipegang satu tenant aktif pada satu waktu. Sebelum menugaskan kategori yang sudah dipegang tenant lain, sistem akan meminta SA untuk melakukan cabut penugasan dari tenant lama dahulu, di mana proses ini memerlukan konfirmasi 2 langkah karena tidak bisa dibatalkan.</div>
-          <div>2. <strong>Hentikan kategori ini</strong> — nonaktifkan sementara tanpa melepas penugasan, tenant masih pegang kategori ini: <em>segera tersedia</em></div>
-          <div>3. <strong>Lepas kategori dari tenant ini</strong> — cabut permanen, area ini bisa dipegang tenant lain setelah konfirmasi 2 langkah: <em>segera tersedia</em></div>
+          <div>2. <strong>Hentikan kategori ini</strong> — nonaktifkan sementara tanpa melepas penugasan, tenant masih pegang kategori ini</div>
+          <div>3. <strong>Lepas kategori dari tenant ini</strong> — cabut permanen, area ini bisa dipegang tenant lain setelah konfirmasi 2 langkah</div>
         </div>
       </div>
     </div>
