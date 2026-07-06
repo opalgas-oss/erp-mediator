@@ -12,6 +12,7 @@ import type { CoverageAreaPayload } from './province.types'
 export type AssignmentStatus =
   | 'active'
   | 'suspended'
+  | 'revoked'
   | 'pending_handover'
 
 // ─── Entitas: Assignment (full row DB) ────────────────────────────────────────
