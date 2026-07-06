@@ -320,7 +320,7 @@ export function TabKategori({ tenantId }: Props) {
               ))}
             </tbody>
           </table>
-        )}
+        ) : null}
       </div>
 
       {/* Kebab dropdown — fixed position, render di luar tabel agar tidak terpotong */}

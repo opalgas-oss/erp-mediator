@@ -160,7 +160,7 @@ export function TabelAktif({ loading, aktif, tenantId, tenantNama, onEdit, onTam
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
       </div>
     </>
   )
