@@ -1,21 +1,22 @@
+// ARSIP — sebelum fix auth (sesi-323-v03-fix-fees-auth)
 // app/api/superadmin/tenants/[id]/fees/history/route.ts
 // API Route: GET riwayat fee tenant (immutable audit trail)
 // Dibuat: Sesi #319 — Fee Structure Engine (anti-hardcode)
-// Fix S#323: ganti auth check ke requireSuperAdminCookie() — route ini dipanggil
-//            dari client component (browser fetch), bukan dari server.
-//            requireSuperAdmin() bergantung middleware header yg tidak ada di client fetch.
 
-import { NextRequest, NextResponse }  from 'next/server'
-import { requireSuperAdminCookie }     from '@/lib/auth-server'
-import { feeService_getHistory }      from '@/lib/services/tenant-fee.service'
+import { NextRequest, NextResponse } from 'next/server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { feeService_getHistory }     from '@/lib/services/tenant-fee.service'
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const auth = await requireSuperAdminCookie()
-    if (!auth.ok) return auth.res
+    const supabase = await createServerSupabaseClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
+    }
 
     const { id: tenantId } = await params
     const searchParams = req.nextUrl.searchParams

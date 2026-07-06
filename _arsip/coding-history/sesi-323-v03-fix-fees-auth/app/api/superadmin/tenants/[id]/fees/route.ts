@@ -1,13 +1,11 @@
+// ARSIP — sebelum fix auth (sesi-323-v03-fix-fees-auth)
 // app/api/superadmin/tenants/[id]/fees/route.ts
 // API Route: GET fee aktif tenant + POST tambah/jadwalkan fee baru
 // Dibuat: Sesi #319 — Fee Structure Engine (anti-hardcode)
-// Fix S#323: ganti auth check ke requireSuperAdminCookie() — route ini dipanggil
-//            dari client component (browser fetch), bukan dari server.
-//            requireSuperAdmin() bergantung middleware header yg tidak ada di client fetch.
 // Layer: Route → Service → Repository
 
-import { NextRequest, NextResponse }    from 'next/server'
-import { requireSuperAdminCookie }       from '@/lib/auth-server'
+import { NextRequest, NextResponse } from 'next/server'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 import {
   feeService_getAktif,
   feeService_tambah,
@@ -21,8 +19,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const auth = await requireSuperAdminCookie()
-    if (!auth.ok) return auth.res
+    const supabase = await createServerSupabaseClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
+    }
 
     const { id: tenantId } = await params
     const result = await feeService_getAktif(tenantId)
@@ -41,13 +42,16 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const auth = await requireSuperAdminCookie()
-    if (!auth.ok) return auth.res
+    const supabase = await createServerSupabaseClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
+    }
 
     const { id: tenantId } = await params
     const body = await req.json() as TambahFeePayload
 
-    const result = await feeService_tambah(tenantId, body, auth.uid)
+    const result = await feeService_tambah(tenantId, body, user.id)
 
     return NextResponse.json(result, { status: 201 })
   } catch (e) {
