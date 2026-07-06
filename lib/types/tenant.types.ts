@@ -100,6 +100,16 @@ export interface Tenant {
   renewal_notice_days:       number
   early_termination_fee:     string | null    // NUMERIC dari DB → string
 
+  // Kontrak Section B — Biaya Setup & Langganan (BARU S#319)
+  biaya_awal:                number             // NUMERIC(15,2), default 0
+  biaya_langganan:           number             // NUMERIC(15,2), default 0
+  siklus_tagihan:            'bulanan' | 'kuartalan' | 'tahunan' | null
+  pajak_langganan:           'inklusif' | 'eksklusif'
+
+  // Kontrak Section D — Perpanjangan (BARU S#319)
+  notif_days:                number[]           // INTEGER[], default [90,60,30,7]
+  kebijakan_refund:          string | null
+
   // Audit
   created_at:            string
   created_by:            string | null
