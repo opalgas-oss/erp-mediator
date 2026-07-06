@@ -52,7 +52,14 @@ export function TabKategori({ tenantId }: Props) {
   const [search,    setSearch]    = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [openKebab,    setOpenKebab]    = useState<string | null>(null)
+  const [kebabPos,     setKebabPos]     = useState<{ top: number; right: number } | null>(null)
   const [openDialog,   setOpenDialog]   = useState(false)
+
+  // Blok D — chevron collapsible state (default semua open)
+  const [openSummary1, setOpenSummary1] = useState(true)
+  const [openSummary2, setOpenSummary2] = useState(true)
+  const [openSummary3, setOpenSummary3] = useState(true)
+  const [openTabel,    setOpenTabel]    = useState(true)
 
   const fetchData = async () => {
     setLoading(true)
@@ -78,42 +85,91 @@ export function TabKategori({ tenantId }: Props) {
   return (
     <div>
 
-      {/* Summary cards 3-kolom (C1) */}
-          {data && (
+      {/* Summary cards 3-kolom (C1) — Blok D: chevron collapsible */}
+      {data && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: '1rem' }}>
+
           {/* Card 1: Kategori aktif */}
-          <div style={{ ...S.card, padding: '12px 14px' }}>
-            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 3 }}>Kategori aktif dipegang</div>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>{data.summary.total_aktif}</div>
-            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{data.summary.total_aktif} kategori ditugaskan</div>
+          <div style={{ ...S.card }}>
+            <div
+              onClick={() => setOpenSummary1(v => !v)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', cursor: 'pointer', userSelect: 'none' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#f9f9f8')}
+              onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
+            >
+              <span style={{ fontSize: 11, color: '#6b7280' }}>Kategori aktif dipegang</span>
+              <i className="ti ti-chevron-down" style={{ fontSize: 13, color: '#9ca3af', transform: openSummary1 ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+            </div>
+            {openSummary1 && (
+              <div style={{ padding: '0 12px 10px' }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{data.summary.total_aktif}</div>
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{data.summary.total_aktif} kategori ditugaskan</div>
+              </div>
+            )}
           </div>
 
           {/* Card 2: Komisi override */}
-          <div style={{ ...S.card, padding: '12px 14px' }}>
-            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 3 }}>Komisi override aktif</div>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>{data.summary.total_override_komisi}</div>
-            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{data.summary.total_override_komisi > 0 ? `${data.summary.total_override_komisi} kategori pakai rate khusus` : 'Semua ikut rate kontrak'}</div>
+          <div style={{ ...S.card }}>
+            <div
+              onClick={() => setOpenSummary2(v => !v)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', cursor: 'pointer', userSelect: 'none' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#f9f9f8')}
+              onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
+            >
+              <span style={{ fontSize: 11, color: '#6b7280' }}>Komisi override aktif</span>
+              <i className="ti ti-chevron-down" style={{ fontSize: 13, color: '#9ca3af', transform: openSummary2 ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+            </div>
+            {openSummary2 && (
+              <div style={{ padding: '0 12px 10px' }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{data.summary.total_override_komisi}</div>
+                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{data.summary.total_override_komisi > 0 ? `${data.summary.total_override_komisi} kategori pakai rate khusus` : 'Semua ikut rate kontrak'}</div>
+              </div>
+            )}
           </div>
 
-          {/* Card 3: Coverage area — bedakan belum setting vs sudah setting */}
+          {/* Card 3: Coverage area */}
           {data.summary.coverage_summary === 'BELUM_SETTING' ? (
-            <div style={{ ...S.card, padding: '12px 14px', background: '#FAEEDA', borderColor: '#EF9F27' }}>
-              <div style={{ fontSize: 11, color: '#854F0B', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <i className="ti ti-alert-triangle" style={{ fontSize: 11 }} />
-                Coverage area
+            <div style={{ ...S.card, borderColor: '#EF9F27' }}>
+              <div
+                onClick={() => setOpenSummary3(v => !v)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', cursor: 'pointer', userSelect: 'none', background: '#FAEEDA' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#f5e4c8')}
+                onMouseLeave={e => (e.currentTarget.style.background = '#FAEEDA')}
+              >
+                <span style={{ fontSize: 11, color: '#854F0B', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <i className="ti ti-alert-triangle" style={{ fontSize: 11 }} />
+                  Coverage area
+                </span>
+                <i className="ti ti-chevron-down" style={{ fontSize: 13, color: '#854F0B', transform: openSummary3 ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
               </div>
-              <div style={{ fontSize: 13, fontWeight: 500, color: '#854F0B' }}>Belum disetting</div>
-              <div style={{ fontSize: 11, color: '#854F0B', marginTop: 4, lineHeight: 1.5 }}>
-                Lakukan:<br />
-                1. Assign kategori ke tenant<br />
-                2. Set area coverage tiap kategori
-              </div>
+              {openSummary3 && (
+                <div style={{ padding: '0 12px 10px', background: '#FAEEDA' }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: '#854F0B' }}>Belum disetting</div>
+                  <div style={{ fontSize: 11, color: '#854F0B', marginTop: 4, lineHeight: 1.5 }}>
+                    Lakukan:<br />
+                    1. Assign kategori ke tenant<br />
+                    2. Set area coverage tiap kategori
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
-            <div style={{ ...S.card, padding: '12px 14px' }}>
-              <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 3 }}>Coverage area</div>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>{data.summary.coverage_summary}</div>
-              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>Berlaku untuk semua kategori</div>
+            <div style={{ ...S.card }}>
+              <div
+                onClick={() => setOpenSummary3(v => !v)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', cursor: 'pointer', userSelect: 'none' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#f9f9f8')}
+                onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
+              >
+                <span style={{ fontSize: 11, color: '#6b7280' }}>Coverage area</span>
+                <i className="ti ti-chevron-down" style={{ fontSize: 13, color: '#9ca3af', transform: openSummary3 ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+              </div>
+              {openSummary3 && (
+                <div style={{ padding: '0 12px 10px' }}>
+                  <div style={{ fontSize: 14, fontWeight: 500 }}>{data.summary.coverage_summary}</div>
+                  <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>Berlaku untuk semua kategori</div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -150,16 +206,28 @@ export function TabKategori({ tenantId }: Props) {
         </button>
       </div>
 
-      {/* Tabel 7 kolom (C3 — G32 G33) */}
-      <div style={{ ...S.card, overflow: 'hidden', marginBottom: '1rem' }}>
-        {loading ? (
-          <div style={{ padding: 24, textAlign: 'center', color: '#6b7280', fontSize: 13 }}>Memuat data kategori…</div>
-        ) : filtered.length === 0 ? (
+      {/* Tabel 7 kolom (C3 — G32 G33) — Blok D: chevron collapsible */}
+      <div style={{ ...S.card, marginBottom: '1rem' }}>
+        <div
+          onClick={() => setOpenTabel(v => !v)}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', cursor: 'pointer', userSelect: 'none', background: '#fff' }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#f9f9f8')}
+          onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500, fontSize: 13, color: '#1a1a1a' }}>
+            <i className="ti ti-list" style={{ fontSize: 15, color: '#6b7280' }} />
+            Daftar kategori
+          </div>
+          <i className="ti ti-chevron-down" style={{ fontSize: 15, color: '#6b7280', transform: openTabel ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+        </div>
+        {openTabel && loading ? (
+          <div style={{ padding: 24, textAlign: 'center', color: '#6b7280', fontSize: 13, borderTop: '0.5px solid rgba(0,0,0,0.12)' }}>Memuat data kategori…</div>
+        ) : openTabel && filtered.length === 0 ? (
           <div style={{ padding: 48, textAlign: 'center' }}>
             <i className="ti ti-category" style={{ fontSize: 32, color: '#9ca3af', display: 'block', marginBottom: 8 }} />
             <div style={{ fontSize: 13, color: '#6b7280', fontWeight: 500 }}>Belum ada kategori ditugaskan</div>
           </div>
-        ) : (
+        ) : openTabel ? (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#f9f9f8' }}>
@@ -234,39 +302,19 @@ export function TabKategori({ tenantId }: Props) {
                     {formatDateIdShort(a.assigned_at)}
                   </td>
 
-                  {/* Kebab menu (G34) */}
-                  <td style={{ padding: '12px 8px', verticalAlign: 'middle', position: 'relative' }}>
+                  {/* Kebab menu (G34) — fixed position agar tidak terpotong overflow */}
+                  <td style={{ padding: '12px 8px', verticalAlign: 'middle' }}>
                     <button
-                      onClick={() => setOpenKebab(openKebab === a.id ? null : a.id)}
+                      onClick={e => {
+                        if (openKebab === a.id) { setOpenKebab(null); setKebabPos(null); return }
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                        setKebabPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+                        setOpenKebab(a.id)
+                      }}
                       style={{ padding: '4px 8px', borderWidth: 0, background: 'transparent', cursor: 'pointer', borderRadius: 6, fontSize: 16, color: '#6b7280' }}
                     >
                       <i className="ti ti-dots-vertical" />
                     </button>
-                    {openKebab === a.id && (
-                      <div style={{ position: 'absolute', right: 8, top: '100%', background: '#fff', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, minWidth: 200, overflow: 'hidden' }}
-                        onMouseLeave={() => setOpenKebab(null)}>
-                        {[
-                          { icon: 'ti-percentage',    label: 'Edit override komisi',       color: '#1a1a1a', disabled: a.status !== 'active' },
-                          { icon: 'ti-history',        label: 'Lihat riwayat assignment',  color: '#1a1a1a', disabled: false },
-                          null, // separator
-                          { icon: 'ti-player-pause',  label: 'Tangguhkan sementara',       color: '#854F0B', disabled: a.status !== 'active' },
-                          { icon: 'ti-arrows-exchange',label: 'Transfer ke tenant lain',   color: '#185FA5', disabled: false },
-                          null,
-                          { icon: 'ti-x',             label: 'Cabut penugasan',            color: '#A32D2D', disabled: false },
-                        ].map((item, idx) => item === null ? (
-                          <div key={idx} style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '2px 0' }} />
-                        ) : (
-                          <button key={idx} disabled={item.disabled} onClick={() => { setOpenKebab(null); toast.info(`${item.label}: segera tersedia`) }}
-                            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: item.disabled ? 'not-allowed' : 'pointer', fontSize: 13, color: item.disabled ? '#9ca3af' : item.color, fontFamily: 'inherit', textAlign: 'left' }}
-                            onMouseEnter={e => { if (!item.disabled) e.currentTarget.style.background = '#f9f9f8' }}
-                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-                          >
-                            <i className={`ti ${item.icon}`} style={{ fontSize: 14 }} />
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </td>
                 </tr>
               ))}
@@ -274,6 +322,40 @@ export function TabKategori({ tenantId }: Props) {
           </table>
         )}
       </div>
+
+      {/* Kebab dropdown — fixed position, render di luar tabel agar tidak terpotong */}
+      {openKebab && kebabPos && (() => {
+        const a = filtered.find(x => x.id === openKebab)
+        if (!a) return null
+        return (
+          <div
+            style={{ position: 'fixed', top: kebabPos.top, right: kebabPos.right, background: '#fff', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 9999, minWidth: 200, overflow: 'hidden' }}
+            onMouseLeave={() => { setOpenKebab(null); setKebabPos(null) }}
+          >
+            {[
+              { icon: 'ti-percentage',     label: 'Edit override komisi',      color: '#1a1a1a', disabled: a.status !== 'active' },
+              { icon: 'ti-history',        label: 'Lihat riwayat assignment',  color: '#1a1a1a', disabled: false },
+              null,
+              { icon: 'ti-player-pause',   label: 'Tangguhkan sementara',      color: '#854F0B', disabled: a.status !== 'active' },
+              { icon: 'ti-arrows-exchange',label: 'Transfer ke tenant lain',   color: '#185FA5', disabled: false },
+              null,
+              { icon: 'ti-x',              label: 'Cabut penugasan',           color: '#A32D2D', disabled: false },
+            ].map((item, idx) => item === null ? (
+              <div key={idx} style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '2px 0' }} />
+            ) : (
+              <button key={idx} disabled={item.disabled}
+                onClick={() => { setOpenKebab(null); setKebabPos(null); toast.info(`${item.label}: segera tersedia`) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', width: '100%', background: 'transparent', borderWidth: 0, cursor: item.disabled ? 'not-allowed' : 'pointer', fontSize: 13, color: item.disabled ? '#9ca3af' : item.color, fontFamily: 'inherit', textAlign: 'left' }}
+                onMouseEnter={e => { if (!item.disabled) e.currentTarget.style.background = '#f9f9f8' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+              >
+                <i className={`ti ${item.icon}`} style={{ fontSize: 14 }} />
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* Dialog Tambah Kategori (G35 — HUTANG-01) */}
       <DialogTambahKategori
