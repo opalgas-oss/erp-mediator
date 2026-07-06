@@ -68,6 +68,17 @@ export async function feeRepo_getAktif(tenantId: string): Promise<FeeListRespons
 
   if (error) throw new Error(`feeRepo_getAktif: ${error.message}`)
 
+  // 1b. Baca fee terjadwal (berlaku_mulai > today, is_active = true)
+  const { data: rowsTerjadwal, error: errorTerjadwal } = await supabase
+    .from('tenant_fees')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .gt('berlaku_mulai', today)
+    .order('berlaku_mulai', { ascending: true })
+
+  if (errorTerjadwal) throw new Error(`feeRepo_getAktif terjadwal: ${errorTerjadwal.message}`)
+
   // 2. Ambil fee default dari config_registry (selalu perlu untuk fallback)
   const feeDefault = await feeRepo_getDefault()
 
@@ -177,7 +188,24 @@ export async function feeRepo_getAktif(tenantId: string): Promise<FeeListRespons
     (ORDER[a.fee_key] ?? 99) - (ORDER[b.fee_key] ?? 99)
   )
 
-  return { aktif, default: feeDefault }
+  // 5. Map baris terjadwal ke FeeAktif[]
+  const terjadwal: FeeAktif[] = (rowsTerjadwal ?? []).map((row: TenantFee) => ({
+    fee_key:        row.fee_key,
+    nama_biaya:     row.nama_biaya,
+    tipe:           row.tipe,
+    nilai_persen:   row.nilai_persen,
+    nilai_flat:     row.nilai_flat,
+    nilai_maks:     row.nilai_maks,
+    berlaku_untuk:  row.berlaku_untuk,
+    ppn_inklusif:   row.ppn_inklusif,
+    passthrough:    row.passthrough,
+    berlaku_mulai:  row.berlaku_mulai,
+    berlaku_sampai: row.berlaku_sampai,
+    sumber:         'tenant_override',
+    fee_id:         row.id,
+  }))
+
+  return { aktif, terjadwal, default: feeDefault }
 }
 
 // ─── GET riwayat fee tenant ───────────────────────────────────────────────────

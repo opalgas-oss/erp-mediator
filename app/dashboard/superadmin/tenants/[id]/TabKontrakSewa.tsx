@@ -606,9 +606,9 @@ export function TabKontrakSewa({ tenant, onRefresh }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {feeData.aktif.map((fee, i) => {
-                  // Deteksi apakah baris ini "terjadwal" = berlaku_mulai > today
-                  const isPending  = fee.berlaku_mulai > new Date().toISOString().split('T')[0]
+                {[...feeData.aktif, ...(feeData.terjadwal ?? [])].map((fee, i) => {
+                  // Baris terjadwal = berasal dari feeData.terjadwal
+                  const isPending  = (feeData.terjadwal ?? []).some(t => t.fee_id === fee.fee_id && fee.fee_id !== null)
                   const isEditing  = editingFeeKey === fee.fee_key
                   const rowBg      = isPending ? '#FFFBF0' : (i % 2 === 0 ? '#fff' : '#f9f9f8')
 

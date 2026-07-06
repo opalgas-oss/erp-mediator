@@ -121,8 +121,9 @@ export interface TambahFeePayload {
 // ─── Response: API GET /fees ──────────────────────────────────────────────────
 
 export interface FeeListResponse {
-  aktif:    FeeAktif[]             // fee yang berlaku sekarang
-  default:  FeeDefault             // nilai fallback dari config_registry
+  aktif:     FeeAktif[]            // fee yang berlaku sekarang (berlaku_mulai <= today)
+  terjadwal: FeeAktif[]            // fee yang dijadwalkan (berlaku_mulai > today)
+  default:   FeeDefault            // nilai fallback dari config_registry
 }
 
 // ─── Response: API GET /fees/history ─────────────────────────────────────────
