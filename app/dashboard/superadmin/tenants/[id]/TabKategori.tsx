@@ -333,13 +333,12 @@ export function TabKategori({ tenantId }: Props) {
             onMouseLeave={() => { setOpenKebab(null); setKebabPos(null) }}
           >
             {[
-              { icon: 'ti-percentage',     label: 'Edit override komisi',      color: '#1a1a1a', disabled: a.status !== 'active' },
-              { icon: 'ti-history',        label: 'Lihat riwayat assignment',  color: '#1a1a1a', disabled: false },
+              { icon: 'ti-percentage',     label: 'Edit override komisi',                                          color: '#1a1a1a', disabled: a.status !== 'active' },
+              { icon: 'ti-history',        label: 'Lihat riwayat assignment',                                      color: '#1a1a1a', disabled: false },
               null,
-              { icon: 'ti-player-pause',   label: 'Tangguhkan sementara',      color: '#854F0B', disabled: a.status !== 'active' },
-              { icon: 'ti-arrows-exchange',label: 'Transfer ke tenant lain',   color: '#185FA5', disabled: false },
+              { icon: 'ti-player-pause',   label: 'Hentikan kategori ini — nonaktifkan sementara tanpa melepas penugasan, tenant masih pegang kategori ini',      color: '#854F0B', disabled: a.status !== 'active' },
               null,
-              { icon: 'ti-x',              label: 'Cabut penugasan',           color: '#A32D2D', disabled: false },
+              { icon: 'ti-x',              label: 'Lepas kategori dari tenant ini — cabut permanen, area ini bisa dipegang tenant lain setelah konfirmasi 2 langkah', color: '#A32D2D', disabled: false },
             ].map((item, idx) => item === null ? (
               <div key={idx} style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '2px 0' }} />
             ) : (
@@ -369,9 +368,9 @@ export function TabKategori({ tenantId }: Props) {
       <div style={{ fontSize: 12, color: '#6b7280', background: '#f9f9f8', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <i className="ti ti-info-circle" style={{ flexShrink: 0, marginTop: 1 }} />
         <div>
-          <strong>Aturan penugasan:</strong> Satu kategori hanya bisa dipegang satu tenant aktif pada satu waktu.
-          Sebelum menugaskan kategori yang sudah dipegang tenant lain, sistem akan meminta konfirmasi serah terima (handover).
-          Cabut penugasan memerlukan konfirmasi 2 langkah karena tidak bisa dibatalkan.
+          <strong>Aturan penugasan:</strong> Satu kategori per area hanya bisa dipegang satu tenant aktif pada satu waktu.
+          Sebelum menugaskan kategori yang sudah dipegang tenant lain, sistem akan meminta SA untuk melakukan
+          cabut penugasan dari tenant lama dahulu, di mana proses ini memerlukan konfirmasi 2 langkah karena tidak bisa dibatalkan.
         </div>
       </div>
     </div>
