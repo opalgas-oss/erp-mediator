@@ -336,9 +336,9 @@ export function TabKategori({ tenantId }: Props) {
               { icon: 'ti-percentage',     label: 'Edit override komisi',                                          color: '#1a1a1a', disabled: a.status !== 'active' },
               { icon: 'ti-history',        label: 'Lihat riwayat assignment',                                      color: '#1a1a1a', disabled: false },
               null,
-              { icon: 'ti-player-pause',   label: 'Hentikan kategori ini — nonaktifkan sementara tanpa melepas penugasan, tenant masih pegang kategori ini',      color: '#854F0B', disabled: a.status !== 'active' },
+              { icon: 'ti-player-pause',   label: 'Hentikan kategori ini',          color: '#854F0B', disabled: a.status !== 'active' },
               null,
-              { icon: 'ti-x',              label: 'Lepas kategori dari tenant ini — cabut permanen, area ini bisa dipegang tenant lain setelah konfirmasi 2 langkah', color: '#A32D2D', disabled: false },
+              { icon: 'ti-x',              label: 'Lepas kategori dari tenant ini',  color: '#A32D2D', disabled: false },
             ].map((item, idx) => item === null ? (
               <div key={idx} style={{ height: '0.5px', background: 'rgba(0,0,0,0.12)', margin: '2px 0' }} />
             ) : (
@@ -367,10 +367,11 @@ export function TabKategori({ tenantId }: Props) {
       {/* Info box (C5) */}
       <div style={{ fontSize: 12, color: '#6b7280', background: '#f9f9f8', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <i className="ti ti-info-circle" style={{ flexShrink: 0, marginTop: 1 }} />
-        <div>
-          <strong>Aturan penugasan:</strong> Satu kategori per area hanya bisa dipegang satu tenant aktif pada satu waktu.
-          Sebelum menugaskan kategori yang sudah dipegang tenant lain, sistem akan meminta SA untuk melakukan
-          cabut penugasan dari tenant lama dahulu, di mana proses ini memerlukan konfirmasi 2 langkah karena tidak bisa dibatalkan.
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div><strong>Aturan penugasan:</strong></div>
+          <div>1. Satu kategori per area hanya bisa dipegang satu tenant aktif pada satu waktu. Sebelum menugaskan kategori yang sudah dipegang tenant lain, sistem akan meminta SA untuk melakukan cabut penugasan dari tenant lama dahulu, di mana proses ini memerlukan konfirmasi 2 langkah karena tidak bisa dibatalkan.</div>
+          <div>2. <strong>Hentikan kategori ini</strong> — nonaktifkan sementara tanpa melepas penugasan, tenant masih pegang kategori ini: <em>segera tersedia</em></div>
+          <div>3. <strong>Lepas kategori dari tenant ini</strong> — cabut permanen, area ini bisa dipegang tenant lain setelah konfirmasi 2 langkah: <em>segera tersedia</em></div>
         </div>
       </div>
     </div>
