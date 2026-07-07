@@ -36,9 +36,9 @@
 
 // PERUBAHAN Sesi #331 — M7: tambah pingHeartbeat() di akhir collectL1Metrics
 //   (dead-man's switch: ping Healthchecks.io + simpan last_run_at ke Redis).
-// PERUBAHAN Sesi #332 — HUTANG M2: tambah call autoDisableRulesWithoutInstances()
-//   di collectL1Metrics sebelum upsertDefaultRules. Fungsi sudah ada di alert-rules.service
-//   sejak S#331 tapi belum dipanggil dari cron. Fix akar masalah spam alert provider tanpa instance aktif.
+// ── ARSIP PRA-S332 (Hutang M2 integrasi cron) ──
+// File ini adalah snapshot SEBELUM tambah call autoDisableRulesWithoutInstances()
+// di collectL1Metrics. Hutang: fungsi ada di alert-rules.service.ts tapi belum dipanggil.
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getCredentialsByProvider }   from '@/lib/services/credential.service'
@@ -54,7 +54,6 @@ import { collectCloudinaryMetrics }   from '@/lib/services/collectors/cloudinary
 import { collectGithubMetrics }       from '@/lib/services/collectors/github.collector'
 import { getConfigItemsByKategori }   from '@/lib/config-registry'
 import { pingHeartbeat }              from '@/lib/services/alert-heartbeat.service'
-import { autoDisableRulesWithoutInstances } from '@/lib/services/alert-rules.service'
 import type {
   MonitoringStatus,
   MonitoringLayer,
@@ -64,20 +63,6 @@ import type {
 const PING_TIMEOUT_MS       = 5_000
 const DEGRADED_THRESHOLD_MS = 2_000
 
-// ─── collectL1Metrics ─────────────────────────────────────────────────────────
-
-/**
- * Ping L1 untuk semua provider aktif.
- * Dipanggil QStash cron setiap 1 menit.
- *
- * @param retentionDays - Dari config monitoring.data_retention_days (default 30)
- * @param thresholdMs   - Dari config monitoring.alert_threshold_response_ms (default 3000)
- *                        Dipakai sebagai threshold_value di default alert rule SLOW.
- * @param cooldown      - Dari config monitoring.alert_cooldown_minutes (default 30)
- *                        Dipakai sebagai cooldown_minutes di default alert rules.
- * @param consecutive   - Dari config monitoring.alert_consecutive_failures (default 3)
- *                        Dipakai sebagai consecutive_failures di default alert rules.
- */
 export async function collectL1Metrics(
   retentionDays: number = 30,
   thresholdMs:   number = 3000,
@@ -96,16 +81,6 @@ export async function collectL1Metrics(
   if (error) throw new Error(`collectL1Metrics: ${error.message}`)
   if (!providers?.length) return { processed: 0, errors: [] }
 
-  // M2: disable dulu rules yang providernya tidak punya instance aktif,
-  // sebelum upsert default rules. Urutan penting: disable → upsert → ping.
-  // Tanpa ini: provider tanpa instance akan terus di-ping dan terus DOWN → spam.
-  try {
-    await autoDisableRulesWithoutInstances()
-  } catch { /* non-critical — tidak menghalangi cron */ }
-
-  // Pastikan default alert rules tersedia untuk semua provider aktif.
-  // upsertDefaultRules pakai ignoreDuplicates:true — tidak overwrite rule yang sudah diubah SA.
-  // FIX T-055 S#171: fungsi ini diimport sejak S#151 tapi belum pernah dipanggil.
   try {
     await upsertDefaultRules(
       providers.map(p => p.id),
@@ -113,7 +88,7 @@ export async function collectL1Metrics(
       cooldown,
       consecutive
     )
-  } catch { /* non-critical — alert rules tidak menghalangi metric collection */ }
+  } catch { /* non-critical */ }
 
   const errors: string[] = []
   let processed = 0
@@ -133,19 +108,11 @@ export async function collectL1Metrics(
 
   try { await deleteOldMetrics(retentionDays) } catch { /* non-critical */ }
 
-  // M7: ping heartbeat di akhir cron — fire-and-forget, tidak blocking result
   pingHeartbeat().catch(err => console.warn('[collectL1Metrics] pingHeartbeat error:', err))
 
   return { processed, errors }
 }
 
-// ─── collectL3Metrics ─────────────────────────────────────────────────────────
-
-/**
- * Deep check L3 untuk sistem yang support.
- * Token diambil dari M3 DB via credential.service (ATURAN 11 — tidak duplikasi .env).
- * Dipanggil QStash cron setiap 15 menit.
- */
 export async function collectL3Metrics(): Promise<{
   processed: number
   errors:    string[]
@@ -165,7 +132,6 @@ export async function collectL3Metrics(): Promise<{
         .single()
       if (!prov) continue
 
-      // Ambil credential dari M3 DB — bukan process.env
       const creds = await getCredentialsByProvider(kode)
       const metricsData = await collectDeepMetrics(kode, creds)
 
@@ -185,31 +151,21 @@ export async function collectL3Metrics(): Promise<{
   return { processed, errors }
 }
 
-// ─── collectDeepMetrics — dispatch ke collector per sistem ────────────────────
-
 async function collectDeepMetrics(
   kode:  string,
   creds: Record<string, string>
 ): Promise<Record<string, unknown>> {
   switch (kode) {
     case 'supabase': {
-      // S#297: pass dua set credential ke collectSupabaseMetrics:
-      //   mgmtCreds: access_token + project_ref (untuk /health status komponen)
-      //   appCreds:  project_url + service_role_key (untuk RPC monitoring.collect_metrics())
-      // Kedua credential diambil dari M3 DB masing-masing provider-nya.
       const mgmtCreds = await getCredentialsByProvider('supabase-management')
       const appCreds  = await getCredentialsByProvider('supabase')
       return collectSupabaseMetrics(mgmtCreds, appCreds)
     }
     case 'supabase-management': {
-      // Panel supabase-management pakai mgmtCreds saja (tidak perlu RPC)
       const appCreds = await getCredentialsByProvider('supabase')
       return collectSupabaseMetrics(creds, appCreds)
     }
     case 'vercel': {
-      // S#299: baca vercel_plan dari config_registry, pass ke collector
-      // plan='hobby' → bandwidth_bytes: null, fn_invocations: null (tampil N/A di UI)
-      // plan='pro'   → best-effort fetch usage API (null bila gagal)
       const monitoringItems = await getConfigItemsByKategori('Monitoring')
       const vercelPlanItem  = monitoringItems.find(i => i.feature_key === 'vercel_plan')
       const vercelPlan      = vercelPlanItem?.nilai ?? 'hobby'
@@ -222,14 +178,11 @@ async function collectDeepMetrics(
   }
 }
 
-// ─── pingProvider ─────────────────────────────────────────────────────────────
-
 async function pingProvider(
   providerId: string,
   kode:       string,
   statusUrl:  string | null
 ): Promise<InsertProviderMetricPayload> {
-  // Fonnte tidak punya status-page publik — cek terautentikasi via POST /device (lihat pingFonnte).
   if (kode === 'fonnte') return pingFonnte(providerId)
 
   const targetUrl = statusUrl ?? PING_URLS[kode] ?? null
@@ -274,17 +227,6 @@ async function pingProvider(
   }
 }
 
-// ─── pingFonnte — health check terautentikasi ────────────────────────────────
-
-/**
- * Cek kesehatan Fonnte via POST /device (endpoint sama dengan testFonnte di provider-tester
- * + sendFonnteWA). Token api_token diambil dari M3 (anti-hardcode). Berbeda dari testFonnte:
- * pingFonnte juga membaca `device_status` (connect/disconnect) — penentu apakah WA benar-benar
- * bisa dikirim. testFonnte hanya cek validitas token (status:true), tidak cek koneksi device.
- *   - status:true + device_status==='connect'  → UP (DEGRADED jika lambat)
- *   - device_status==='disconnect'              → DOWN (WA tidak bisa dikirim)
- *   - status:false / HTTP non-2xx / exception   → DOWN
- */
 async function pingFonnte(providerId: string): Promise<InsertProviderMetricPayload> {
   const creds = await getCredentialsByProvider('fonnte')
   const token = creds['api_token']
@@ -335,8 +277,6 @@ async function pingFonnte(providerId: string): Promise<InsertProviderMetricPaylo
     }
   }
 }
-
-// ─── PING_URLS — fallback jika status_url provider tidak diset di DB ──────────
 
 const PING_URLS: Record<string, string> = {
   'supabase':            'https://status.supabase.com/api/v2/status.json',
