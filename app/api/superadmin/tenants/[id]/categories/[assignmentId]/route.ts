@@ -67,7 +67,7 @@ export async function PATCH(
           assignmentId,
           {
             commission_override: body.commission_override,
-            coverage_areas:      body.coverage_areas,
+            // S#327: coverage_areas tidak diteruskan — field legacy dihapus dari UpdateOverridePayload
             sla_minutes:         body.sla_minutes,
           },
           auth.uid

@@ -5,6 +5,8 @@
 // Blok D: chevron collapsible pada card tabel
 //
 // Dibuat: Sesi #325 — Pecah TabKategori.tsx (23 KB → 3 file)
+// Update: Sesi #327 — F-05: fix kolom Coverage Area — baca dari coverage_areas_detail (junction table)
+//                           bukan kolom legacy coverage_areas
 // Dipakai oleh: TabKategori.tsx
 
 import type { AssignmentDenganKategori } from '@/lib/types/tenant-category-assignment.types'
@@ -133,14 +135,18 @@ export function TabKategoriTabel({
                     )}
                   </td>
 
-                  {/* Coverage area */}
+                  {/* Coverage area — S#327 F-05: baca dari coverage_areas_detail (junction table) */}
                   <td style={{ padding: '12px 12px', verticalAlign: 'middle' }}>
-                    {a.coverage_areas?.length ? (
-                      a.coverage_areas.map(ar => (
-                        <span key={ar} style={{ display: 'inline-block', padding: '2px 6px', borderRadius: 100, fontSize: 11, background: '#f9f9f8', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', color: '#6b7280', marginRight: 2, marginBottom: 2 }}>{ar}</span>
-                      ))
+                    {a.coverage_areas_detail.length > 0 ? (
+                      a.coverage_areas_detail.map((area, idx) => {
+                        // Tampilkan area terkecil: kota jika ada, provinsi jika tidak ada kota
+                        const label = area.city_name ?? area.province_name
+                        return (
+                          <span key={idx} style={{ display: 'inline-block', padding: '2px 6px', borderRadius: 100, fontSize: 11, background: '#E6F1FB', borderWidth: '0.5px', borderStyle: 'solid', borderColor: '#85B7EB', color: '#185FA5', marginRight: 2, marginBottom: 2 }}>{label}</span>
+                        )
+                      })
                     ) : (
-                      <span style={{ color: '#9ca3af', fontSize: 12 }}>Seluruh Indonesia</span>
+                      <span style={{ display: 'inline-block', padding: '2px 6px', borderRadius: 100, fontSize: 11, background: '#f9f9f8', borderWidth: '0.5px', borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.12)', color: '#9ca3af' }}>Seluruh Indonesia</span>
                     )}
                   </td>
 

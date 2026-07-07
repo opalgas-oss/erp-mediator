@@ -2,16 +2,23 @@
 // Repository untuk tabel tenant_category_assignments — akses DB only.
 // TIDAK ada logika bisnis — hanya query dan return data.
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.3
+// Update: Sesi #327 — F-03: fix coverage area — baca dari junction table assignment_coverage_areas
+//                           hapus semua logika yang baca kolom legacy coverage_areas
 //
 // ARSITEKTUR:
 //   Service → TenantCategoryAssignmentRepository → DB (tabel tenant_category_assignments)
 //   Dipakai oleh: tenant-category-assignment.service.ts
+//
+// ⛔ ATURAN: kolom coverage_areas di tenant_category_assignments adalah LEGACY (S#327)
+//    JANGAN pernah baca atau tulis kolom tersebut dari file ini.
+//    Sumber data coverage area yang benar: junction table assignment_coverage_areas
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import type {
   TenantCategoryAssignment,
   AssignmentDenganKategori,
+  CoverageAreaDetail,
   AssignmentSummary,
   AssignmentFilter,
   AssignKategoriPayload,
@@ -21,8 +28,9 @@ import type {
 
 // ─── FUNGSI: findByTenantId ───────────────────────────────────────────────────
 /**
- * Ambil semua assignment milik satu tenant, dengan detail kategori.
+ * Ambil semua assignment milik satu tenant, dengan detail kategori + coverage area aktual.
  * Untuk Tab Kategori di halaman Detail Tenant.
+ * S#327 F-03: join assignment_coverage_areas (junction table) — bukan kolom legacy coverage_areas
  */
 export async function findByTenantId(
   tenantId: string,
@@ -33,9 +41,20 @@ export async function findByTenantId(
   let query = db
     .from('tenant_category_assignments')
     .select(`
-      *,
+      id, tenant_id, category_id, status,
+      commission_override, sla_minutes,
+      assigned_by, assigned_at,
+      suspended_by, suspended_at, suspend_reason,
+      handover_to_tenant_id, handover_initiated_at, handover_initiated_by,
+      created_at, created_by, updated_at, updated_by,
+      deleted_at, deleted_by, revoke_reason,
       categories!inner(id, slug, display_name, level, parent_id,
-        parent:categories!parent_id(display_name))
+        parent:categories!parent_id(display_name)),
+      assignment_coverage_areas(
+        province_id, city_id,
+        provinces(name),
+        cities(name)
+      )
     `)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
@@ -64,6 +83,20 @@ export async function findByTenantId(
       parent_name:  parentName ?? null,
     }
 
+    // S#327 F-03: baca coverage area dari junction table, bukan kolom legacy
+    const coverageRows = (r['assignment_coverage_areas'] as unknown[] | null) ?? []
+    const coverageDetail: CoverageAreaDetail[] = coverageRows.map((ca: unknown) => {
+      const c  = ca as Record<string, unknown>
+      const prov = c['provinces'] as Record<string, unknown> | null
+      const city = c['cities']    as Record<string, unknown> | null
+      return {
+        province_id:   c['province_id'] as string,
+        province_name: (prov?.['name'] as string | null) ?? '',
+        city_id:       (c['city_id']   as string | null) ?? null,
+        city_name:     (city?.['name'] as string | null) ?? null,
+      }
+    })
+
     const override = r['commission_override'] as string | null
     const tampilKomisi = override
       ? `Override: ${(parseFloat(override) * 100).toFixed(2)}%`
@@ -75,7 +108,6 @@ export async function findByTenantId(
       category_id:           r['category_id'] as string,
       status:                r['status'] as 'active' | 'suspended' | 'pending_handover',
       commission_override:   override,
-      coverage_areas:        r['coverage_areas'] as string[] | null,
       sla_minutes:           r['sla_minutes'] as number | null,
       assigned_by:           r['assigned_by'] as string | null,
       assigned_at:           r['assigned_at'] as string,
@@ -93,15 +125,18 @@ export async function findByTenantId(
       deleted_by:            r['deleted_by'] as string | null,
       revoke_reason:         r['revoke_reason'] as string | null,
       kategori:              breadcrumb,
-      rate_kontrak:          null,   // diisi di service layer dari kontrak tenant
+      rate_kontrak:          null,           // diisi di service layer dari kontrak tenant
       tampil_komisi:         tampilKomisi,
+      coverage_areas_detail: coverageDetail, // S#327 F-03: dari junction table
     }
   })
 }
 
 // ─── FUNGSI: getSummaryByTenantId ─────────────────────────────────────────────
 /**
- * Hitung 3 kartu summary Tab Kategori.
+ * Hitung 2 kartu summary Tab Kategori.
+ * S#327 F-03: coverage_summary dihapus — card Coverage Area dihapus dari UI.
+ *             Query tidak lagi menyentuh kolom legacy coverage_areas.
  */
 export async function getSummaryByTenantId(
   tenantId: string
@@ -109,31 +144,16 @@ export async function getSummaryByTenantId(
   const db = createServerSupabaseClient()
   const { data } = await db
     .from('tenant_category_assignments')
-    .select('status, commission_override, coverage_areas')
+    .select('status, commission_override')
     .eq('tenant_id', tenantId)
     .eq('status', 'active')
     .is('deleted_at', null)
 
-  if (!data) return { total_aktif: 0, total_override_komisi: 0, coverage_summary: 'BELUM_SETTING' }
-
-  const totalAktif        = data.length
-  const totalOverride     = data.filter(a => a.commission_override !== null).length
-  const allAreas          = data.flatMap(a => a.coverage_areas ?? [])
-  const uniqueAreas       = [...new Set(allAreas)]
-
-  // Bedakan 2 kondisi:
-  // - Belum ada assignment sama sekali (totalAktif===0) → 'BELUM_SETTING' → UI tampil "Belum disetting"
-  // - Ada assignment tapi tidak ada coverage spesifik → 'Seluruh Indonesia' (memang by design)
-  const coverageSummary   = totalAktif === 0
-    ? 'BELUM_SETTING'
-    : uniqueAreas.length === 0
-      ? 'Seluruh Indonesia'
-      : uniqueAreas.slice(0, 3).join(', ') + (uniqueAreas.length > 3 ? ', ...' : '')
+  if (!data) return { total_aktif: 0, total_override_komisi: 0 }
 
   return {
-    total_aktif:           totalAktif,
-    total_override_komisi: totalOverride,
-    coverage_summary:      coverageSummary,
+    total_aktif:           data.length,
+    total_override_komisi: data.filter(a => a.commission_override !== null).length,
   }
 }
 
@@ -170,7 +190,7 @@ export async function assignViaSP(
     p_tenant_id:           payload.tenant_id,
     p_category_id:         payload.category_id,
     p_commission_override: payload.commission_override ?? null,
-    p_coverage_areas:      payload.coverage_areas ?? null,
+    p_coverage_areas:      null, // S#327 F-03: selalu NULL — data real di assignment_coverage_areas
     p_sla_minutes:         payload.sla_minutes ?? null,
     p_assigned_by:         assignedBy,
   })
@@ -310,7 +330,7 @@ export async function tcaRepo_updateOverrideKomisi(
   assignmentId: string,
   payload: {
     commission_override?: number | null
-    coverage_areas?:      string[] | null
+    // coverage_areas dihapus S#327 F-03 — kolom legacy, tidak diupdate lagi
     sla_minutes?:         number | null
   },
   updatedBy: string
@@ -320,7 +340,7 @@ export async function tcaRepo_updateOverrideKomisi(
     .from('tenant_category_assignments')
     .update({
       commission_override: payload.commission_override ?? null,
-      coverage_areas:      payload.coverage_areas      ?? undefined,
+      // S#327 F-03: coverage_areas tidak diupdate — kolom legacy selalu NULL
       sla_minutes:         payload.sla_minutes         ?? undefined,
       updated_by:          updatedBy,
       updated_at:          new Date().toISOString(),

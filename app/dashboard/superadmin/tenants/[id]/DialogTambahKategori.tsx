@@ -187,7 +187,7 @@ export function DialogTambahKategori({ tenantId, open, onClose, onSuccess }: Pro
         tenant_id:           tenantId,
         category_id:         selectedId,
         commission_override: null,
-        coverage_areas:      null,  // legacy field
+        // S#327: coverage_areas dihapus dari AssignKategoriPayload — field legacy
         sla_minutes:         slaMinutes ? parseInt(slaMinutes, 10) : null,
         coverage_area_entries: coverageList.map(c => ({
           province_id: c.province_id,

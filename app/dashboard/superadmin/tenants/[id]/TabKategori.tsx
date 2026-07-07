@@ -45,9 +45,9 @@ export function TabKategori({ tenantId }: Props) {
   const [openDialog,   setOpenDialog]   = useState(false)
 
   // Blok D — chevron collapsible
+  // S#327 F-04: hapus openSummary3 (card Coverage Area dihapus)
   const [openSummary1, setOpenSummary1] = useState(true)
   const [openSummary2, setOpenSummary2] = useState(true)
-  const [openSummary3, setOpenSummary3] = useState(true)
   const [openTabel,    setOpenTabel]    = useState(true)
 
   // State dialog kebab
@@ -88,12 +88,12 @@ export function TabKategori({ tenantId }: Props) {
   return (
     <div>
 
-      {/* Summary cards (C1) */}
+      {/* Summary cards (C1) — S#327 F-04: 2 kartu (hapus card Coverage Area) */}
       {data && (
         <TabKategoriSummary
           summary={data.summary}
-          openSummary1={openSummary1} openSummary2={openSummary2} openSummary3={openSummary3}
-          setOpenSummary1={setOpenSummary1} setOpenSummary2={setOpenSummary2} setOpenSummary3={setOpenSummary3}
+          openSummary1={openSummary1} openSummary2={openSummary2}
+          setOpenSummary1={setOpenSummary1} setOpenSummary2={setOpenSummary2}
         />
       )}
 

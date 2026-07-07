@@ -98,7 +98,7 @@ export async function TCAService_batchAssign(
           tenant_id:           payload.tenant_id,
           category_id:         item.category_id,
           commission_override: item.commission_override ?? null,
-          coverage_areas:      item.coverage_areas ?? null,
+          // S#327: coverage_areas dihapus — data real via coverage_area_entries di junction table
           sla_minutes:         item.sla_minutes ?? null,
         },
         assignedBy
@@ -204,6 +204,11 @@ export async function TCAService_updateOverrideKomisi(
 ): Promise<void> {
   validateCommissionOverride(payload.commission_override)
 
-  const ok = await tcaRepo_updateOverrideKomisi(assignmentId, payload, updatedBy)  // PV-08 S#179: dipindah ke repo layer
+  // S#327: coverage_areas tidak diteruskan — UpdateOverridePayload sudah tidak punya field ini
+  const ok = await tcaRepo_updateOverrideKomisi(
+    assignmentId,
+    { commission_override: payload.commission_override, sla_minutes: payload.sla_minutes },
+    updatedBy
+  )  // PV-08 S#179: dipindah ke repo layer
   if (!ok) throw new Error('Gagal mengupdate override komisi')
 }
