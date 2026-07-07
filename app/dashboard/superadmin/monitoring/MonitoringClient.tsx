@@ -132,7 +132,10 @@ export function MonitoringClient({
       {/* L1 */}
       <section>
         <SectionLabel>L1 — Status Sistem (Ping Health)</SectionLabel>
-        <SystemBadgeGrid systems={systems} />
+        <SystemBadgeGrid
+          systems={systems}
+          lastCheckedAt={updatedAt}
+        />
       </section>
 
       {/* L2 */}

@@ -33,6 +33,24 @@ export interface InsertProviderMetricPayload {
   error_detail?:    string
 }
 
+// ─── Alert Lifecycle Status (M1, A2, A3 — S#331) ───────────────────────────
+
+export type AlertStatus =
+  | 'TRIGGERED'
+  | 'ACKNOWLEDGED'
+  | 'RESOLVED'
+  | 'SUPPRESSED'
+  | 'AUTO_RESOLVED'
+
+// Transisi yang valid — dipakai validateAlertTransition (A3)
+export const VALID_ALERT_TRANSITIONS: Record<AlertStatus, AlertStatus[]> = {
+  TRIGGERED:    ['ACKNOWLEDGED', 'AUTO_RESOLVED', 'SUPPRESSED'],
+  ACKNOWLEDGED: ['RESOLVED', 'AUTO_RESOLVED'],
+  SUPPRESSED:   ['TRIGGERED'],
+  RESOLVED:     ['TRIGGERED'],
+  AUTO_RESOLVED:['TRIGGERED'],
+}
+
 // ─── Alert Rules ──────────────────────────────────────────────────────────────
 
 export interface AlertRule {
@@ -48,6 +66,12 @@ export interface AlertRule {
   updated_at:           string
   created_by:           string | null
   updated_by:           string | null
+  // Kolom M2 auto-disable (S#331)
+  disabled_reason:      string | null
+  disabled_at:          string | null
+  disabled_by:          string | null
+  // Kolom B2 severity (S#331)
+  severity:             'CRITICAL' | 'WARNING' | 'INFO'
 }
 
 export interface UpdateAlertRulePayload {
@@ -56,6 +80,7 @@ export interface UpdateAlertRulePayload {
   cooldown_minutes?:     number
   notif_channels?:       AlertChannel[]
   is_active?:            boolean
+  severity?:             'CRITICAL' | 'WARNING' | 'INFO'
 }
 
 // ─── Alert Log ────────────────────────────────────────────────────────────────
@@ -72,6 +97,21 @@ export interface AlertLog {
   error_wa:       string | null
   error_email:    string | null
   triggered_at:   string
+  // Kolom lifecycle M1 (S#331)
+  status:                   AlertStatus
+  acknowledged_at:          string | null
+  acknowledged_by:          string | null
+  resolved_at:              string | null
+  resolved_by:              string | null
+  resolution_note:          string | null
+  updated_at:               string
+  // Kolom dedup M3 (S#331)
+  dedup_key:                string | null
+  occurrence_count:         number
+  last_occurred_at:         string
+  // Kolom auto-resolve A2 (S#331)
+  auto_resolved_at:         string | null
+  downtime_duration_seconds:number | null
 }
 
 export interface InsertAlertLogPayload {
@@ -84,6 +124,25 @@ export interface InsertAlertLogPayload {
   sent_via_email: boolean
   error_wa?:      string
   error_email?:   string
+  // Kolom lifecycle wajib untuk insert baru (S#331)
+  status?:        AlertStatus
+  dedup_key?:     string
+}
+
+// Payload untuk aksi lifecycle (M1 — S#331)
+export interface AcknowledgeAlertPayload {
+  alertLogId:   string
+  acknowledgedBy: string
+}
+
+export interface ResolveAlertPayload {
+  alertLogId:     string
+  resolvedBy:     string
+  resolutionNote: string
+}
+
+export interface ReopenAlertPayload {
+  alertLogId: string
 }
 
 // ─── Snapshot untuk Dashboard (L1 + L4) ──────────────────────────────────────

@@ -8,6 +8,7 @@ import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getPastISOTimestamp } from '@/lib/utils/date.utils'
 import type {
   AlertLog,
+  AlertStatus,
   InsertAlertLogPayload,
 } from '@/lib/types/monitoring.types'
 
@@ -107,4 +108,74 @@ export async function countActiveAlertProviders(): Promise<number> {
   // distinct provider_id count
   const unique = new Set((data ?? []).map(r => r.provider_id))
   return unique.size
+}
+
+// ─── findAlertLogById (M1 — S#331) ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Ambil satu alert log by ID — dipakai oleh lifecycle service untuk validasi state.
+ */
+export async function findAlertLogById(id: string): Promise<AlertLog | null> {
+  const supabase = createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('alert_log')
+    .select('*')
+    .eq('id', id)
+    .single()
+  if (error) {
+    if (error.code === 'PGRST116') return null
+    throw new Error(`findAlertLogById: ${error.message}`)
+  }
+  return data as AlertLog
+}
+
+// ─── updateAlertLogStatus (M1 — S#331) ───────────────────────────────────────────────────────────────────
+
+/**
+ * Update kolom status + kolom lifecycle terkait.
+ * Dipanggil dari alert-lifecycle.service.
+ */
+export async function updateAlertLogStatus(
+  id:      string,
+  payload: Partial<{
+    status:                    AlertStatus
+    acknowledged_at:           string
+    acknowledged_by:           string
+    resolved_at:               string
+    resolved_by:               string
+    resolution_note:           string
+    auto_resolved_at:          string
+    downtime_duration_seconds: number
+    updated_at:                string
+  }>
+): Promise<void> {
+  const supabase = createServerSupabaseClient()
+  const { error } = await supabase
+    .from('alert_log')
+    .update(payload)
+    .eq('id', id)
+  if (error) throw new Error(`updateAlertLogStatus: ${error.message}`)
+}
+
+// ─── findOpenAlertByDedupKey (A2 — S#331) ─────────────────────────────────────────────────────────────────
+
+/**
+ * Cari insiden terbuka (TRIGGERED atau ACKNOWLEDGED) dengan dedup_key tertentu.
+ * Dipakai oleh autoResolveAlert saat provider kembali UP.
+ */
+export async function findOpenAlertByDedupKey(dedupKey: string): Promise<AlertLog | null> {
+  const supabase = createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('alert_log')
+    .select('*')
+    .eq('dedup_key', dedupKey)
+    .in('status', ['TRIGGERED', 'ACKNOWLEDGED'])
+    .order('triggered_at', { ascending: false })
+    .limit(1)
+    .single()
+  if (error) {
+    if (error.code === 'PGRST116') return null
+    throw new Error(`findOpenAlertByDedupKey: ${error.message}`)
+  }
+  return data as AlertLog
 }

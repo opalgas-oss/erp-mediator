@@ -34,6 +34,8 @@
 // QStash QSTASH_TOKEN tetap di .env karena diperlukan sebelum DB bisa diakses
 // (verifikasi webhook signature level infrastruktur — CREDENTIAL_SYSTEM_SPEC BAB 2 Kategori 1).
 
+// PERUBAHAN Sesi #331 — M7: tambah pingHeartbeat() di akhir collectL1Metrics
+//   (dead-man's switch: ping Healthchecks.io + simpan last_run_at ke Redis).
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getCredentialsByProvider }   from '@/lib/services/credential.service'
@@ -48,6 +50,7 @@ import { collectUpstashMetrics }      from '@/lib/services/collectors/upstash.co
 import { collectCloudinaryMetrics }   from '@/lib/services/collectors/cloudinary.collector'
 import { collectGithubMetrics }       from '@/lib/services/collectors/github.collector'
 import { getConfigItemsByKategori }   from '@/lib/config-registry'
+import { pingHeartbeat }              from '@/lib/services/alert-heartbeat.service'
 import type {
   MonitoringStatus,
   MonitoringLayer,
@@ -118,6 +121,10 @@ export async function collectL1Metrics(
   )
 
   try { await deleteOldMetrics(retentionDays) } catch { /* non-critical */ }
+
+  // M7: ping heartbeat di akhir cron — fire-and-forget, tidak blocking result
+  pingHeartbeat().catch(err => console.warn('[collectL1Metrics] pingHeartbeat error:', err))
+
   return { processed, errors }
 }
 
