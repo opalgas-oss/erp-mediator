@@ -2,6 +2,11 @@
 // Service: cek threshold + kirim notifikasi WA + Email
 // Dipakai oleh: metrics-collector.service.ts (setelah setiap batch metrics)
 // Dibuat: Sesi #151 — PL-S09 Monitoring Dashboard
+// PERUBAHAN Sesi #333 — M3 Deduplication:
+//   evaluateRule(): cek dedup_key sebelum insert
+//   Jika insiden terbuka (TRIGGERED/ACKNOWLEDGED): increment occurrence_count, tidak insert baru
+//   Jika tidak ada: insert baru + ID aktual tersedia dari insertAlertLog() return string
+//   alertLogPlaceholderId() dihapus — tidak lagi diperlukan
 //
 // PENTING: Tidak ada hardcode credential atau nomor kontak di file ini.
 // Semua credential diambil dari M3 DB via credential.service.ts (ATURAN 11 — anti duplikasi).
@@ -11,7 +16,7 @@ import 'server-only'
 import { getCredential }      from '@/lib/services/credential.service'
 import { getConfigValues, getPlatformTimezone } from '@/lib/config-registry'
 import { findRulesByProvider } from '@/lib/repositories/alert-rules.repository'
-import { findLastAlertAt, insertAlertLog } from '@/lib/repositories/alert-log.repository'
+import { findLastAlertAt, insertAlertLog, findOpenAlertByDedupKey, incrementAlertOccurrence } from '@/lib/repositories/alert-log.repository'
 import { findRecentByProvider }            from '@/lib/repositories/provider-metrics.repository'
 import { sendFonnteWA }                    from '@/lib/utils/fonnte.server'
 import { sendResendEmailPlain }             from '@/lib/utils/resend.server'
@@ -94,9 +99,21 @@ async function evaluateRule(
     if (elapsed < rule.cooldown_minutes * 60 * 1000) return
   }
 
-  // Ambil target notifikasi dari config_registry
+  const dedupKey = `${providerId}:${rule.alert_type}:TRIGGERED`
+
+  // M3 Deduplication: cek insiden terbuka dengan dedup_key yang sama.
+  // Jika ada (TRIGGERED/ACKNOWLEDGED) — increment occurrence_count, tidak insert baru.
+  // Ini mencegah spam log saat provider down berkepanjangan + cooldown sudah terlewat.
+  const existingOpen = await findOpenAlertByDedupKey(dedupKey)
+  if (existingOpen) {
+    await incrementAlertOccurrence(existingOpen.id)
+    return
+  }
+
+  // Tidak ada insiden terbuka — alert pertama untuk kondisi ini.
+  // Kirim notifikasi + insert baris baru ke alert_log.
   const { waNumber, email } = await getAlertTarget()
-  const incidentUrl = buildIncidentUrl(alertLogPlaceholderId())
+  const incidentUrl = buildIncidentUrl()
   const message = await buildAlertMessage(providerId, rule.alert_type, currentStatus, responseTimeMs, incidentUrl)
 
   const [resultWa, resultEmail] = await Promise.allSettled([
@@ -108,9 +125,8 @@ async function evaluateRule(
       : Promise.resolve(null),
   ])
 
-  const dedupKey = `${providerId}:${rule.alert_type}:TRIGGERED`
-
-  await insertAlertLog({
+  // insertAlertLog return string (ID aktual) — tersedia untuk A5/C6 Fase 2
+  const newAlertId = await insertAlertLog({
     rule_id:        rule.id,
     provider_id:    providerId,
     alert_type:     rule.alert_type,
@@ -123,6 +139,7 @@ async function evaluateRule(
     status:         'TRIGGERED',
     dedup_key:      dedupKey,
   })
+  void newAlertId // ID aktual — dipakai Fase 2 A5 (digest) + C6 (timeline deep link)
 }
 
 // ─── checkRuleTrigger ─────────────────────────────────────────────────────────
@@ -149,8 +166,9 @@ function checkRuleTrigger(
 /**
  * Bangun URL deep link ke halaman detail insiden untuk notifikasi WA (A1).
  * Base URL diambil dari env NEXT_PUBLIC_APP_URL — tidak hardcode domain.
- * ID placeholder: setelah insertAlertLog, idealnya di-update dengan ID aktual.
- * Untuk saat ini, link ke halaman list monitoring (cukup untuk Fase 1).
+ * Tanpa alertLogId: link ke halaman list monitoring.
+ * PERUBAHAN S#333 M3: alertLogPlaceholderId() dihapus.
+ * ID aktual tersedia via insertAlertLog() return string — dipakai Fase 2 A5/C6.
  */
 function buildIncidentUrl(alertLogId?: string): string {
   const base = process.env.NEXT_PUBLIC_APP_URL ?? ''
@@ -159,9 +177,6 @@ function buildIncidentUrl(alertLogId?: string): string {
   }
   return `${base}/dashboard/superadmin/monitoring`
 }
-
-/** Placeholder — akan diganti dengan ID aktual setelah insert (Fase 2 M3 dedup) */
-function alertLogPlaceholderId(): undefined { return undefined }
 
 async function buildAlertMessage(
   providerId:     string,

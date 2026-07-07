@@ -3,6 +3,9 @@
 // Dipakai oleh: alert.service.ts, MonitoringClient.tsx (via API)
 // Dibuat: Sesi #151 — PL-S09 Monitoring Dashboard
 // Refactor S#181: SL-D006 — ganti inline new Date(Date.now()-N*ms).toISOString() dengan getPastISOTimestamp()
+// PERUBAHAN Sesi #333 — M3 Deduplication:
+//   - insertAlertLog() return string (ID baru) — sebelumnya void
+//   - tambah incrementAlertOccurrence() — update occurrence_count + last_occurred_at pada dedup
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getPastISOTimestamp } from '@/lib/utils/date.utils'
@@ -65,13 +68,15 @@ export async function findLastAlertAt(
 /**
  * Catat alert yang sudah dikirim (atau gagal dikirim) ke log.
  * Dipanggil dari alert.service setelah proses kirim WA + Email selesai.
+ * PERUBAHAN S#333 M3: return string (UUID baru) agar caller bisa pakai ID
+ * untuk buildIncidentUrl() — menggantikan placeholder void sebelumnya.
  */
 export async function insertAlertLog(
   payload: InsertAlertLogPayload
-): Promise<void> {
+): Promise<string> {
   const supabase = createServerSupabaseClient()
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('alert_log')
     .insert({
       rule_id:        payload.rule_id,
@@ -84,8 +89,38 @@ export async function insertAlertLog(
       error_wa:       payload.error_wa    ?? null,
       error_email:    payload.error_email ?? null,
     })
+    .select('id')
+    .single()
 
   if (error) throw new Error(`insertAlertLog: ${error.message}`)
+  return data.id as string
+}
+
+// ─── incrementAlertOccurrence (M3 — S#333) ───────────────────────────────────
+
+/**
+ * Increment occurrence_count + update last_occurred_at pada alert log yang sudah ada.
+ * Dipanggil saat dedup_key match ditemukan (provider masih DOWN/SLOW, alert sudah terbuka).
+ * Tidak insert baris baru — hanya update baris existing untuk hindari spam log.
+ *
+ * Menggunakan RPC fn_increment_alert_occurrence (atomic di level DB).
+ * Alasan: Supabase JS tidak support `kolom = kolom + 1` secara langsung.
+ * RPC menjamin atomic — tidak ada race condition meski cron jalan paralel.
+ * Pattern sama dengan sp_increment_lock_count di account-lock.repository.
+ *
+ * @param alertLogId  UUID alert_log yang akan di-increment
+ */
+export async function incrementAlertOccurrence(alertLogId: string): Promise<void> {
+  const supabase = createServerSupabaseClient()
+  const now = new Date().toISOString()
+
+  const { error } = await supabase
+    .rpc('fn_increment_alert_occurrence', {
+      p_alert_log_id:    alertLogId,
+      p_last_occurred_at: now,
+    })
+
+  if (error) throw new Error(`incrementAlertOccurrence: ${error.message}`)
 }
 
 // ─── countActiveAlerts ────────────────────────────────────────────────────────
