@@ -14,8 +14,8 @@ export const cs = {
   secTitle:  { fontSize: 14, fontWeight: 500 },
   secSub:    { fontSize: 12, color: '#6b7280', marginTop: 2 },
   errNote:   { background: '#FCEBEB', border: '0.5px solid #F09595', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#A32D2D', marginBottom: '1rem', display: 'flex', alignItems: 'flex-start', gap: 8 },
-  tableWrap: { border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, overflow: 'hidden', marginBottom: '1rem', maxHeight: 400, overflowY: 'auto' as const },
-  th:        { background: '#f9f9f8', padding: '9px 14px', textAlign: 'left' as const, fontSize: 11.5, fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid rgba(0,0,0,0.12)', whiteSpace: 'nowrap' as const, position: 'sticky' as const, top: 0, zIndex: 1 },
+  tableWrap: { border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 8, overflow: 'hidden', marginBottom: '1rem' },
+  th:        { background: '#f9f9f8', padding: '9px 14px', textAlign: 'left' as const, fontSize: 11.5, fontWeight: 500, color: '#6b7280', borderBottom: '0.5px solid rgba(0,0,0,0.12)', whiteSpace: 'nowrap' as const },
   td:        { padding: '10px 14px', borderBottom: '0.5px solid rgba(0,0,0,0.12)', verticalAlign: 'middle' as const },
   av:        (active: boolean) => ({ width: 32, height: 32, borderRadius: '50%', background: active ? '#EAF3DE' : '#E6F1FB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 500, color: active ? '#3B6D11' : '#185FA5', flexShrink: 0 }),
   chip:      (bg: string, color: string, border: string) => ({ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 500, background: bg, color, border: `0.5px solid ${border}` }),
@@ -38,4 +38,3 @@ export const JABATAN_LABEL: Record<string, string> = {
   sales:     'Sales',
   lainnya:   'Lainnya',
 }
-
