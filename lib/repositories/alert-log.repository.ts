@@ -1,11 +1,13 @@
 // lib/repositories/alert-log.repository.ts
 // Repository untuk tabel alert_log
-// Dipakai oleh: alert.service.ts, MonitoringClient.tsx (via API)
+// Dipakai oleh: alert.service.ts, alert-queue.service.ts, MonitoringClient.tsx (via API)
 // Dibuat: Sesi #151 — PL-S09 Monitoring Dashboard
 // Refactor S#181: SL-D006 — ganti inline new Date(Date.now()-N*ms).toISOString() dengan getPastISOTimestamp()
 // PERUBAHAN Sesi #333 — M3 Deduplication:
 //   - insertAlertLog() return string (ID baru) — sebelumnya void
 //   - tambah incrementAlertOccurrence() — update occurrence_count + last_occurred_at pada dedup
+// PERUBAHAN Sesi #334 — M6 Alert Queue:
+//   - tambah updateAlertLogNotifResult() — catat error WA/Email ke DLQ setelah drain queue
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getPastISOTimestamp } from '@/lib/utils/date.utils'
@@ -123,6 +125,30 @@ export async function incrementAlertOccurrence(alertLogId: string): Promise<void
   if (error) throw new Error(`incrementAlertOccurrence: ${error.message}`)
 }
 
+// ─── updateAlertLogNotifResult (M6 — S#334) ──────────────────────────────────
+
+/**
+ * Update kolom error_wa dan/atau error_email pada alert_log.
+ * Dipanggil dari alert-queue.service saat item gagal dikirim setelah drain queue (DLQ pattern).
+ * Tidak overwrite data lain — hanya update field notifikasi yang diberikan.
+ *
+ * @param alertLogId  UUID alert_log target
+ * @param payload     Object berisi error_wa dan/atau error_email yang akan diupdate
+ */
+export async function updateAlertLogNotifResult(
+  alertLogId: string,
+  payload: Partial<{ error_wa: string; error_email: string }>
+): Promise<void> {
+  const supabase = createServerSupabaseClient()
+
+  const { error } = await supabase
+    .from('alert_log')
+    .update(payload)
+    .eq('id', alertLogId)
+
+  if (error) throw new Error(`updateAlertLogNotifResult: ${error.message}`)
+}
+
 // ─── countActiveAlerts ────────────────────────────────────────────────────────
 
 /**
@@ -145,7 +171,7 @@ export async function countActiveAlertProviders(): Promise<number> {
   return unique.size
 }
 
-// ─── findAlertLogById (M1 — S#331) ─────────────────────────────────────────────────────────────────────────
+// ─── findAlertLogById (M1 — S#331) ───────────────────────────────────────────
 
 /**
  * Ambil satu alert log by ID — dipakai oleh lifecycle service untuk validasi state.
@@ -164,7 +190,7 @@ export async function findAlertLogById(id: string): Promise<AlertLog | null> {
   return data as AlertLog
 }
 
-// ─── updateAlertLogStatus (M1 — S#331) ───────────────────────────────────────────────────────────────────
+// ─── updateAlertLogStatus (M1 — S#331) ───────────────────────────────────────
 
 /**
  * Update kolom status + kolom lifecycle terkait.
@@ -192,7 +218,7 @@ export async function updateAlertLogStatus(
   if (error) throw new Error(`updateAlertLogStatus: ${error.message}`)
 }
 
-// ─── findOpenAlertByDedupKey (A2 — S#331) ─────────────────────────────────────────────────────────────────
+// ─── findOpenAlertByDedupKey (A2 — S#331) ────────────────────────────────────
 
 /**
  * Cari insiden terbuka (TRIGGERED atau ACKNOWLEDGED) dengan dedup_key tertentu.
