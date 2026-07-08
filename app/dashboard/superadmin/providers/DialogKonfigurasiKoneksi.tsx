@@ -157,12 +157,14 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
         toast.success('Menyimpan credential yang diubah...')
       }
 
-      // Simpan credentials (upsert — idempotent, field kosong di-skip oleh filter di atas)
-      const r2 = await (await fetch(`/api/superadmin/providers/instances/${iid}/credentials`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }),
-      })).json()
-      if (!r2.success) { toast.error(r2.message ?? 'Gagal menyimpan credential'); return }
-      toast.success('Credential tersimpan — menjalankan test...')
+      // Simpan credentials — skip jika tidak ada fields (provider tanpa field_defs)
+      if (fields.length > 0) {
+        const r2 = await (await fetch(`/api/superadmin/providers/instances/${iid}/credentials`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }),
+        })).json()
+        if (!r2.success) { toast.error(r2.message ?? 'Gagal menyimpan credential'); return }
+        toast.success('Credential tersimpan — menjalankan test...')
+      }
 
       // Test koneksi — skip jika provider tidak punya field_defs (dikonfigurasi manual)
       if (fds.length === 0) {
