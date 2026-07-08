@@ -4,8 +4,6 @@
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.3
 // Update: Sesi #327 — F-03: fix coverage area — baca dari junction table assignment_coverage_areas
 //                           hapus semua logika yang baca kolom legacy coverage_areas
-// Update: Sesi #335 — BUG-KATEGORI-OVERLAP: assignViaSP teruskan coverage_area_entries
-//                     sebagai p_city_entries ke SP untuk overlap check per area
 //
 // ARSITEKTUR:
 //   Service → TenantCategoryAssignmentRepository → DB (tabel tenant_category_assignments)
@@ -181,35 +179,20 @@ export async function findById(
 // ─── FUNGSI: assignViaSP ──────────────────────────────────────────────────────
 /**
  * Assign kategori ke tenant via SP sp_assign_category_to_tenant.
- * SP menangani konflik dengan cek overlap area (S#335 BUG-KATEGORI-OVERLAP).
- *
- * S#335: teruskan coverage_area_entries sebagai p_city_entries (JSONB) ke SP.
- * SP akan cek 4 skenario overlap area sebelum insert.
- * Jika coverage_area_entries tidak ada, SP fallback ke guard global (backward compat).
+ * SP menangani konflik (cek kategori sudah dipegang tenant lain).
  */
 export async function assignViaSP(
   payload: AssignKategoriPayload,
   assignedBy: string
 ): Promise<{ ok: boolean; assignmentId?: string; error?: string }> {
   const db = createServerSupabaseClient()
-
-  // S#335: bangun p_city_entries dari coverage_area_entries payload
-  // Format JSONB: [{province_id: "uuid", city_id: "uuid"|null}, ...]
-  const cityEntries = payload.coverage_area_entries && payload.coverage_area_entries.length > 0
-    ? JSON.stringify(payload.coverage_area_entries.map(e => ({
-        province_id: e.province_id,
-        city_id:     e.city_id ?? null,
-      })))
-    : null
-
   const { data, error } = await db.rpc('sp_assign_category_to_tenant', {
     p_tenant_id:           payload.tenant_id,
     p_category_id:         payload.category_id,
     p_commission_override: payload.commission_override ?? null,
-    p_coverage_areas:      null,        // S#327 F-03: selalu NULL — data real di assignment_coverage_areas
+    p_coverage_areas:      null, // S#327 F-03: selalu NULL — data real di assignment_coverage_areas
     p_sla_minutes:         payload.sla_minutes ?? null,
     p_assigned_by:         assignedBy,
-    p_city_entries:        cityEntries, // S#335: overlap check per area
   })
 
   if (error) return { ok: false, error: error.message }

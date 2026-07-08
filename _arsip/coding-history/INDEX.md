@@ -1,8 +1,8 @@
-# INDEX — Coding History Arsip
-# Sumber kebenaran untuk semua snapshot/arsip file kode per sesi
-# Format: | Tanggal | Sesi | Deskripsi |
+# _arsip/coding-history/INDEX.md
+# Index semua snapshot arsip kode — ERP Mediator Hyperlocal
+# Update: setiap kali buat snapshot baru (ATURAN 12 + 23)
 
-| **Tanggal** | **Sesi** | **Deskripsi** |
+| Tanggal | Sesi | Keterangan |
 |---|---|---|
 | **25 Juni 2026** | **S#313** | **Snapshot `sesi-312-tabinfoumum-save-pattern` diupdate (+1 file arsip). CLEANUP TenantDraft: hapus `region_coverage` + `tags` dari interface TenantDraft, buildDraft(), buildDiffPayload() di TabInfoUmum.helpers.tsx — field ini dihapus dari UI per keputusan S#312 (H-15: diisi otomatis by system dari modul Wilayah+Kategori). Arsip: TabInfoUmum.helpers.tsx pra-cleanup.** |
 | **25 Juni 2026** | **S#313** | **Snapshot `sesi-313-cleanup-tenantdraft` dibuat (1 file arsip). CLEANUP UI Cluster D: hapus JSX FInput region_coverage + tags dari TabInfoUmum.tsx — field tidak muncul di UI sesuai keputusan S#312 (H-15). Arsip: TabInfoUmum.tsx pra-cleanup UI.** |
@@ -23,3 +23,4 @@
 | **7 Juli 2026** | **S#333** | **Snapshot `sesi-333-m3-deduplication` dibuat. M3 Deduplication: arsip alert-log.repository.ts + alert.service.ts pra-M3. incrementAlertOccurrence() + dedup logic di evaluateRule(). Arsip: 2 file.** |
 | **27 Juni 2026** | **S#319** | **Fee Structure Engine TAHAP 1+2 selesai. DB migration + 11 fungsi terdaftar cr_functions. Shared_Database/Schema_Tenant.md + Schema_Config.md diupdate (ATURAN 27).** |
 | **7 Juli 2026** | **S#334** | **Snapshot `sesi-334-m6-alert-queue` dibuat. M6 Alert Queue: arsip alert.service.ts pra-integrasi enqueue (kirim langsung → enqueue Redis WA+Email). Arsip: 1 file (alert.service.ts).** |
+| **8 Juli 2026** | **S#335** | **Snapshot `sesi-335-bug-kategori-overlap` dibuat. BUG-KATEGORI-OVERLAP: arsip tenant-category-assignment.repository.ts pra-fix. Root cause: sp_assign_category_to_tenant guard hanya cek "ada tenant lain pegang kategori" tanpa cek overlap area. Fix: DROP SP 6-param lama, CREATE SP 7-param baru dengan p_city_entries JSONB + 4-skenario overlap check via assignment_coverage_areas. Repository diupdate untuk teruskan coverage_area_entries sebagai p_city_entries. Shared_Database/Functions_StoredProcedures.md diupdate (ATURAN 27). Arsip: 1 file (tenant-category-assignment.repository.ts).** |
