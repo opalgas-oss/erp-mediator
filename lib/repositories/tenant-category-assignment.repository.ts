@@ -6,6 +6,7 @@
 //                           hapus semua logika yang baca kolom legacy coverage_areas
 // Update: Sesi #335 — BUG-KATEGORI-OVERLAP: assignViaSP teruskan coverage_area_entries
 //                     sebagai p_city_entries ke SP untuk overlap check per area
+// Update: Sesi #335b — FIX: kirim array JS langsung, bukan JSON.stringify (scalar error)
 //
 // ARSITEKTUR:
 //   Service → TenantCategoryAssignmentRepository → DB (tabel tenant_category_assignments)
@@ -186,6 +187,10 @@ export async function findById(
  * S#335: teruskan coverage_area_entries sebagai p_city_entries (JSONB) ke SP.
  * SP akan cek 4 skenario overlap area sebelum insert.
  * Jika coverage_area_entries tidak ada, SP fallback ke guard global (backward compat).
+ *
+ * S#335b FIX: kirim array JS langsung — BUKAN JSON.stringify.
+ * JSON.stringify menghasilkan text scalar → PostgreSQL error "cannot get array length of a scalar".
+ * Supabase client (.rpc) yang handle serialisasi object/array ke JSONB secara otomatis.
  */
 export async function assignViaSP(
   payload: AssignKategoriPayload,
@@ -194,12 +199,13 @@ export async function assignViaSP(
   const db = createServerSupabaseClient()
 
   // S#335: bangun p_city_entries dari coverage_area_entries payload
-  // Format JSONB: [{province_id: "uuid", city_id: "uuid"|null}, ...]
+  // WAJIB kirim sebagai array JS — jangan JSON.stringify
+  // Supabase client akan serialisasi ke JSONB otomatis
   const cityEntries = payload.coverage_area_entries && payload.coverage_area_entries.length > 0
-    ? JSON.stringify(payload.coverage_area_entries.map(e => ({
+    ? payload.coverage_area_entries.map(e => ({
         province_id: e.province_id,
         city_id:     e.city_id ?? null,
-      })))
+      }))
     : null
 
   const { data, error } = await db.rpc('sp_assign_category_to_tenant', {
@@ -209,7 +215,7 @@ export async function assignViaSP(
     p_coverage_areas:      null,        // S#327 F-03: selalu NULL — data real di assignment_coverage_areas
     p_sla_minutes:         payload.sla_minutes ?? null,
     p_assigned_by:         assignedBy,
-    p_city_entries:        cityEntries, // S#335: overlap check per area
+    p_city_entries:        cityEntries, // S#335: array JS langsung — bukan JSON.stringify
   })
 
   if (error) return { ok: false, error: error.message }
