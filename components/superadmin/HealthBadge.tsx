@@ -17,10 +17,11 @@ export function HealthBadge({ status, size = 'md' }: HealthBadgeProps) {
   const label    = resolveHealthLabel(status)
 
   const Icon = {
-    sehat:       ICON_STATUS.success,
-    peringatan:  ICON_STATUS.warning,
-    gagal:       ICON_STATUS.failed,
-    belum_dites: ICON_STATUS.info,
+    sehat:                ICON_STATUS.success,
+    peringatan:           ICON_STATUS.warning,
+    gagal:                ICON_STATUS.failed,
+    belum_dites:          ICON_STATUS.info,
+    dikonfigurasi_manual: ICON_STATUS.info,
   }[status] ?? ICON_STATUS.info
 
   const iconSize  = size === 'sm' ? 12 : 14

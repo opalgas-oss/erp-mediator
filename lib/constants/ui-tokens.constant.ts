@@ -213,18 +213,20 @@ export const VERDICT_STYLE: Record<string, {
 // ─── Badge Health Status Provider ─────────────────────────────────────────────
 
 export const BADGE_HEALTH: Record<string, string> = {
-  sehat:       'bg-green-100 text-green-700 border-green-200',
-  peringatan:  'bg-yellow-100 text-yellow-700 border-yellow-200',
-  gagal:       'bg-red-100 text-red-700 border-red-200',
-  belum_dites: 'bg-slate-100 text-slate-500 border-slate-200',
-  _default:    'bg-slate-100 text-slate-500 border-slate-200',
+  sehat:                'bg-green-100 text-green-700 border-green-200',
+  peringatan:           'bg-yellow-100 text-yellow-700 border-yellow-200',
+  gagal:                'bg-red-100 text-red-700 border-red-200',
+  belum_dites:          'bg-slate-100 text-slate-500 border-slate-200',
+  dikonfigurasi_manual: 'bg-blue-50 text-blue-600 border-blue-200',
+  _default:             'bg-slate-100 text-slate-500 border-slate-200',
 }
 
 export const HEALTH_LABEL: Record<string, string> = {
-  sehat:       'Sehat (server & auth OK)',
-  peringatan:  'Peringatan (server OK, auth gagal)',
-  gagal:       'Gagal (server tidak bisa dijangkau)',
-  belum_dites: 'Belum Dites',
+  sehat:                'Sehat (server & auth OK)',
+  peringatan:           'Peringatan (server OK, auth gagal)',
+  gagal:                'Gagal (server tidak bisa dijangkau)',
+  belum_dites:          'Belum Dites',
+  dikonfigurasi_manual: 'Dikonfigurasi Manual (tanpa test)',
 }
 
 export function resolveHealthColor(status: string): string {

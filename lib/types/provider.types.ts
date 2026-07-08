@@ -128,6 +128,7 @@ export interface TambahFieldDefPayload {
 export type HealthStatus =
   | 'sehat'
   | 'belum_dites'
+  | 'dikonfigurasi_manual'
   | 'peringatan'
   | 'gagal'
 

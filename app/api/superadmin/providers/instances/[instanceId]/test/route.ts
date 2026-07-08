@@ -6,10 +6,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSuperAdmin }          from '@/lib/auth-server'
-import { testKoneksi }                from '@/lib/services/credential.service'
+import { testKoneksi, setStatusManual } from '@/lib/services/credential.service'
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ instanceId: string }> }
 ): Promise<NextResponse> {
   try {
@@ -24,8 +24,16 @@ export async function POST(
       )
     }
 
-    const result = await testKoneksi(instanceId)
+    // Cek apakah ada force_status di body (untuk provider tanpa field_defs)
+    let body: { force_status?: string } = {}
+    try { body = await request.json() } catch { /* body kosong = normal test */ }
 
+    if (body.force_status) {
+      await setStatusManual(instanceId, body.force_status)
+      return NextResponse.json({ success: true, data: { berhasil: true, pesan: 'Status diset manual.', latency_ms: null } })
+    }
+
+    const result = await testKoneksi(instanceId)
     return NextResponse.json({ success: true, data: result })
 
   } catch (error) {

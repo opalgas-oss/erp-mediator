@@ -132,7 +132,8 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
       .filter(([, v]) => v.trim())
       .map(([id, v]) => ({ field_def_id: id, field_key: '', nilai: v }))
 
-    if (!fields.length) { toast.error('Minimal satu credential harus diisi'); return }
+    // Provider tanpa field_defs (contoh: Healthchecks.io) boleh simpan tanpa credential
+    if (!fields.length && fds.length > 0) { toast.error('Minimal satu credential harus diisi'); return }
     setSaving(true); setRes(null)
 
     try {
@@ -163,10 +164,21 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
       if (!r2.success) { toast.error(r2.message ?? 'Gagal menyimpan credential'); return }
       toast.success('Credential tersimpan — menjalankan test...')
 
-      // Test koneksi
-      const r3 = await (await fetch(`/api/superadmin/providers/instances/${iid}/test`, { method: 'POST' })).json()
-      const d = r3.data ?? {}
-      setRes({ berhasil: d.berhasil ?? false, pesan: d.pesan ?? null, latency_ms: d.latency_ms ?? null })
+      // Test koneksi — skip jika provider tidak punya field_defs (dikonfigurasi manual)
+      if (fds.length === 0) {
+        // Provider tanpa credential (contoh: Healthchecks.io) — set status dikonfigurasi_manual
+        await fetch(`/api/superadmin/providers/instances/${iid}/test`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force_status: 'dikonfigurasi_manual' }),
+        })
+        setRes({ berhasil: true, pesan: 'Dikonfigurasi manual — tidak ada credential yang perlu ditest.', latency_ms: null })
+      } else {
+        // Test koneksi normal
+        const r3 = await (await fetch(`/api/superadmin/providers/instances/${iid}/test`, { method: 'POST' })).json()
+        const d = r3.data ?? {}
+        setRes({ berhasil: d.berhasil ?? false, pesan: d.pesan ?? null, latency_ms: d.latency_ms ?? null })
+      }
       // Refresh list terlepas berhasil atau gagal — credential & status sudah tersimpan di DB
       setTimeout(onSuccess, 1500)
     } catch { toast.error('Terjadi error jaringan') }

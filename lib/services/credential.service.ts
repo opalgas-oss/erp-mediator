@@ -471,3 +471,21 @@ export async function patchInstanceUseCases(
 ): Promise<void> {
   return updateInstanceUseCases(instanceId, useCases)
 }
+
+/**
+ * Set health_status instance secara manual tanpa test koneksi.
+ * Dipakai untuk provider tanpa field_defs (contoh: Healthchecks.io).
+ * Status valid: 'dikonfigurasi_manual' | 'belum_dites'
+ * S#337 — status baru untuk provider yang dikonfigurasi tanpa credential.
+ */
+export async function setStatusManual(
+  instanceId:  string,
+  healthStatus: string
+): Promise<void> {
+  await spTestProviderConnection({
+    instanceId,
+    healthStatus:     healthStatus as import('@/lib/types/provider.types').HealthStatus,
+    isAuthenticated:  null,
+    errorMessage:     undefined,
+  })
+}
