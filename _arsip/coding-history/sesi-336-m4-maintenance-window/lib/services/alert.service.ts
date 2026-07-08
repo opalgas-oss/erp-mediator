@@ -7,9 +7,6 @@
 //   - evaluateRule() enqueue ke Redis (WA + Email) vs kirim langsung
 //   - insertAlertLog() dipanggil SEBELUM enqueue agar alertLogId tersedia untuk DLQ
 //   - sendWAAlert() + sendEmailAlert() dihapus dari file ini (ada di alert-queue.service)
-// PERUBAHAN S#336: M4 Maintenance Window
-//   - evaluateRule() cek findActiveWindow() sebelum enqueue
-//   - Jika window aktif → insert alert_log status SUPPRESSED, tidak enqueue
 //
 // PENTING: Tidak ada hardcode credential atau nomor kontak di file ini.
 // Semua credential dari M3 DB via credential.service. Target notifikasi dari config_registry.
@@ -26,7 +23,6 @@ import {
 import { findRecentByProvider }    from '@/lib/repositories/provider-metrics.repository'
 import { autoResolveAlert }        from '@/lib/services/alert-lifecycle.service'
 import { enqueueWA, enqueueEmail } from '@/lib/services/alert-queue.service'
-import { findActiveWindow }        from '@/lib/repositories/maintenance-window.repository'
 import type { MonitoringStatus }   from '@/lib/types/monitoring.types'
 import { MONITORING_STATUS, ALERT_TYPE } from '@/lib/constants/monitoring.constant'
 
@@ -95,23 +91,6 @@ async function evaluateRule(
     return
   }
 
-  // M4: Cek maintenance window aktif — jika ada, suppress notifikasi
-  const activeWindow = await findActiveWindow(providerId)
-  if (activeWindow) {
-    await insertAlertLog({
-      rule_id:        rule.id,
-      provider_id:    providerId,
-      alert_type:     rule.alert_type,
-      message:        `[SUPPRESSED] Maintenance window aktif: ${activeWindow.name}`,
-      notif_channels: rule.notif_channels,
-      sent_via_wa:    false,
-      sent_via_email: false,
-      status:         'SUPPRESSED',
-      dedup_key:      dedupKey,
-    })
-    return
-  }
-
   const { waNumber, email } = await getAlertTarget()
   const incidentUrl = buildIncidentUrl()
   const message = await buildAlertMessage(providerId, rule.alert_type, currentStatus, responseTimeMs, incidentUrl)
@@ -123,7 +102,7 @@ async function evaluateRule(
     alert_type:     rule.alert_type,
     message,
     notif_channels: rule.notif_channels,
-    sent_via_wa:    false,    // akan diupdate saat drain queue berhasil (Fase 3)
+    sent_via_wa:    false,
     sent_via_email: false,
     status:         'TRIGGERED',
     dedup_key:      dedupKey,
