@@ -10,13 +10,20 @@
 // PERUBAHAN S#336: M4 Maintenance Window
 //   - evaluateRule() cek findActiveWindow() sebelum enqueue
 //   - Jika window aktif → insert alert_log status SUPPRESSED, tidak enqueue
+// PERUBAHAN S#337: FIX-2+3+4 — hapus semua hardcode pesan ke message_library
+//   FIX-2: buildAlertMessage() baca template dari message_library key alert.wa.incident_triggered
+//   FIX-3: subject email baca dari message_library key alert.email.incident_subject
+//   FIX-4: pesan SUPPRESSED baca dari message_library key alert.log.suppressed_message
 //
-// PENTING: Tidak ada hardcode credential atau nomor kontak di file ini.
-// Semua credential dari M3 DB via credential.service. Target notifikasi dari config_registry.
+// PENTING: Tidak ada hardcode credential, nomor kontak, atau teks pesan di file ini.
+// Semua credential dari M3 DB via credential.service.
+// Semua teks pesan dari message_library (LL#11).
+// Target notifikasi dari config_registry.
 
 import 'server-only'
-import { getConfigValues, getPlatformTimezone } from '@/lib/config-registry'
-import { findRulesByProvider }                  from '@/lib/repositories/alert-rules.repository'
+import { getConfigValues }     from '@/lib/config-registry'
+import { getMessage, interpolate } from '@/lib/message-library'
+import { findRulesByProvider } from '@/lib/repositories/alert-rules.repository'
 import {
   findLastAlertAt,
   insertAlertLog,
@@ -96,13 +103,16 @@ async function evaluateRule(
   }
 
   // M4: Cek maintenance window aktif — jika ada, suppress notifikasi
+  // FIX-4: pesan SUPPRESSED dari message_library key alert.log.suppressed_message
   const activeWindow = await findActiveWindow(providerId)
   if (activeWindow) {
+    const suppressedTpl = await getMessage('alert.log.suppressed_message')
+    const suppressedMsg = interpolate(suppressedTpl, { window_name: activeWindow.name })
     await insertAlertLog({
       rule_id:        rule.id,
       provider_id:    providerId,
       alert_type:     rule.alert_type,
-      message:        `[SUPPRESSED] Maintenance window aktif: ${activeWindow.name}`,
+      message:        suppressedMsg,
       notif_channels: rule.notif_channels,
       sent_via_wa:    false,
       sent_via_email: false,
@@ -114,7 +124,9 @@ async function evaluateRule(
 
   const { waNumber, email } = await getAlertTarget()
   const incidentUrl = buildIncidentUrl()
-  const message = await buildAlertMessage(providerId, rule.alert_type, currentStatus, responseTimeMs, incidentUrl)
+
+  // FIX-2: message WA dari message_library key alert.wa.incident_triggered
+  const message = await buildAlertMessage(providerId, rule.alert_type, incidentUrl)
 
   // M6: Insert log DULU agar alertLogId tersedia untuk referensi DLQ di queue
   const newAlertId = await insertAlertLog({
@@ -123,15 +135,18 @@ async function evaluateRule(
     alert_type:     rule.alert_type,
     message,
     notif_channels: rule.notif_channels,
-    sent_via_wa:    false,    // akan diupdate saat drain queue berhasil (Fase 3)
+    sent_via_wa:    false,
     sent_via_email: false,
     status:         'TRIGGERED',
     dedup_key:      dedupKey,
   })
 
   // Ambil config delay Fonnte dari config_registry
-  const alertCfg    = await getConfigValues('alert')
-  const fonnteDelay = parseInt(alertCfg['fonnte_delay_seconds'] ?? '2', 10)
+  const alertCfg    = await getConfigValues('alert.fonnte_delay_seconds')
+  const fonnteDelay = parseInt(alertCfg['alert.fonnte_delay_seconds'] ?? '2', 10)
+
+  // FIX-3: subject email dari message_library key alert.email.incident_subject
+  const emailSubject = await getMessage('alert.email.incident_subject')
 
   // M6: Enqueue ke Redis — tidak kirim langsung
   const enqueueJobs: Promise<boolean>[] = []
@@ -152,7 +167,7 @@ async function evaluateRule(
       enqueueEmail({
         alertLogId:  newAlertId,
         targetEmail: email,
-        subject:     '[ERP Mediator] Alert Sistem Monitoring',
+        subject:     emailSubject,
         message,
       })
     )
@@ -192,21 +207,22 @@ function buildIncidentUrl(alertLogId?: string): string {
 
 // ─── buildAlertMessage ────────────────────────────────────────────────────────
 
+/**
+ * Bangun pesan WA alert dari message_library key alert.wa.incident_triggered.
+ * FIX-2 S#337: sebelumnya hardcode template di sini — sekarang dari message_library.
+ *
+ * Template: "*{provider_name}* tidak bisa dihubungi ({alert_type}). Lihat detail: {incident_url}"
+ * SA bisa ubah template dari Dashboard → Modul Pesan tanpa deploy ulang.
+ */
 async function buildAlertMessage(
-  providerId:     string,
-  alertType:      string,
-  status:         MonitoringStatus,
-  responseTimeMs: number | null,
-  incidentUrl:    string
+  providerId:  string,
+  alertType:   string,
+  incidentUrl: string
 ): Promise<string> {
-  const timezone = await getPlatformTimezone()
-  const time = new Date().toLocaleString('id-ID', { timeZone: timezone })
-  const ms   = responseTimeMs !== null ? ` (${responseTimeMs}ms)` : ''
-  return (
-    `[ERP Mediator Alert] ${time} WIB\n` +
-    `Provider: ${providerId}\n` +
-    `Tipe: ${alertType} - Status: ${status}${ms}\n` +
-    `Sistem memerlukan perhatian SuperAdmin.\n` +
-    `Detail: ${incidentUrl}`
-  )
+  const tpl = await getMessage('alert.wa.incident_triggered')
+  return interpolate(tpl, {
+    provider_name: providerId,
+    alert_type:    alertType,
+    incident_url:  incidentUrl,
+  })
 }
