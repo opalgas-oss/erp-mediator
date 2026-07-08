@@ -3,20 +3,25 @@
 // Dipakai oleh: metrics-collector.service.ts (dipanggil di akhir collectL1Metrics)
 //               app/api/monitoring/metrics/route.ts (baca last_run_at untuk banner)
 // Dibuat: Sesi #331 — FASE 1 Alert Monitoring
+// PERUBAHAN S#337 — FIX-healthchecks-config:
+//   pingHeartbeat(): baca ping URL dari config_registry key alert.healthchecks_ping_url
+//     (sebelumnya: process.env.HEALTHCHECKS_PING_URL — melanggar ATURAN 8)
+//   getHeartbeatStatus(): fix feature_key getConfigValues dari 'alert' ke
+//     'alert.heartbeat_grace_minutes' agar cocok dengan format key di DB
 //
 // Dua lapis M7:
 //   Lapis 1 (eksternal): ping URL Healthchecks.io setelah cron sukses.
 //                        Kalau ping tidak datang dalam grace time → Healthchecks.io kirim alert.
-//                        URL dari config_registry (bukan hardcode).
+//                        URL dari config_registry key alert.healthchecks_ping_url (bukan hardcode/env).
 //   Lapis 2 (internal):  simpan last_run_at ke Redis (key: monitoring:heartbeat:last_run_at).
 //                        API /monitoring/metrics membaca ini → banner merah di UI kalau terlalu lama.
 //
 // Grace time dari config_registry: alert.heartbeat_grace_minutes (default 180 menit = 3 jam).
-// URL Healthchecks.io dari env HEALTHCHECKS_PING_URL (infrastruktur level, bukan bisnis level).
+// SA bisa ubah kedua nilai ini dari Dashboard → Konfigurasi → Monitoring → section Alert.
 
 import 'server-only'
 import { getRedisClient }  from '@/lib/redis'
-import { getConfigValues } from '@/lib/config-registry'
+import { getConfigValue }  from '@/lib/config-registry'
 
 const HEARTBEAT_REDIS_KEY = 'monitoring:heartbeat:last_run_at'
 const HEARTBEAT_TTL_SEC   = 60 * 60 * 24 * 7 // 7 hari — cukup untuk deteksi
@@ -30,6 +35,9 @@ const HEARTBEAT_TTL_SEC   = 60 * 60 * 24 * 7 // 7 hari — cukup untuk deteksi
  *
  * Fire-and-forget — error tidak menghalangi cron selesai.
  * Dipanggil di akhir collectL1Metrics, bukan di awal.
+ *
+ * URL Healthchecks.io dibaca dari config_registry (feature_key=alert.healthchecks_ping_url).
+ * Jika nilai kosong atau belum diisi SA, skip ping dengan diam (tidak throw).
  */
 export async function pingHeartbeat(): Promise<void> {
   const now = new Date().toISOString()
@@ -45,10 +53,21 @@ export async function pingHeartbeat(): Promise<void> {
   }
 
   // Lapis 1 eksternal: ping Healthchecks.io
-  // URL dari env var (infrastruktur level — CREDENTIAL_SYSTEM_SPEC BAB 2 Kategori 1)
-  // Jika tidak dikonfigurasi, skip dengan diam (tidak throw)
-  const pingUrl = process.env.HEALTHCHECKS_PING_URL
-  if (!pingUrl) return
+  // URL dari config_registry — SA kelola via Dashboard → Konfigurasi → Monitoring → Alert
+  // Jika nilai kosong (belum diisi), skip dengan diam (tidak throw)
+  let pingUrl: string | null = null
+  try {
+    pingUrl = await getConfigValue(
+      'alert.healthchecks_ping_url',
+      'alert.healthchecks_ping_url',
+      ''
+    )
+  } catch {
+    // config_registry tidak tersedia — skip ping, jangan crash cron
+    return
+  }
+
+  if (!pingUrl || pingUrl.trim() === '') return
 
   try {
     await fetch(pingUrl, { method: 'GET', cache: 'no-store' })
@@ -78,8 +97,18 @@ export async function getHeartbeatStatus(): Promise<{
   graceMinutes: number
 }> {
   // Baca grace minutes dari config_registry (ATURAN 8 — anti hardcode)
-  const cfg          = await getConfigValues('alert')
-  const graceMinutes = parseInt(cfg['heartbeat_grace_minutes'] ?? '180', 10)
+  // feature_key = policy_key = 'alert.heartbeat_grace_minutes' (format DB aktual)
+  let graceMinutes = 180
+  try {
+    const val = await getConfigValue(
+      'alert.heartbeat_grace_minutes',
+      'alert.heartbeat_grace_minutes',
+      '180'
+    )
+    graceMinutes = parseInt(val ?? '180', 10)
+  } catch {
+    // fallback ke default jika config tidak tersedia
+  }
 
   // Baca last_run_at dari Redis
   let lastRunAt: string | null = null
