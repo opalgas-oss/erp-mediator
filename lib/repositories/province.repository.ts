@@ -2,6 +2,8 @@
 // Repository untuk provinces + cities + assignment_coverage_areas
 // Dibuat: Sesi #143 — M6 Coverage Area Revamp
 // Updated: Sesi #144 — tambah fungsi admin CRUD (Master Wilayah)
+// Updated: Sesi #335 — FIX ProvinceRepo_getWithExclusion: hapus neq(tenant_id)
+//                       sehingga coverage area tenant sendiri juga ikut di-exclude di UI
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import type { Province, City, ProvinceOption, CityOption } from '@/lib/types/province.types'
@@ -32,7 +34,6 @@ export async function ProvinceRepo_getAllForAdmin(): Promise<(Province & { city_
   if (error) throw new Error(`ProvinceRepo_getAllForAdmin: ${error.message}`)
   const provinces = data ?? []
 
-  // Hitung city_count per provinsi
   const { data: cityCounts, error: eCounts } = await supabase
     .from('cities')
     .select('province_id')
@@ -165,21 +166,25 @@ export async function ProvinceRepo_getWithExclusion(
 ): Promise<{ provinces: ProvinceOption[]; globallyTaken: boolean }> {
   const supabase = await createServerSupabaseClient()
 
-  const { data: otherAssignments, error: eAssign } = await supabase
+  // S#335 FIX: ambil SEMUA assignment aktif untuk kategori ini (termasuk tenant sendiri)
+  // Sebelumnya: .neq('tenant_id', currentTenantId) → hanya exclude tenant lain
+  // Akibat: area milik tenant sendiri tidak di-disable di UI → bisa pilih area yang sama = confusing
+  // Fix: hapus neq filter → semua area yang sudah di-assign (siapapun tenantnya) di-exclude di UI
+  // Catatan: SP tetap punya logik terpisah — boleh assign di area BARU, blokir jika overlap
+  const { data: allAssignments, error: eAssign } = await supabase
     .from('tenant_category_assignments')
     .select('id, tenant_id')
     .eq('category_id', categoryId)
     .eq('status', 'active')
     .is('deleted_at', null)
-    .neq('tenant_id', currentTenantId)
 
   if (eAssign) throw new Error(`ProvinceRepo_getWithExclusion assignments: ${eAssign.message}`)
 
   let globallyTaken = false
   const excludedProvinces = new Map<string, Set<string | null>>()
 
-  if (otherAssignments && otherAssignments.length > 0) {
-    const assignmentIds = otherAssignments.map(a => a.id)
+  if (allAssignments && allAssignments.length > 0) {
+    const assignmentIds = allAssignments.map(a => a.id)
 
     const { data: coverageRows, error: eCov } = await supabase
       .from('assignment_coverage_areas')
@@ -189,8 +194,13 @@ export async function ProvinceRepo_getWithExclusion(
     if (eCov) throw new Error(`ProvinceRepo_getWithExclusion coverage: ${eCov.message}`)
 
     const assignmentsWithCoverage = new Set((coverageRows ?? []).map(c => c.assignment_id))
-    const hasGlobalAssignment = otherAssignments.some(a => !assignmentsWithCoverage.has(a.id))
-    if (hasGlobalAssignment) globallyTaken = true
+
+    // Cek apakah ada assignment TENANT LAIN tanpa coverage (= Seluruh Indonesia)
+    // Tenant sendiri tanpa coverage tidak trigger globallyTaken
+    const hasGlobalAssignmentByOther = allAssignments.some(
+      a => a.tenant_id !== currentTenantId && !assignmentsWithCoverage.has(a.id)
+    )
+    if (hasGlobalAssignmentByOther) globallyTaken = true
 
     for (const row of (coverageRows ?? [])) {
       if (!excludedProvinces.has(row.province_id)) {
