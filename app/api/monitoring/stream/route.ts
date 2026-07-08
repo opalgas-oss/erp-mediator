@@ -1,8 +1,10 @@
 // app/api/monitoring/stream/route.ts
 // GET — SSE endpoint untuk realtime update L2 monitoring
 // PERUBAHAN S#292: ganti verifikasi manual → requireSuperAdminCookie() (DRY)
-// PERUBAHAN S#337: FIX SSE timeout — tambah MAX_AGE 240s + kirim event 'close'
+// PERUBAHAN S#337: FIX SSE timeout — tambah MAX_AGE + kirim event 'close'
 //   sebelum Vercel Hobby timeout 300s. Client reconnect otomatis saat terima 'close'.
+//   MAX_AGE dari config_registry key monitoring.sse_max_age_seconds (default 240).
+//   SA bisa ubah dari Dashboard → Konfigurasi → Monitoring.
 //   Sebelumnya: koneksi hidup tanpa batas → Vercel paksa putus → browser crash halaman.
 //   Sekarang: server tutup koneksi dengan rapi → client reconnect tanpa crash.
 // Dibuat: Sesi #153 — PL-S09 Step 3.5
@@ -10,17 +12,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSuperAdminCookie }   from '@/lib/auth-server'
 import { findSinceTimestamp }        from '@/lib/repositories/provider-metrics.repository'
+import { getConfigValue, parseConfigNumber } from '@/lib/config-registry'
 import type { MetricSSEEvent }       from '@/lib/types/monitoring.types'
 
-const POLL_INTERVAL_MS = 10_000
-const HEARTBEAT_EVERY  = 6
-// MAX_AGE: tutup koneksi setelah 240 detik (di bawah limit Vercel Hobby 300 detik)
-// Client akan reconnect otomatis saat terima event 'close'
-const MAX_AGE_MS       = 240_000
+const POLL_INTERVAL_MS      = 10_000
+const HEARTBEAT_EVERY       = 6
+const DEFAULT_MAX_AGE_SEC   = 240  // fallback jika config tidak tersedia
 
 export async function GET(req: NextRequest) {
   const auth = await requireSuperAdminCookie()
   if (!auth.ok) return auth.res
+
+  // Baca MAX_AGE dari config_registry — SA bisa ubah dari Dashboard → Konfigurasi → Monitoring
+  const maxAgeSec = parseConfigNumber(
+    await getConfigValue('monitoring', 'sse_max_age_seconds', String(DEFAULT_MAX_AGE_SEC)),
+    DEFAULT_MAX_AGE_SEC
+  )
+  const MAX_AGE_MS = maxAgeSec * 1_000
 
   const encoder     = new TextEncoder()
   let lastCheckedAt = new Date().toISOString()
