@@ -14,6 +14,9 @@
 // PERUBAHAN S#332: HUTANG M2 — tambah call autoDisableRulesWithoutInstances() sebelum upsertDefaultRules
 // PERUBAHAN S#334: M6 Alert Queue — tambah drainQueues() di akhir collectL1Metrics
 //   (drain Redis queue WA + Email setelah semua ping + checkAndSendAlerts selesai)
+// PERUBAHAN S#337: FIX L1 filter — skip provider tanpa status_url DAN tidak punya
+//   PING_URLS entry DAN bukan Fonnte. Contoh: healthchecks.io (kita yang ping dia,
+//   bukan sebaliknya) — tidak boleh masuk loop L1.
 //
 // PENTING: Token management API (Supabase, GitHub, Vercel) diambil dari M3 DB
 // via credential.service.ts. QStash QSTASH_TOKEN tetap di .env (bootstrap level).
@@ -91,8 +94,18 @@ export async function collectL1Metrics(
   const errors: string[] = []
   let processed = 0
 
+  // Filter provider yang bisa di-ping L1:
+  //   - Fonnte: punya custom ping (pingFonnte), selalu include
+  //   - Provider lain: harus punya status_url ATAU ada di PING_URLS
+  //   - Skip: provider tanpa kedua-duanya (contoh: healthchecks — kita yang ping dia)
+  const pingableProviders = providers.filter(p =>
+    p.kode === 'fonnte' ||
+    p.status_url !== null ||
+    p.kode in PING_URLS
+  )
+
   await Promise.allSettled(
-    providers.map(async p => {
+    pingableProviders.map(async p => {
       try {
         const result = await pingProvider(p.id, p.kode, p.status_url)
         await insertMetric(result)

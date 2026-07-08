@@ -61,6 +61,8 @@ export function MonitoringClient({
       try {
         const event = JSON.parse(ev.data) as MetricSSEEvent
         if (event.type === 'heartbeat') return
+        // Server kirim 'close' sebelum Vercel timeout — reconnect segera tanpa error
+        if (event.type === 'close') { es.close(); setTimeout(connectSSE, 1_000); return }
         if (event.type === 'metric_update' && event.provider_id) {
           setSystems(prev => prev.map(sys =>
             sys.provider_id === event.provider_id

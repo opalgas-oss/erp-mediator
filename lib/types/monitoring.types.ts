@@ -210,7 +210,7 @@ export interface GithubDeepMetrics {
 // ─── SSE Event ────────────────────────────────────────────────────────────────
 
 export interface MetricSSEEvent {
-  type:       'metric_update' | 'heartbeat'
+  type:       'metric_update' | 'heartbeat' | 'close'
   provider_id?: string
   status?:      MonitoringStatus
   response_time_ms?: number | null
