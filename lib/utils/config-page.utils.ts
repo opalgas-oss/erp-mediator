@@ -80,7 +80,9 @@ export function mapTipe(tipeData: string, policyKey?: string): ConfigItemType {
   if (tipeData === 'json')                                            return 'json-per-role'
   if (tipeData === 'text')                                            return 'text-field'
   if (tipeData === 'string')                                          return 'text-field'   // T-029: platform_timezone + field string lain
-  if (tipeData === 'number' && policyKey && isTimingField(policyKey)) return 'timing'
+  if (tipeData === 'number' && policyKey && isTimingField(policyKey))    return 'timing'
+  if (tipeData === 'integer' && policyKey && isTimingField(policyKey))   return 'timing'
+  if (tipeData === 'integer')                                             return 'number-unit'
   return 'number-unit'
 }
 
@@ -97,5 +99,6 @@ export function mapValue(nilai: string, tipeData: string): number | boolean | st
   if (tipeData === 'boolean') return nilai === 'true'
   if (tipeData === 'toggle')  return nilai === 'true'  // S#285: sama dengan boolean, nilai 'true'/'false'
   if (tipeData === 'number')  return Number(nilai)
+  if (tipeData === 'integer') return Number(nilai)
   return nilai  // json, text, select → tetap string
 }
