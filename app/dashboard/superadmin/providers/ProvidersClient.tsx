@@ -232,6 +232,7 @@ export function ProvidersClient({ initialProviders }: Props) {
               </p>
             </div>
           )}
+        </div>
       </div>
 
       {/* Dialog konfirmasi toggle is_aktif */}
