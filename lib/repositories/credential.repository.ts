@@ -171,9 +171,10 @@ export async function getProvidersWithStatus(): Promise<ServiceProvider[]> {
     const useCasesUnion = [...new Set(instances.flatMap(i => i.use_cases ?? []))]
 
     let health_overall: HealthStatus = 'belum_dites'
-    if (statuses.includes('gagal'))           health_overall = 'gagal'
-    else if (statuses.includes('peringatan')) health_overall = 'peringatan'
-    else if (statuses.includes('sehat'))      health_overall = 'sehat'
+    if (statuses.includes('gagal'))                   health_overall = 'gagal'
+    else if (statuses.includes('peringatan'))          health_overall = 'peringatan'
+    else if (statuses.includes('sehat'))               health_overall = 'sehat'
+    else if (statuses.includes('dikonfigurasi_manual')) health_overall = 'dikonfigurasi_manual'
 
     return {
       id:             p.id,

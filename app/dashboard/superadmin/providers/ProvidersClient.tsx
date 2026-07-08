@@ -221,8 +221,8 @@ export function ProvidersClient({ initialProviders }: Props) {
             </tbody>
           </table>
 
-          {/* Noted: status dikonfigurasi_manual */}
-          {list.some(p => p.health_overall === 'dikonfigurasi_manual') && (
+          {/* Noted: status dikonfigurasi_manual — selalu tampil di tab Monitoring Platform */}
+          {activeTab === 'monitor' && (
             <div style={{ padding: '8px 14px 10px', borderTop: '0.5px solid rgba(0,0,0,0.06)', background: '#F0F7FF' }}>
               <p style={{ fontSize: 11, color: '#1e40af', lineHeight: 1.6 }}>
                 <span style={{ fontWeight: 600 }}>ⓘ Status &quot;Dikonfigurasi Manual (tanpa test)&quot;</span> — Provider ini tidak memerlukan testing koneksi karena cara kerjanya berbeda dari provider lain.
