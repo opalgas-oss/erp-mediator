@@ -3,30 +3,10 @@
 // Orchestrator halaman Alert Rules (M05) — M5 S#340.
 // Fitur: groupBy provider (accordion multi-expand), delegasi render ke RuleCard.
 // Sub-komponen: AlertRuleCard.tsx (RuleCard, badge, SeveritySelector)
-// HUTANG-M5-03 S#341: fetch teks dari message_library (LL#11), pass ke RuleCard via texts prop.
 
-import { useState, useEffect } from 'react'
-import { RuleCard }            from './AlertRuleCard'
+import { useState } from 'react'
+import { RuleCard } from './AlertRuleCard'
 import type { AlertRuleWithProvider } from '@/lib/types/monitoring.types'
-import type { RuleCardTexts }         from './AlertRuleCard'
-
-// ─── Fallback teks — dipakai saat fetch belum selesai atau gagal ──────────────
-// Nilai fallback = teks asli sebelum migrasi — UI tidak pernah blank.
-
-const TEXTS_FALLBACK: RuleCardTexts = {
-  pengaturan_lanjutan:  'Pengaturan Lanjutan',
-  berturut:             'Berturut (kali)',
-  cooldown:             'Cooldown (menit)',
-  notifikasi:           'Notifikasi',
-  aktif:                'Aktif',
-  simpan:               'Simpan',
-  menyimpan:            'Menyimpan...',
-  tersimpan:            '✓ Tersimpan',
-  nonaktif:             'Nonaktif',
-  dinonaktifkan_sistem: 'Dinonaktifkan sistem',
-  gagal_simpan:         'Gagal menyimpan — coba lagi',
-  empty_belum_ada:      'Belum ada alert rules. Rules dibuat otomatis saat cron pertama kali berjalan.',
-}
 
 // ─── Tipe lokal ───────────────────────────────────────────────────────────────
 
@@ -59,13 +39,12 @@ function groupByProvider(rules: AlertRuleWithProvider[]): ProviderGroup[] {
 // ─── ProviderAccordion: satu grup provider ────────────────────────────────────
 
 function ProviderAccordion({
-  group, isOpen, onToggle, onUpdate, texts,
+  group, isOpen, onToggle, onUpdate,
 }: {
   group:    ProviderGroup
   isOpen:   boolean
   onToggle: () => void
   onUpdate: (updater: (prev: AlertRuleWithProvider[]) => AlertRuleWithProvider[]) => void
-  texts:    RuleCardTexts
 }) {
   const aktif    = group.rules.filter(r => r.is_active).length
   const nonaktif = group.rules.length - aktif
@@ -97,7 +76,7 @@ function ProviderAccordion({
       {isOpen && (
         <div className="p-3 space-y-2 bg-white">
           {group.rules.map(rule => (
-            <RuleCard key={rule.id} rule={rule} onUpdate={onUpdate} texts={texts} />
+            <RuleCard key={rule.id} rule={rule} onUpdate={onUpdate} />
           ))}
         </div>
       )}
@@ -111,40 +90,8 @@ export function AlertRulesPanel({ rules, onUpdate }: {
   rules:    AlertRuleWithProvider[]
   onUpdate: (updater: (prev: AlertRuleWithProvider[]) => AlertRuleWithProvider[]) => void
 }) {
+  // State accordion: Set of provider_kode yang sedang terbuka (multi-expand)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
-  const [texts,      setTexts]      = useState<RuleCardTexts>(TEXTS_FALLBACK)
-
-  // ── Fetch teks dari message_library sekali saat mount ─────────────────────
-  useEffect(() => {
-    let cancelled = false
-    async function fetchTexts() {
-      try {
-        const res  = await fetch('/api/message-library?kategori=alert_rules')
-        const json = await res.json()
-        if (!cancelled && json.success && json.data) {
-          const d = json.data as Record<string, string>
-          setTexts({
-            pengaturan_lanjutan:  d['alert_rules.label.pengaturan_lanjutan']   ?? TEXTS_FALLBACK.pengaturan_lanjutan,
-            berturut:             d['alert_rules.label.berturut']               ?? TEXTS_FALLBACK.berturut,
-            cooldown:             d['alert_rules.label.cooldown']               ?? TEXTS_FALLBACK.cooldown,
-            notifikasi:           d['alert_rules.label.notifikasi']             ?? TEXTS_FALLBACK.notifikasi,
-            aktif:                d['alert_rules.label.aktif']                  ?? TEXTS_FALLBACK.aktif,
-            simpan:               d['alert_rules.action.simpan']                ?? TEXTS_FALLBACK.simpan,
-            menyimpan:            d['alert_rules.action.menyimpan']             ?? TEXTS_FALLBACK.menyimpan,
-            tersimpan:            d['alert_rules.feedback.tersimpan']           ?? TEXTS_FALLBACK.tersimpan,
-            nonaktif:             d['alert_rules.status.nonaktif']              ?? TEXTS_FALLBACK.nonaktif,
-            dinonaktifkan_sistem: d['alert_rules.status.dinonaktifkan_sistem']  ?? TEXTS_FALLBACK.dinonaktifkan_sistem,
-            gagal_simpan:         d['alert_rules.error.gagal_simpan']           ?? TEXTS_FALLBACK.gagal_simpan,
-            empty_belum_ada:      d['alert_rules.empty.belum_ada']              ?? TEXTS_FALLBACK.empty_belum_ada,
-          })
-        }
-      } catch {
-        // Gagal fetch — tetap pakai TEXTS_FALLBACK, UI tidak blank
-      }
-    }
-    fetchTexts()
-    return () => { cancelled = true }
-  }, [])
 
   function toggleGroup(kode: string) {
     setOpenGroups(prev => {
@@ -157,7 +104,7 @@ export function AlertRulesPanel({ rules, onUpdate }: {
   if (rules.length === 0) {
     return (
       <div className="rounded-md border bg-muted/20 p-4 text-sm text-muted-foreground">
-        {texts.empty_belum_ada}
+        Belum ada alert rules. Rules dibuat otomatis saat cron pertama kali berjalan.
       </div>
     )
   }
@@ -173,7 +120,6 @@ export function AlertRulesPanel({ rules, onUpdate }: {
           isOpen={openGroups.has(group.provider_kode)}
           onToggle={() => toggleGroup(group.provider_kode)}
           onUpdate={onUpdate}
-          texts={texts}
         />
       ))}
     </div>

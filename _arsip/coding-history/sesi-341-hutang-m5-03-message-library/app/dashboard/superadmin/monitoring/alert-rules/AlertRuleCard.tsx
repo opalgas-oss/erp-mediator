@@ -2,7 +2,6 @@
 // app/dashboard/superadmin/monitoring/alert-rules/AlertRuleCard.tsx
 // Sub-komponen RuleCard beserta badge dan selector untuk AlertRulesPanel.
 // Dipecah dari AlertRulesPanel.tsx (ATURAN 9 — file 15.8KB > 10KB) — M5 S#340
-// HUTANG-M5-03 S#341: tambah RuleCardTexts interface + pakai texts props (LL#11)
 
 import { useState } from 'react'
 import type { AlertRuleWithProvider } from '@/lib/types/monitoring.types'
@@ -68,24 +67,20 @@ export function SeveritySelector({
   )
 }
 
-// ─── Interface teks dari message_library (LL#11) ──────────────────────────────
-// Semua teks yang berpotensi diubah SA tersentralisasi di sini.
-// Fetch dilakukan di AlertRulesPanel, di-pass ke RuleCard via props.
-// 'Threshold' dan 'Severity' tidak dimigrasi — istilah teknis internasional tetap.
+// ─── Tipe teks dari message_library ──────────────────────────────────────────
 
 export interface RuleCardTexts {
-  pengaturan_lanjutan:  string  // alert_rules.label.pengaturan_lanjutan
-  berturut:             string  // alert_rules.label.berturut
-  cooldown:             string  // alert_rules.label.cooldown
-  notifikasi:           string  // alert_rules.label.notifikasi
-  aktif:                string  // alert_rules.label.aktif
-  simpan:               string  // alert_rules.action.simpan
-  menyimpan:            string  // alert_rules.action.menyimpan
-  tersimpan:            string  // alert_rules.feedback.tersimpan
-  nonaktif:             string  // alert_rules.status.nonaktif
-  dinonaktifkan_sistem: string  // alert_rules.status.dinonaktifkan_sistem
-  gagal_simpan:         string  // alert_rules.error.gagal_simpan
-  empty_belum_ada:      string  // alert_rules.empty.belum_ada (dipakai AlertRulesPanel)
+  pengaturan_lanjutan:   string
+  berturut:              string
+  cooldown:              string
+  notifikasi:            string
+  aktif:                 string
+  simpan:                string
+  menyimpan:             string
+  tersimpan:             string
+  nonaktif:              string
+  dinonaktifkan_sistem:  string
+  gagal_simpan:          string
 }
 
 // ─── RuleCard: satu rule (DOWN atau SLOW) ────────────────────────────────────
@@ -225,9 +220,9 @@ export function RuleCard({
           {/* Threshold + Consecutive + Cooldown */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Threshold',     val: threshold,   set: setThreshold   },
-              { label: texts.berturut,  val: consecutive, set: setConsecutive },
-              { label: texts.cooldown,  val: cooldown,    set: setCooldown    },
+              { label: 'Threshold',          val: threshold,   set: setThreshold   },
+              { label: texts.berturut,       val: consecutive, set: setConsecutive },
+              { label: texts.cooldown,       val: cooldown,    set: setCooldown    },
             ].map(({ label, val, set }) => (
               <label key={label} className="flex flex-col gap-1">
                 <span className="text-[11px] text-[#6b7280]">{label}</span>
@@ -261,7 +256,7 @@ export function RuleCard({
             </div>
           </div>
 
-          {/* Severity segmented control — 'Severity' tetap hardcode (istilah teknis) */}
+          {/* Severity segmented control */}
           <div>
             <span className="text-[11px] text-[#6b7280] block mb-1.5">Severity</span>
             <SeveritySelector value={severity} onChange={setSeverity} disabled={savingForm} />
