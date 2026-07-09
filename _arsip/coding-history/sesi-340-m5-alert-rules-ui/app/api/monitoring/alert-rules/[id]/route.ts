@@ -34,7 +34,6 @@ export async function PATCH(
     'cooldown_minutes',
     'notif_channels',
     'is_active',
-    'severity',         // M5 S#340 — severity bisa diedit SA dari UI
   ]
   const hasValidKey = allowedKeys.some(k => k in body)
   if (!hasValidKey) {

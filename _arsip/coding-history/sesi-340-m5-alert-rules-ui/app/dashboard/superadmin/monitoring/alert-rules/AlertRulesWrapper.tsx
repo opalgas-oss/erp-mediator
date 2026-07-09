@@ -10,10 +10,10 @@
 
 import { useState }    from 'react'
 import { AlertRulesPanel } from './AlertRulesPanel'           // M5 S#340 — dipindah ke file dedicated
-import type { AlertRuleWithProvider } from '@/lib/types/monitoring.types'
+import type { AlertRule }  from '@/lib/types/monitoring.types'
 
-export function AlertRulesWrapper({ initialRules }: { initialRules: AlertRuleWithProvider[] }) {
-  const [rules, setRules] = useState<AlertRuleWithProvider[]>(initialRules)
+export function AlertRulesWrapper({ initialRules }: { initialRules: AlertRule[] }) {
+  const [rules, setRules] = useState<AlertRule[]>(initialRules)
 
   return (
     <AlertRulesPanel

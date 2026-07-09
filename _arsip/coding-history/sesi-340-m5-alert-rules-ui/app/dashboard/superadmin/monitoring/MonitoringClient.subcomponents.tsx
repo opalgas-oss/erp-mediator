@@ -9,7 +9,7 @@
 
 import { useState, useEffect }  from 'react'
 import { ConfigPageClient }     from '../settings/security-login/ConfigPageClient'
-import type { ProviderSnapshot } from '@/lib/types/monitoring.types'
+import type { AlertRule, ProviderSnapshot } from '@/lib/types/monitoring.types'
 import type { ConfigItemData }  from '@/components/ConfigItem'
 
 interface ConfigGroup { title: string; feature_key: string; items: ConfigItemData[] }
@@ -281,8 +281,9 @@ export function L3DeepPanel({ systems }: { systems: ProviderSnapshot[] }) {
   )
 }
 
-// ─── AlertRulesPanel — DIPINDAH ke alert-rules/AlertRulesPanel.tsx (M5 S#340) ───
-// Import langsung dari: ./alert-rules/AlertRulesPanel
+// ─── AlertRulesPanel — DIPINDAH ke alert-rules/AlertRulesPanel.tsx (M5 S#340) ─
+// Import dari file baru untuk backward compatibility sementara (dihapus setelah
+// semua consumer diupdate ke import langsung dari './alert-rules/AlertRulesPanel')
 
 // ─── MonitoringConfigPanel ────────────────────────────────────────────────────
 

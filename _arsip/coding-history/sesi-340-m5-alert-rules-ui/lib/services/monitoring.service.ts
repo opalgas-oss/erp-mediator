@@ -19,7 +19,6 @@ import {
 import type {
   ProviderSnapshot,
   AlertRule,
-  AlertRuleWithProvider,
   AlertLog,
   UpdateAlertRulePayload,
 } from '@/lib/types/monitoring.types'
@@ -61,9 +60,9 @@ export async function getMonitoringSnapshot(): Promise<{
 // ─── getAlertRules ────────────────────────────────────────────────────────────
 
 /**
- * Ambil semua alert rules dengan nama provider untuk tampilan dashboard (M5 S#340).
+ * Ambil semua alert rules untuk tampilan form pengaturan dashboard.
  */
-export async function getAlertRules(): Promise<AlertRuleWithProvider[]> {
+export async function getAlertRules(): Promise<AlertRule[]> {
   return findAllAlertRules()
 }
 
@@ -101,15 +100,6 @@ export async function patchAlertRule(
     payload.cooldown_minutes < 5
   ) {
     throw new Error('Cooldown minimal 5 menit')
-  }
-
-  // Validasi severity (M5 S#340)
-  const VALID_SEVERITY = ['CRITICAL', 'WARNING', 'INFO'] as const
-  if (
-    payload.severity !== undefined &&
-    !(VALID_SEVERITY as readonly string[]).includes(payload.severity)
-  ) {
-    throw new Error('Severity harus CRITICAL, WARNING, atau INFO')
   }
 
   return updateAlertRule(id, payload, updatedBy)

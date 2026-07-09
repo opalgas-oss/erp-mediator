@@ -83,20 +83,6 @@ export interface UpdateAlertRulePayload {
   severity?:             'CRITICAL' | 'WARNING' | 'INFO'
 }
 
-// AlertRule dengan data provider — hasil JOIN service_providers (M5 — S#340)
-// Dipakai oleh: findAllAlertRules, getAlertRules, AlertRulesPanel
-export interface AlertRuleWithProvider extends AlertRule {
-  provider_nama:     string
-  provider_kode:     string
-  provider_kategori: string
-}
-
-// Response API yang return AlertRuleWithProvider (M5 — S#340)
-export interface AlertRulesWithProviderResponse {
-  success: boolean
-  data:    AlertRuleWithProvider[]
-}
-
 // ─── Alert Log ────────────────────────────────────────────────────────────────
 
 export interface AlertLog {

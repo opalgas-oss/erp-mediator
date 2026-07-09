@@ -6,40 +6,25 @@
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import type {
   AlertRule,
-  AlertRuleWithProvider,
   UpdateAlertRulePayload,
 } from '@/lib/types/monitoring.types'
 
 // ─── findAll ──────────────────────────────────────────────────────────────────
 
 /**
- * Ambil semua alert rules dengan nama provider — JOIN service_providers (M5 S#340).
- * Dipakai oleh: getAlertRules di monitoring.service, AlertRulesPanel UI.
+ * Ambil semua alert rules yang aktif, join nama provider.
  */
-export async function findAllAlertRules(): Promise<AlertRuleWithProvider[]> {
+export async function findAllAlertRules(): Promise<AlertRule[]> {
   const supabase = createServerSupabaseClient()
 
   const { data, error } = await supabase
     .from('alert_rules')
-    .select('*, service_providers(nama, kode, kategori)')
+    .select('*')
     .order('provider_id')
     .order('alert_type')
 
   if (error) throw new Error(`findAllAlertRules: ${error.message}`)
-
-  // Flatten hasil JOIN: service_providers { nama, kode, kategori } → field flat
-  return ((data ?? []) as unknown[]).map((row) => {
-    const r = row as AlertRule & {
-      service_providers: { nama: string; kode: string; kategori: string } | null
-    }
-    return {
-      ...r,
-      provider_nama:     r.service_providers?.nama     ?? '',
-      provider_kode:     r.service_providers?.kode     ?? '',
-      provider_kategori: r.service_providers?.kategori ?? '',
-      service_providers: undefined,
-    } as AlertRuleWithProvider
-  })
+  return (data ?? []) as AlertRule[]
 }
 
 // ─── findByProvider ───────────────────────────────────────────────────────────
