@@ -2,28 +2,22 @@
 // POST — Kirim alert uji coba ke WA + Email SuperAdmin (B1)
 // Dipakai oleh: tombol "Kirim Alert Uji Coba" di halaman monitoring
 // Dibuat: Sesi #331 — FASE 1 Alert Monitoring
-// PERUBAHAN Sesi #342 — M8 Audit Trail:
-//   - Setelah kirim uji coba → catat TEST_ALERT ke monitoring_audit_log (fire-and-forget)
-//
-// Teks dari message_library: alert.wa.test + alert.email.test_subject
-// Credential dari M3 DB via credential.service (ATURAN 11 — anti hardcode)
-// Target nomor/email dari config_registry monitoring.superadmin_alert_wa_number + superadmin_alert_email
+// ============================================================
+// ARSIP SESI #342 — sebelum integrasi M8 Audit Trail
+// ============================================================
 
-import { NextResponse }            from 'next/server'
+import { NextResponse }         from 'next/server'
 import { requireSuperAdminCookie } from '@/lib/auth-server'
 import { getConfigValues }         from '@/lib/config-registry'
 import { getCredential }           from '@/lib/services/credential.service'
 import { sendFonnteWA }            from '@/lib/utils/fonnte.server'
 import { sendResendEmailPlain }    from '@/lib/utils/resend.server'
-import { getMessage }              from '@/lib/message-library'
-import { writeMonitoringAudit }    from '@/lib/repositories/monitoring-audit-log.repository'
+import { getMessage }           from '@/lib/message-library'
 
 export async function POST() {
-  // Pakai Cookie variant karena dipanggil dari client component (fetch dari browser)
   const auth = await requireSuperAdminCookie()
   if (!auth.ok) return auth.res
 
-  // Ambil target dari config_registry
   const cfg       = await getConfigValues('monitoring')
   const waNumber  = cfg['superadmin_alert_wa_number'] || null
   const email     = cfg['superadmin_alert_email']     || null
@@ -35,14 +29,12 @@ export async function POST() {
     )
   }
 
-  // Ambil teks dari message_library (C4 — bahasa manusia, LL#11)
-  const waText      = await getMessage('alert.wa.test',          'Ini adalah pesan uji coba notifikasi dari ERP Mediator. Sistem notifikasi berfungsi normal.')
+  const waText      = await getMessage('alert.wa.test',         'Ini adalah pesan uji coba notifikasi dari ERP Mediator. Sistem notifikasi berfungsi normal.')
   const emailSubject = await getMessage('alert.email.test_subject', '[ERP Mediator] Uji Coba Notifikasi Alert')
 
   const results: { wa?: string; email?: string } = {}
   const errors:  { wa?: string; email?: string } = {}
 
-  // Kirim WA
   if (waNumber) {
     try {
       const token = await getCredential('fonnte', 'api_token')
@@ -55,7 +47,6 @@ export async function POST() {
     }
   }
 
-  // Kirim Email
   if (email) {
     try {
       const res = await sendResendEmailPlain(email, emailSubject, waText)
@@ -68,28 +59,6 @@ export async function POST() {
 
   const hasSuccess = Object.keys(results).length > 0
   const hasErrors  = Object.keys(errors).length > 0
-
-  // M8: catat TEST_ALERT ke audit trail — fire-and-forget, tidak gagalkan response
-  // entity_id pakai auth.uid karena tidak ada entity tunggal yang di-test
-  try {
-    await writeMonitoringAudit({
-      actor:       auth.uid,
-      actor_label: `SA:${auth.uid}`,
-      action:      'TEST_ALERT',
-      entity_type: 'alert_log',
-      entity_id:   auth.uid,   // tidak ada alert_log dibuat saat test — pakai uid sebagai referensi
-      detail_json: {
-        channels: [
-          ...(waNumber  ? ['WA']    : []),
-          ...(email     ? ['EMAIL'] : []),
-        ],
-        results,
-        errors: hasErrors ? errors : undefined,
-      },
-    })
-  } catch (auditErr) {
-    console.error('[alert-test] audit TEST_ALERT gagal:', auditErr)
-  }
 
   return NextResponse.json({
     success: hasSuccess,

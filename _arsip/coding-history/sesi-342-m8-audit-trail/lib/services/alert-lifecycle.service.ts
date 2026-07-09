@@ -1,16 +1,14 @@
 // lib/services/alert-lifecycle.service.ts
 // Service: siklus hidup insiden alert (M1) + state machine (A3) + auto-resolve (A2)
-// Dipakai oleh: app/api/monitoring/alerts/[id]/route.ts
+// Dipakai oleh: app/api/superadmin/monitoring/alerts/[id]/route.ts
 //               alert.service.ts (untuk auto-resolve saat UP)
 // Dibuat: Sesi #331 — FASE 1 Alert Monitoring
-// PERUBAHAN Sesi #342 — M8 Audit Trail:
-//   - acknowledgeAlert() → catat ACKNOWLEDGE ke monitoring_audit_log
-//   - resolveAlert()     → catat RESOLVE ke monitoring_audit_log
-//   - reopenAlert()      → catat REOPEN ke monitoring_audit_log
-//   - autoResolveAlert() → catat AUTO_RESOLVED ke monitoring_audit_log
 //
 // State machine valid (A3): lihat VALID_ALERT_TRANSITIONS di monitoring.types.ts
 // Semua transisi yang tidak terdaftar → ditolak dengan error
+// ============================================================
+// ARSIP SESI #342 — sebelum integrasi M8 Audit Trail
+// ============================================================
 
 import 'server-only'
 import {
@@ -18,7 +16,6 @@ import {
   updateAlertLogStatus,
   findOpenAlertByDedupKey,
 } from '@/lib/repositories/alert-log.repository'
-import { writeMonitoringAudit } from '@/lib/repositories/monitoring-audit-log.repository'
 import type {
   AlertStatus,
   AcknowledgeAlertPayload,
@@ -28,11 +25,6 @@ import { VALID_ALERT_TRANSITIONS } from '@/lib/types/monitoring.types'
 
 // ─── validateAlertTransition (A3) ────────────────────────────────────────────
 
-/**
- * Validasi apakah transisi status dari → to diizinkan oleh state machine.
- * Lihat VALID_ALERT_TRANSITIONS di monitoring.types.ts untuk daftar lengkap.
- * Throw Error jika transisi tidak valid — caller wajib catch.
- */
 export function validateAlertTransition(from: AlertStatus, to: AlertStatus): void {
   const allowed = VALID_ALERT_TRANSITIONS[from] ?? []
   if (!allowed.includes(to)) {
@@ -45,11 +37,6 @@ export function validateAlertTransition(from: AlertStatus, to: AlertStatus): voi
 
 // ─── acknowledgeAlert (M1) ────────────────────────────────────────────────────
 
-/**
- * SA menandai insiden "sedang ditangani".
- * Transisi: TRIGGERED → ACKNOWLEDGED.
- * M8: catat ACKNOWLEDGE ke monitoring_audit_log (fire-and-forget — tidak gagalkan aksi utama).
- */
 export async function acknowledgeAlert(payload: AcknowledgeAlertPayload): Promise<void> {
   const { alertLogId, acknowledgedBy } = payload
 
@@ -64,33 +51,10 @@ export async function acknowledgeAlert(payload: AcknowledgeAlertPayload): Promis
     acknowledged_by: acknowledgedBy,
     updated_at:      new Date().toISOString(),
   })
-
-  // M8: audit trail — fire-and-forget, tidak gagalkan aksi utama
-  try {
-    await writeMonitoringAudit({
-      actor:       acknowledgedBy,
-      actor_label: `SA:${acknowledgedBy}`,
-      action:      'ACKNOWLEDGE',
-      entity_type: 'alert_log',
-      entity_id:   alertLogId,
-      detail_json: {
-        provider_id: log.provider_id,
-        alert_type:  log.alert_type,
-        from_status: log.status,
-      },
-    })
-  } catch (auditErr) {
-    console.error('[alert-lifecycle] audit ACKNOWLEDGE gagal:', auditErr)
-  }
 }
 
 // ─── resolveAlert (M1) ───────────────────────────────────────────────────────
 
-/**
- * SA menandai insiden "selesai ditangani" dengan catatan penyelesaian.
- * Transisi: ACKNOWLEDGED → RESOLVED.
- * M8: catat RESOLVE ke monitoring_audit_log.
- */
 export async function resolveAlert(payload: ResolveAlertPayload): Promise<void> {
   const { alertLogId, resolvedBy, resolutionNote } = payload
 
@@ -110,38 +74,11 @@ export async function resolveAlert(payload: ResolveAlertPayload): Promise<void> 
     resolution_note: resolutionNote.trim(),
     updated_at:      new Date().toISOString(),
   })
-
-  // M8: audit trail
-  try {
-    await writeMonitoringAudit({
-      actor:       resolvedBy,
-      actor_label: `SA:${resolvedBy}`,
-      action:      'RESOLVE',
-      entity_type: 'alert_log',
-      entity_id:   alertLogId,
-      detail_json: {
-        provider_id:     log.provider_id,
-        alert_type:      log.alert_type,
-        from_status:     log.status,
-        resolution_note: resolutionNote.trim(),
-      },
-    })
-  } catch (auditErr) {
-    console.error('[alert-lifecycle] audit RESOLVE gagal:', auditErr)
-  }
 }
 
 // ─── reopenAlert (M1) ────────────────────────────────────────────────────────
 
-/**
- * SA membuka kembali insiden yang sudah RESOLVED.
- * Transisi: RESOLVED → TRIGGERED.
- * M8: catat REOPEN ke monitoring_audit_log.
- *
- * @param alertLogId  UUID alert_log yang akan dibuka kembali
- * @param reopenedBy  UUID SA yang melakukan reopen (dari auth)
- */
-export async function reopenAlert(alertLogId: string, reopenedBy?: string): Promise<void> {
+export async function reopenAlert(alertLogId: string): Promise<void> {
   const log = await findAlertLogById(alertLogId)
   if (!log) throw new Error(`Alert log tidak ditemukan: ${alertLogId}`)
 
@@ -151,37 +88,10 @@ export async function reopenAlert(alertLogId: string, reopenedBy?: string): Prom
     status:     'TRIGGERED',
     updated_at: new Date().toISOString(),
   })
-
-  // M8: audit trail
-  try {
-    await writeMonitoringAudit({
-      actor:       reopenedBy,
-      actor_label: reopenedBy ? `SA:${reopenedBy}` : 'SYSTEM',
-      action:      'REOPEN',
-      entity_type: 'alert_log',
-      entity_id:   alertLogId,
-      detail_json: {
-        provider_id: log.provider_id,
-        alert_type:  log.alert_type,
-        from_status: log.status,
-      },
-    })
-  } catch (auditErr) {
-    console.error('[alert-lifecycle] audit REOPEN gagal:', auditErr)
-  }
 }
 
 // ─── autoResolveAlert (A2) ───────────────────────────────────────────────────
 
-/**
- * Dipanggil dari alert.service saat health check UP kembali.
- * Cari insiden terbuka (TRIGGERED/ACKNOWLEDGED) dengan dedup_key yang sama,
- * lalu set AUTO_RESOLVED + catat durasi downtime.
- * M8: catat AUTO_RESOLVED ke monitoring_audit_log.
- *
- * @param dedupKey  Format: `{provider_id}:{alert_type}:TRIGGERED`
- * @returns         true jika ada insiden yang di-auto-resolve, false jika tidak ada
- */
 export async function autoResolveAlert(dedupKey: string): Promise<boolean> {
   const openLog = await findOpenAlertByDedupKey(dedupKey)
   if (!openLog) return false
@@ -198,26 +108,6 @@ export async function autoResolveAlert(dedupKey: string): Promise<boolean> {
     downtime_duration_seconds: downtimeSeconds,
     updated_at:                now.toISOString(),
   })
-
-  // M8: audit trail — SYSTEM sebagai actor (cron/auto, tidak ada user)
-  try {
-    await writeMonitoringAudit({
-      actor:       undefined,
-      actor_label: 'SYSTEM',
-      action:      'AUTO_RESOLVED',
-      entity_type: 'alert_log',
-      entity_id:   openLog.id,
-      detail_json: {
-        provider_id:               openLog.provider_id,
-        alert_type:                openLog.alert_type,
-        from_status:               openLog.status,
-        downtime_duration_seconds: downtimeSeconds,
-        dedup_key:                 dedupKey,
-      },
-    })
-  } catch (auditErr) {
-    console.error('[alert-lifecycle] audit AUTO_RESOLVED gagal:', auditErr)
-  }
 
   return true
 }

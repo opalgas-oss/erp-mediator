@@ -2,8 +2,11 @@
 // Repository untuk tabel alert_rules
 // Dipakai oleh: alert.service.ts, monitoring.service.ts
 // Dibuat: Sesi #151 — PL-S09 Monitoring Dashboard
+// PERUBAHAN Sesi #342 — M8 Audit Trail:
+//   - updateAlertRule() → catat RULE_UPDATE ke monitoring_audit_log setelah update berhasil
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { writeMonitoringAudit }       from '@/lib/repositories/monitoring-audit-log.repository'
 import type {
   AlertRule,
   AlertRuleWithProvider,
@@ -84,6 +87,7 @@ export async function findAlertRuleById(id: string): Promise<AlertRule | null> {
 /**
  * Update threshold/cooldown/channel/status satu alert rule.
  * Hanya SuperAdmin yang boleh — RLS sudah guard di DB level.
+ * M8: catat RULE_UPDATE ke monitoring_audit_log setelah update berhasil (fire-and-forget).
  */
 export async function updateAlertRule(
   id:        string,
@@ -91,6 +95,9 @@ export async function updateAlertRule(
   updatedBy: string
 ): Promise<AlertRule> {
   const supabase = createServerSupabaseClient()
+
+  // Ambil data sebelum update untuk detail audit (before state)
+  const before = await findAlertRuleById(id)
 
   const { data, error } = await supabase
     .from('alert_rules')
@@ -104,7 +111,37 @@ export async function updateAlertRule(
     .single()
 
   if (error) throw new Error(`updateAlertRule: ${error.message}`)
-  return data as AlertRule
+
+  const updated = data as AlertRule
+
+  // M8: audit trail — fire-and-forget, tidak gagalkan aksi utama
+  try {
+    const fieldsChanged = Object.keys(payload) as Array<keyof UpdateAlertRulePayload>
+    // Double cast via unknown diperlukan karena AlertRule bukan index signature type
+    const beforeSnap = before
+      ? Object.fromEntries(fieldsChanged.map(k => [k, (before  as unknown as Record<string, unknown>)[k]]))
+      : null
+    const afterSnap  = Object.fromEntries(fieldsChanged.map(k => [k, (updated as unknown as Record<string, unknown>)[k]]))
+
+    await writeMonitoringAudit({
+      actor:       updatedBy,
+      actor_label: `SA:${updatedBy}`,
+      action:      'RULE_UPDATE',
+      entity_type: 'alert_rules',
+      entity_id:   id,
+      detail_json: {
+        provider_id:    updated.provider_id,
+        alert_type:     updated.alert_type,
+        fields_changed: fieldsChanged,
+        before:         beforeSnap,
+        after:          afterSnap,
+      },
+    })
+  } catch (auditErr) {
+    console.error('[alert-rules.repository] audit RULE_UPDATE gagal:', auditErr)
+  }
+
+  return updated
 }
 
 // ─── upsertDefaultRules ───────────────────────────────────────────────────────

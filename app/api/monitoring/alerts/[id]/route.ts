@@ -2,6 +2,8 @@
 // PATCH — Aksi lifecycle: acknowledge / resolve / reopen (M1, A3)
 // Dipakai oleh: tombol Tandai Ditangani / Tandai Selesai / Buka Kembali di UI monitoring
 // Dibuat: Sesi #331 — FASE 1 Alert Monitoring
+// PERUBAHAN Sesi #342 — M8 Audit Trail:
+//   - reopenAlert() sekarang menerima reopenedBy (auth.uid) — teruskan dari sini
 //
 // Body PATCH:
 //   { action: 'acknowledge' }
@@ -61,7 +63,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         return NextResponse.json({ success: true, message: 'Insiden ditandai selesai.' })
 
       case 'reopen':
-        await reopenAlert(id)
+        await reopenAlert(id, auth.uid)
         return NextResponse.json({ success: true, message: 'Insiden dibuka kembali.' })
 
       default:

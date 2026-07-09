@@ -1,3 +1,9 @@
+# INDEX.md — Arsip Coding History
+# Lokasi: _arsip/coding-history/INDEX.md
+# Diupdate setiap kali ada snapshot baru (ATURAN 12 + 23)
+
+| Tanggal | Sesi | Keterangan |
+|---|---|---|
 | **7 Juli 2026** | **S#333** | **Snapshot `sesi-333-m3-deduplication` dibuat. M3 Deduplication: arsip alert-log.repository.ts + alert.service.ts pra-M3. incrementAlertOccurrence() + dedup logic di evaluateRule(). Arsip: 2 file.** |
 | **27 Juni 2026** | **S#319** | **Fee Structure Engine TAHAP 1+2 selesai. DB migration + 11 fungsi terdaftar cr_functions. Shared_Database/Schema_Tenant.md + Schema_Config.md diupdate (ATURAN 27).** |
 | **7 Juli 2026** | **S#334** | **Snapshot `sesi-334-m6-alert-queue` dibuat. M6 Alert Queue: arsip alert.service.ts pra-integrasi enqueue (kirim langsung → enqueue Redis WA+Email). Arsip: 1 file (alert.service.ts).** |
@@ -9,3 +15,4 @@
 | **9 Juli 2026** | **S#340** | **Snapshot `sesi-340-m5-alert-rules-ui` dibuat. M5 Alert Rules UI — Step 1: tambah interface AlertRuleWithProvider extends AlertRule + AlertRulesWithProviderResponse ke monitoring.types.ts. Step 2: enhance findAllAlertRules() JOIN service_providers, update return type ke AlertRuleWithProvider[]. Arsip: 2 file (monitoring.types.ts, alert-rules.repository.ts).** |
 | **8 Juli 2026** | **S#337** | **Snapshot `sesi-337-fix-healthchecks-config` dibuat. FIX healthchecks config: (1) INSERT service_providers kode=healthchecks kategori=monitoring, (2) INSERT config_registry alert.healthchecks_ping_url kategori=Alert, (3) DELETE 5 row duplikat feature_key=alert, (4) alert-heartbeat.service.ts: pingHeartbeat() baca URL dari config_registry bukan process.env, getHeartbeatStatus() fix feature_key getConfigValues. FIX-1: monitoring/page.tsx tambah section Alert via getConfigItemsByKategori('Alert') — 12 item alert.* kini tampil di Dashboard SA. Arsip: 2 file (alert-heartbeat.service.ts + monitoring/page.tsx).** |
 | **9 Juli 2026** | **S#341** | **Snapshot `sesi-341-hutang-m5-03-message-library` dibuat. HUTANG-M5-03: arsip AlertRuleCard.tsx + AlertRulesPanel.tsx pra-migrasi teks ke message_library (LL#11). Arsip: 2 file.** |
+| **9 Juli 2026** | **S#342** | **Snapshot `sesi-342-m8-audit-trail` dibuat. M8 Audit Trail: arsip pra-integrasi writeMonitoringAudit(). File yang akan diubah: alert-lifecycle.service.ts (ACKNOWLEDGE/RESOLVE/REOPEN/AUTO_RESOLVED), alert-rules.repository.ts (RULE_UPDATE), alert-test/route.ts (TEST_ALERT). Arsip: 3 file.** |
