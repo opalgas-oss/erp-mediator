@@ -4,8 +4,9 @@
 // L5 — Tabel riwayat alert (10 terakhir)
 //
 // Dibuat: Sesi #153 — PL-S09 Step 3.6
+// Update S#349: B3 — AlertLogTable terima AlertLogWithImpact, tampilkan provider_nama + business_impact
 
-import type { ProviderSnapshot, AlertLog } from '@/lib/types/monitoring.types'
+import type { ProviderSnapshot, AlertLog, AlertLogWithImpact } from '@/lib/types/monitoring.types'
 
 // ─── L4: Uptime Summary ───────────────────────────────────────────────────────
 
@@ -89,7 +90,7 @@ function StatusChip({ status }: { status: string }) {
 // ─── L5: Alert Log ────────────────────────────────────────────────────────────
 
 interface AlertLogProps {
-  alertLogs: AlertLog[]
+  alertLogs: AlertLogWithImpact[]   // B3 S#349
 }
 
 export function AlertLogTable({ alertLogs }: AlertLogProps) {
@@ -109,7 +110,7 @@ export function AlertLogTable({ alertLogs }: AlertLogProps) {
             <th className="px-4 py-2 text-left font-medium text-muted-foreground">Provider</th>
             <th className="px-4 py-2 text-left font-medium text-muted-foreground">Tipe Alert</th>
             <th className="px-4 py-2 text-left font-medium text-muted-foreground">Channel</th>
-            <th className="px-4 py-2 text-left font-medium text-muted-foreground">Pesan</th>
+            <th className="px-4 py-2 text-left font-medium text-muted-foreground">Pesan &amp; Dampak Bisnis</th>
           </tr>
         </thead>
         <tbody>
@@ -125,7 +126,10 @@ export function AlertLogTable({ alertLogs }: AlertLogProps) {
                 <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
                   {new Date(log.triggered_at).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}
                 </td>
-                <td className="px-4 py-2.5 font-medium truncate">{log.provider_id}</td>
+                <td className="px-4 py-2.5 font-medium truncate">
+                  {/* B3 S#349: nama provider dari JOIN, fallback ke provider_id */}
+                  {log.provider_nama ?? log.provider_id}
+                </td>
                 <td className="px-4 py-2.5">
                   <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-800">
                     {log.alert_type}
@@ -134,8 +138,14 @@ export function AlertLogTable({ alertLogs }: AlertLogProps) {
                 <td className="px-4 py-2.5 text-xs text-muted-foreground">
                   {log.notif_channels.join(', ')}
                 </td>
-                <td className="px-4 py-2.5 text-xs text-muted-foreground truncate" title={log.message}>
-                  {log.message.slice(0, 80)}{log.message.length > 80 ? '…' : ''}
+                <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                  <p className="truncate" title={log.message}>
+                    {log.message.slice(0, 80)}{log.message.length > 80 ? '…' : ''}
+                  </p>
+                  {/* B3 S#349: dampak bisnis jika ada */}
+                  {log.business_impact && (
+                    <p className="mt-0.5 text-amber-700 font-medium">⚠ {log.business_impact}</p>
+                  )}
                 </td>
               </tr>
             ))

@@ -20,7 +20,7 @@
 export const dynamic = 'force-dynamic'
 
 import { getMonitoringSnapshot } from '@/lib/services/monitoring.service'
-import { getRecentAlertLogs }    from '@/lib/services/monitoring.service'
+import { getRecentAlertLogsWithImpact } from '@/lib/services/monitoring.service'
 import { getAlertRules }         from '@/lib/services/monitoring.service'
 import { getConfigPageItems }    from '@/lib/config-registry'
 import { mapTipe, mapValue }     from '@/lib/utils/config-page.utils'
@@ -41,7 +41,7 @@ export default async function MonitoringPage() {
   try {
     const [snapshot, alertLogs, alertRules, configRows] = await Promise.all([
       getMonitoringSnapshot(),
-      getRecentAlertLogs(20),
+      getRecentAlertLogsWithImpact(20),   // B3 S#349 — dengan business_impact + provider_nama
       getAlertRules(),
       // T-032 (fix S#258 T-S258-02): fetch 10 config monitoring via repository layer
       getConfigPageItems('monitoring'),

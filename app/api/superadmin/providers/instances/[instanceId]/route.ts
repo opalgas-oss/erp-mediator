@@ -1,10 +1,11 @@
 // app/api/superadmin/providers/instances/[instanceId]/route.ts
-// PATCH — Update instance (use_cases dll) — SuperAdmin only
+// PATCH — Update instance (use_cases + business_impact dll) — SuperAdmin only
 // Dibuat: Sesi #288 — FASE 2 use_case
+// Update: Sesi #349 — B3: tambah business_impact ke PATCH payload
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSuperAdmin }          from '@/lib/auth-server'
-import { patchInstanceUseCases }      from '@/lib/services/credential.service'
+import { patchInstanceUseCases, patchInstanceBusinessImpact } from '@/lib/services/credential.service'
 
 export async function PATCH(
   request: NextRequest,
@@ -22,7 +23,7 @@ export async function PATCH(
       )
     }
 
-    const body = await request.json() as { use_cases?: string[] }
+    const body = await request.json() as { use_cases?: string[]; business_impact?: string | null; is_aktif?: boolean }
 
     if (body.use_cases !== undefined) {
       if (!Array.isArray(body.use_cases)) {
@@ -32,6 +33,11 @@ export async function PATCH(
         )
       }
       await patchInstanceUseCases(instanceId, body.use_cases)
+    }
+
+    // S#349 B3 — update business_impact
+    if ('business_impact' in body) {
+      await patchInstanceBusinessImpact(instanceId, body.business_impact ?? null)
     }
 
     return NextResponse.json({ success: true })

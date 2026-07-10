@@ -8,6 +8,7 @@
 // Update S#249: BUG-033 FIX — validasi is_required fields kosong saat mode baru sebelum save
 // Update S#288: tambah use_cases state + section Use Case di dialog + update instance PATCH
 // Update S#289: fix race condition use_cases — loadData selesai dulu sebelum user bisa klik (loadingData state)
+// Update S#349: tambah businessImpact state + pass ke body + kirim ke API PATCH (B3)
 // Dibuat: Sesi #107 — Update: Sesi #151, S#152, S#216
 
 import { useState, useEffect, useCallback } from 'react'
@@ -32,6 +33,7 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
   const [existingInstanceId, setExistingInstanceId]= useState<string | null>(null)
   const [loadingCred,        setLoadingCred]       = useState(false)
   const [loadingData,        setLoadingData]       = useState(false)
+  const [businessImpact,     setBusinessImpact]    = useState('')   // S#349 B3
 
   const isMon = provider ? MONITOR.has(provider.kode) : false
   const isQS  = provider?.kode === 'qstash'
@@ -41,6 +43,7 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
     if (!open || !provider) return
     setFds([]); setCred({}); setShow({}); setRes(null); setExistingInstanceId(null)
     setUseCases([])
+    setBusinessImpact('')   // S#349 B3
     setNs(provider.nama + ' Production')
     setLoadingCred(false)
     setLoadingData(true)
@@ -75,8 +78,9 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
         const defaultInst = instances.find(i => i.is_default) ?? instances[instances.length - 1]
         setExistingInstanceId(defaultInst.id)
         setNs(defaultInst.nama_server)
-        // Load use_cases dari instance existing
+        // Load use_cases + business_impact dari instance existing
         setUseCases(defaultInst.use_cases ?? [])
+        setBusinessImpact(defaultInst.business_impact ?? '')   // S#349 B3
 
         // Load credentials plaintext untuk pre-fill form
         setLoadingCred(true)
@@ -149,10 +153,10 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
         toast.success('Instance dibuat — menyimpan credential...')
         iid = r1.data.id as string
       } else {
-        // Mode EDIT — update use_cases jika berubah
+        // Mode EDIT — update use_cases + business_impact jika berubah
         await fetch(`/api/superadmin/providers/instances/${iid}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ use_cases: useCases }),
+          body: JSON.stringify({ use_cases: useCases, business_impact: businessImpact.trim() || null }),   // S#349 B3
         })
         toast.success('Menyimpan credential yang diubah...')
       }
@@ -199,6 +203,7 @@ export function DialogKonfigurasiKoneksi({ open, provider, onClose, onSuccess }:
           provider={provider} isQS={isQS} isMon={isMon}
           ns={ns} onNs={setNs}
           useCases={useCases} onUseCasesChange={setUseCases}
+          businessImpact={businessImpact} onBusinessImpactChange={setBusinessImpact}
           fds={fds} cred={cred} show={show}
           onChange={onChange} onToggle={onToggle}
           res={res}

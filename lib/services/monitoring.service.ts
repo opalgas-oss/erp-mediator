@@ -17,6 +17,7 @@ import {
 } from '@/lib/repositories/alert-rules.repository'
 import {
   findRecentAlertLogs,
+  findRecentAlertLogsWithImpact,
   countActiveAlertProviders,
 } from '@/lib/repositories/alert-log.repository'
 import type {
@@ -24,6 +25,7 @@ import type {
   AlertRule,
   AlertRuleWithProvider,
   AlertLog,
+  AlertLogWithImpact,
   UpdateAlertRulePayload,
 } from '@/lib/types/monitoring.types'
 
@@ -124,4 +126,12 @@ export async function bulkDisableStaleAlertRules(disabledBy: string): Promise<nu
  */
 export async function getRecentAlertLogs(limit: number = 10): Promise<AlertLog[]> {
   return findRecentAlertLogs(limit)
+}
+
+/**
+ * Ambil riwayat alert dengan business_impact + provider_nama untuk Layer 5 (B3 S#349).
+ * Opsi B — fungsi baru terpisah, getRecentAlertLogs() tidak diubah.
+ */
+export async function getRecentAlertLogsWithImpact(limit: number = 10): Promise<AlertLogWithImpact[]> {
+  return findRecentAlertLogsWithImpact(limit)
 }

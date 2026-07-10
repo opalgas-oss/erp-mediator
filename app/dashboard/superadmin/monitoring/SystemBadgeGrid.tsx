@@ -6,6 +6,7 @@
 // Update S#331: C1 (grid lampu lalu lintas) + C3 (warna + ikon + label — aksesibilitas)
 //              + C4 (bahasa manusia) + C5 (empty state menenangkan)
 //              + B1 (tombol kirim alert uji coba)
+// Update S#349: B3 — tampilkan business_impact di badge DOWN/DEGRADED
 //
 // C3 — Aksesibilitas: WAJIB kombinasi warna + ikon + label teks (tidak cukup warna saja)
 // ~8% pria buta warna — semua elemen visual pakai triple indicator.
@@ -140,14 +141,20 @@ export function SystemBadgeGrid({ systems, lastCheckedAt, isStale, hoursAgo }: P
               key={sys.provider_id}
               role="listitem"
               aria-label={`${sys.nama}: ${cfg.ariaLabel}${ms}`}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${cfg.badgeColor}`}
+              className={`inline-flex flex-col gap-0.5 rounded-xl border px-3 py-1.5 text-xs font-medium ${cfg.badgeColor}`}
               title={`${sys.nama} — ${cfg.label}${ms}${sys.last_checked_at ? ` · ${new Date(sys.last_checked_at).toLocaleTimeString('id-ID')}` : ''}`}
             >
               {/* C3: dot warna + ikon teks + label — triple indicator */}
-              <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${cfg.dotColor}`} aria-hidden="true" />
-              <span aria-hidden="true">{cfg.icon}</span>
-              <span>{sys.nama}</span>
-              <span className="opacity-60">{cfg.label}{ms}</span>
+              <div className="inline-flex items-center gap-1.5">
+                <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${cfg.dotColor}`} aria-hidden="true" />
+                <span aria-hidden="true">{cfg.icon}</span>
+                <span>{sys.nama}</span>
+                <span className="opacity-60">{cfg.label}{ms}</span>
+              </div>
+              {/* B3 S#349: dampak bisnis hanya tampil jika DOWN/DEGRADED dan ada teks */}
+              {(sys.status === 'DOWN' || sys.status === 'DEGRADED') && sys.business_impact && (
+                <p className="text-xs opacity-75 pl-3 leading-tight">⚠ {sys.business_impact}</p>
+              )}
             </div>
           )
         })}

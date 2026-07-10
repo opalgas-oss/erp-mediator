@@ -21,6 +21,7 @@ import { AlertRulesPanel } from './alert-rules/AlertRulesPanel'  // M5 S#340 —
 import type {
   ProviderSnapshot,
   AlertLog,
+  AlertLogWithImpact,
   AlertRuleWithProvider,
   MetricSSEEvent,
 } from '@/lib/types/monitoring.types'
@@ -31,7 +32,7 @@ interface ConfigGroup { title: string; feature_key: string; items: ConfigItemDat
 interface Props {
   initialSystems:          ProviderSnapshot[]
   initialAlertCount:       number
-  initialAlertLogs:        AlertLog[]
+  initialAlertLogs:        AlertLogWithImpact[]   // B3 S#349
   initialAlertRules:       AlertRuleWithProvider[]
   initialUpdatedAt:        string
   initialMonitoringConfig: ConfigGroup[]
@@ -43,7 +44,7 @@ export function MonitoringClient({
 }: Props) {
   const [systems,    setSystems]    = useState<ProviderSnapshot[]>(initialSystems)
   const [alertCount, setAlertCount] = useState(initialAlertCount)
-  const [alertLogs,  setAlertLogs]  = useState<AlertLog[]>(initialAlertLogs)
+  const [alertLogs,  setAlertLogs]  = useState<AlertLogWithImpact[]>(initialAlertLogs)
   const [alertRules, setAlertRules] = useState<AlertRuleWithProvider[]>(initialAlertRules)
   const [updatedAt,  setUpdatedAt]  = useState(initialUpdatedAt)
   const [sseStatus,  setSseStatus]  = useState<'connecting' | 'connected' | 'error'>('connecting')

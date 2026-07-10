@@ -1,3 +1,4 @@
+// ARSIP — pra-B3-business-impact — S#349 — 10 Juli 2026
 // lib/types/provider.types.ts
 // Tipe data untuk M3 Credential Management — API Provider & Credential
 // Dipakai oleh: credential.repository.ts, credential.service.ts, ProvidersClient.tsx
@@ -5,7 +6,6 @@
 // Update: Sesi #218 — tambah TambahProviderPayload + TambahFieldDefPayload
 // Update: Sesi #248 — ROLLBACK: hapus is_aktif dari ProviderFieldDef (fitur per-field dihapus)
 // Update: Sesi #297 — hapus 'belum_dibutuhkan' dari union tag (diganti 'disarankan' di DB)
-// Update: Sesi #349 — tambah business_impact ke ProviderInstance + TambahInstancePayload (B3)
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
@@ -35,11 +35,10 @@ export interface ProviderInstance {
   is_default:     boolean
   health_status:  HealthStatus
   health_pesan:   string | null
-  use_cases:        string[]   // runtime | monitoring | notification | payment | storage | cdn | search
-  business_impact:  string | null   // S#349 B3 — dampak bisnis jika DOWN/DEGRADED. null = tidak tampil di UI
-  last_tested_at:   string | null
-  created_at:       string
-  updated_at:       string
+  use_cases:      string[]   // runtime | monitoring | notification | payment | storage | cdn | search
+  last_tested_at: string | null
+  created_at:     string
+  updated_at:     string
 }
 
 // ─── Field Definition ────────────────────────────────────────────────────────
@@ -76,11 +75,10 @@ export interface InstanceCredential {
 // ─── Payload: Tambah Instance ────────────────────────────────────────────────
 
 export interface TambahInstancePayload {
-  provider_id:     string
-  nama_server:     string
-  deskripsi:       string | null
-  is_default:      boolean
-  business_impact: string | null   // S#349 B3 — opsional
+  provider_id: string
+  nama_server: string
+  deskripsi:   string | null
+  is_default:  boolean
 }
 
 // ─── Payload: Simpan Credential ──────────────────────────────────────────────

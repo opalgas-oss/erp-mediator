@@ -9,6 +9,7 @@
 // Update: Sesi #248 — ROLLBACK: hapus getFieldDefinitionsAll + updateFieldDefIsAktif + filter is_aktif
 // Update: Sesi #249 — HUTANG-PROVIDER-INACTIVE: tambah updateProviderIsAktif + getProvidersWithStatus ambil semua (aktif+nonaktif)
 // Update: Sesi #288 — FASE 2 use_case: tambah updateInstanceUseCases + getProvidersWithStatus select use_cases dari instances
+// Update: Sesi #349 — B3: getInstancesByProvider tambah business_impact di SELECT + insertInstance terima business_impact
 
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
@@ -204,7 +205,7 @@ export async function getInstancesByProvider(providerId: string): Promise<Provid
     .select(`
       id, provider_id, nama_server, deskripsi,
       is_aktif, is_default, health_status, health_pesan,
-      use_cases, last_tested_at, created_at, updated_at
+      use_cases, business_impact, last_tested_at, created_at, updated_at
     `)
     .eq('provider_id', providerId)
     .order('created_at')
@@ -292,11 +293,12 @@ export async function getProviderByInstanceId(
  * Jika is_default = true, unset is_default semua instance lain provider tersebut dulu.
  */
 export async function insertInstance(payload: {
-  provider_id: string
-  nama_server: string
-  deskripsi:   string | null
-  is_default:  boolean
-  created_by:  string
+  provider_id:     string
+  nama_server:     string
+  deskripsi:       string | null
+  is_default:      boolean
+  business_impact: string | null   // S#349 B3
+  created_by:      string
 }): Promise<ProviderInstance> {
   const db = createServerSupabaseClient()
 
@@ -311,11 +313,12 @@ export async function insertInstance(payload: {
   const { data, error } = await db
     .from('provider_instances')
     .insert({
-      provider_id: payload.provider_id,
-      nama_server: payload.nama_server,
-      deskripsi:   payload.deskripsi,
-      is_default:  payload.is_default,
-      created_by:  payload.created_by,
+      provider_id:     payload.provider_id,
+      nama_server:     payload.nama_server,
+      deskripsi:       payload.deskripsi,
+      is_default:      payload.is_default,
+      business_impact: payload.business_impact ?? null,   // S#349 B3
+      created_by:      payload.created_by,
     })
     .select()
     .single()
@@ -461,6 +464,25 @@ export async function updateProviderIsAktif(
     .eq('id', providerId)
 
   if (error) throw new Error(`[credential.repository] updateProviderIsAktif: ${error.message}`)
+}
+
+/**
+ * Update business_impact satu instance.
+ * Dipakai oleh patchInstanceBusinessImpact di service layer.
+ * S#349 — B3 Dampak Bisnis.
+ */
+export async function updateInstanceBusinessImpact(
+  instanceId:    string,
+  businessImpact: string | null
+): Promise<void> {
+  const db = createServerSupabaseClient()
+
+  const { error } = await db
+    .from('provider_instances')
+    .update({ business_impact: businessImpact })
+    .eq('id', instanceId)
+
+  if (error) throw new Error(`[credential.repository] updateInstanceBusinessImpact: ${error.message}`)
 }
 
 /**

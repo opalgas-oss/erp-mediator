@@ -3,6 +3,7 @@
 // Dialog tambah instance baru untuk satu provider.
 // Dipecah dari ProvidersClient.tsx S#151 (ATURAN 9 — file sebelumnya 22.35 KB)
 // Dibuat: Sesi #151
+// Update: Sesi #349 — B3: tambah field business_impact (Textarea opsional)
 
 import { useState }    from 'react'
 import { toast }       from 'sonner'
@@ -29,7 +30,7 @@ interface Props {
 // ─── Komponen ─────────────────────────────────────────────────────────────────
 
 export function DialogTambahInstance({ open, provider, onClose, onSuccess }: Props) {
-  const [form,   setForm]   = useState({ nama_server: '', deskripsi: '', is_default: false })
+  const [form,   setForm]   = useState({ nama_server: '', deskripsi: '', is_default: false, business_impact: '' })
   const [saving, setSaving] = useState(false)
 
   const handleSimpan = async () => {
@@ -40,16 +41,17 @@ export function DialogTambahInstance({ open, provider, onClose, onSuccess }: Pro
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          provider_id: provider.id,
-          nama_server: form.nama_server.trim(),
-          deskripsi:   form.deskripsi.trim() || null,
-          is_default:  form.is_default,
+          provider_id:     provider.id,
+          nama_server:     form.nama_server.trim(),
+          deskripsi:       form.deskripsi.trim() || null,
+          is_default:      form.is_default,
+          business_impact: form.business_impact.trim() || null,   // S#349 B3
         }),
       })
       const json = await res.json()
       if (json.success) {
         toast.success('Instance berhasil ditambahkan')
-        setForm({ nama_server: '', deskripsi: '', is_default: false })
+        setForm({ nama_server: '', deskripsi: '', is_default: false, business_impact: '' })
         onSuccess(json.data)
       } else {
         toast.error(json.message ?? 'Gagal menyimpan instance')
@@ -84,6 +86,16 @@ export function DialogTambahInstance({ open, provider, onClose, onSuccess }: Pro
               placeholder="Opsional"
               value={form.deskripsi}
               onChange={e => setForm(p => ({ ...p, deskripsi: e.target.value }))}
+              rows={2}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="business_impact">Dampak Bisnis jika DOWN/DEGRADED</Label>
+            <Textarea
+              id="business_impact"
+              placeholder="Opsional — Contoh: Pembayaran tidak bisa diproses"
+              value={form.business_impact}
+              onChange={e => setForm(p => ({ ...p, business_impact: e.target.value }))}
               rows={2}
             />
           </div>

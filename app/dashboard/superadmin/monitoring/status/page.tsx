@@ -10,7 +10,7 @@
 export const dynamic = 'force-dynamic'
 
 import { getMonitoringSnapshot } from '@/lib/services/monitoring.service'
-import { getRecentAlertLogs }    from '@/lib/services/monitoring.service'
+import { getRecentAlertLogsWithImpact } from '@/lib/services/monitoring.service'
 import { getAlertRules }         from '@/lib/services/monitoring.service'
 import { getConfigPageItems }    from '@/lib/config-registry'
 import { mapTipe, mapValue }     from '@/lib/utils/config-page.utils'
@@ -27,7 +27,7 @@ export default async function MonitoringStatusPage() {
   try {
     const [snapshot, alertLogs, alertRules, configRows] = await Promise.all([
       getMonitoringSnapshot(),
-      getRecentAlertLogs(20),
+      getRecentAlertLogsWithImpact(20),   // B3 S#349
       getAlertRules(),
       getConfigPageItems('monitoring'),
     ])

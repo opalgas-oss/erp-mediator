@@ -1,8 +1,8 @@
+// ARSIP — pra-B3-business-impact — S#349 — 10 Juli 2026
 // lib/types/monitoring.types.ts
 // Tipe data untuk PL-S09 — Monitoring Dashboard SuperAdmin
 // Dipakai oleh: monitoring.repository.ts, monitoring.service.ts, MonitoringClient.tsx
 // Dibuat: Sesi #151 — PL-S09
-// Update: Sesi #349 — tambah business_impact ke ProviderSnapshot + AlertLogWithImpact (B3)
 
 // ─── Status & Konstanta Literals ─────────────────────────────────────────────
 
@@ -173,14 +173,6 @@ export interface ProviderSnapshot {
   uptime_7d_pct:    number | null
   last_checked_at:  string | null
   has_active_alert: boolean
-  business_impact:  string | null   // S#349 B3 — dari provider_instances default. null = tidak tampil
-}
-
-// AlertLog dengan business_impact dari JOIN provider_instances (B3 Opsi B — S#349)
-// Dipakai oleh: findRecentAlertLogsWithImpact, AlertLogTable (L5)
-export interface AlertLogWithImpact extends AlertLog {
-  provider_nama:    string | null   // nama provider dari JOIN service_providers
-  business_impact:  string | null   // dari provider_instances default instance
 }
 
 // ─── Deep Metrics L3 (jsonb fleksibel per sistem) ─────────────────────────────

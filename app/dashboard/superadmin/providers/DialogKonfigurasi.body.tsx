@@ -4,10 +4,12 @@
 // Update S#152: hapus panduan prop (sekarang inline per-field di fields.tsx)
 // Update S#248: ROLLBACK hapus FieldsSetup + props fdsAll/onToggleIsAktif/togglingId
 // Update S#288: tambah props useCases/onUseCasesChange + section Use Case
+// Update S#349: tambah props businessImpact/onBusinessImpactChange + Textarea B3
 // Dibuat: Sesi #151
 
 import { ICON_ACTION, ICON_STATUS } from '@/lib/constants/icons.constant'
 import { Input }       from '@/components/ui/input'
+import { Textarea }    from '@/components/ui/textarea'
 import { HealthBadge } from '@/components/superadmin/HealthBadge'
 import { CredentialFields, SaveButtonInfo, groupFields } from './DialogKonfigurasi.fields'
 import { USE_CASE_OPTIONS } from '@/lib/constants/ui-tokens.constant'
@@ -56,22 +58,24 @@ export function DialogKonfigHeader({ provider, isMon }: HeaderProps) {
 // ─── DialogKonfigBody ─────────────────────────────────────────────────────────
 
 interface BodyProps {
-  provider:        ServiceProvider | null
-  isQS:            boolean; isMon: boolean
-  ns:              string; onNs: (v: string) => void
-  useCases:        string[]
-  onUseCasesChange:(v: string[]) => void
-  fds:             ProviderFieldDef[]
-  cred:            Record<string, string>; show: Record<string, boolean>
-  onChange:        (id: string, v: string) => void
-  onToggle:        (id: string) => void
-  res:             { berhasil: boolean; pesan: string | null; latency_ms: number | null } | null
-  loadingCred?:    boolean   // true saat sedang fetch credential dari DB
-  loadingData?:    boolean   // true saat loadData (field-defs + instances) belum selesai
-  isEditMode?:     boolean   // true jika mode Kelola (instance sudah ada)
+  provider:              ServiceProvider | null
+  isQS:                  boolean; isMon: boolean
+  ns:                    string; onNs: (v: string) => void
+  useCases:              string[]
+  onUseCasesChange:      (v: string[]) => void
+  businessImpact:        string   // S#349 B3
+  onBusinessImpactChange:(v: string) => void   // S#349 B3
+  fds:                   ProviderFieldDef[]
+  cred:                  Record<string, string>; show: Record<string, boolean>
+  onChange:              (id: string, v: string) => void
+  onToggle:              (id: string) => void
+  res:                   { berhasil: boolean; pesan: string | null; latency_ms: number | null } | null
+  loadingCred?:          boolean   // true saat sedang fetch credential dari DB
+  loadingData?:          boolean   // true saat loadData (field-defs + instances) belum selesai
+  isEditMode?:           boolean   // true jika mode Kelola (instance sudah ada)
 }
 
-export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, useCases, onUseCasesChange, fds, cred, show, onChange, onToggle, res, loadingCred, loadingData, isEditMode }: BodyProps) {
+export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, useCases, onUseCasesChange, businessImpact, onBusinessImpactChange, fds, cred, show, onChange, onToggle, res, loadingCred, loadingData, isEditMode }: BodyProps) {
   const warn  = provider ? (WARN[provider.kode] ?? '') : ''
   const rows  = groupFields(fds)
 
@@ -139,6 +143,18 @@ export function DialogKonfigBody({ provider, isQS, isMon, ns, onNs, useCases, on
             {useCases.length === 0 && (
               <p style={{ fontSize: 11, color: '#A32D2D', marginTop: 6 }}>Pilih minimal satu use case</p>
             )}
+          </div>
+
+          {/* Dampak Bisnis — S#349 B3 */}
+          <div>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Dampak Bisnis jika DOWN/DEGRADED</p>
+            <Textarea
+              placeholder="Opsional — Contoh: Pembayaran tidak bisa diproses, upload media tidak berjalan"
+              value={businessImpact}
+              onChange={e => onBusinessImpactChange(e.target.value)}
+              rows={2}
+              style={{ fontSize: 13 }}
+            />
           </div>
 
           {/* Credential fields — panduan kini inline per-field di dalam CredentialFields */}

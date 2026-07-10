@@ -8,11 +8,14 @@
 //   - tambah incrementAlertOccurrence() — update occurrence_count + last_occurred_at pada dedup
 // PERUBAHAN Sesi #334 — M6 Alert Queue:
 //   - tambah updateAlertLogNotifResult() — catat error WA/Email ke DLQ setelah drain queue
+// PERUBAHAN Sesi #349 — B3 Dampak Bisnis:
+//   - tambah findRecentAlertLogsWithImpact() — Opsi B: fungsi baru JOIN ke provider_instances
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getPastISOTimestamp } from '@/lib/utils/date.utils'
 import type {
   AlertLog,
+  AlertLogWithImpact,
   AlertStatus,
   InsertAlertLogPayload,
 } from '@/lib/types/monitoring.types'
@@ -34,6 +37,61 @@ export async function findRecentAlertLogs(limit: number = 10): Promise<AlertLog[
 
   if (error) throw new Error(`findRecentAlertLogs: ${error.message}`)
   return (data ?? []) as AlertLog[]
+}
+
+// ─── findRecentAlertLogsWithImpact (B3 — S#349) ───────────────────────────────────────────
+
+/**
+ * Ambil N alert log terbaru dengan JOIN ke provider_instances (business_impact)
+ * dan service_providers (nama provider).
+ * Opsi B — fungsi baru terpisah, findRecentAlertLogs() tidak diubah.
+ * Dipakai oleh: AlertLogTable (L5) untuk tampilkan dampak bisnis.
+ *
+ * LEFT join ke provider_instances — ambil instance is_default=true.
+ * Jika tidak ada instance default, business_impact = null (tidak error).
+ *
+ * @param limit Jumlah baris (default 10)
+ */
+export async function findRecentAlertLogsWithImpact(
+  limit: number = 10
+): Promise<AlertLogWithImpact[]> {
+  const supabase = createServerSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('alert_log')
+    .select(`
+      *,
+      service_providers(
+        nama
+      ),
+      provider_instances(
+        business_impact,
+        is_default
+      )
+    `)
+    .order('triggered_at', { ascending: false })
+    .limit(limit)
+
+  if (error) throw new Error(`findRecentAlertLogsWithImpact: ${error.message}`)
+  if (!data) return []
+
+  return data.map(row => {
+    const sp  = row.service_providers as { nama: string } | null
+    // Ambil instance is_default=true untuk business_impact
+    const pis = row.provider_instances as Array<{ business_impact: string | null; is_default: boolean }> | null
+    const defaultInstance = pis?.find(i => i.is_default)
+    const impact = defaultInstance?.business_impact ?? null
+
+    // Bersihkan join fields dari hasil
+    const { service_providers: _sp, provider_instances: _pi, ...base } = row as Record<string, unknown>
+    void _sp; void _pi
+
+    return {
+      ...(base as unknown as AlertLog),
+      provider_nama:   sp?.nama ?? null,
+      business_impact: impact,
+    } satisfies AlertLogWithImpact
+  })
 }
 
 // ─── findLastAlertByRuleAndType ───────────────────────────────────────────────

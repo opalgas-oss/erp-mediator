@@ -8,6 +8,7 @@
 // Update: Sesi #217 — fix getCredentialsByProvider: dekripsiCredential jika DEK ada, fallback dekripsi jika tidak
 // Update: Sesi #248 — ROLLBACK: hapus listFieldDefsAll + toggleFieldDefIsAktif + import terkait
 // Update: Sesi #249 — HUTANG-PROVIDER-INACTIVE: tambah toggleProviderIsAktif
+// Update: Sesi #349 — B3: tambah patchInstanceBusinessImpact
 // Update: Sesi #251 — FIX: getCredentialFromDB pakai query langsung + dekripsiCredential (envelope encryption)
 
 import 'server-only'
@@ -29,6 +30,7 @@ import {
   insertFieldDef,
   updateProviderIsAktif,
   updateInstanceUseCases,
+  updateInstanceBusinessImpact,
 } from '@/lib/repositories/credential.repository'
 import { enkripsiCredential, dekripsi, dekripsiCredential, fingerprint } from '@/lib/credential-crypto'
 import { testProvider }                               from '@/lib/services/provider-tester'
@@ -280,11 +282,12 @@ export async function tambahInstance(
   userId:  string
 ): Promise<ProviderInstance> {
   return insertInstance({
-    provider_id: payload.provider_id,
-    nama_server: payload.nama_server,
-    deskripsi:   payload.deskripsi,
-    is_default:  payload.is_default,
-    created_by:  userId,
+    provider_id:     payload.provider_id,
+    nama_server:     payload.nama_server,
+    deskripsi:       payload.deskripsi,
+    is_default:      payload.is_default,
+    business_impact: payload.business_impact ?? null,   // S#349 B3
+    created_by:      userId,
   })
 }
 
@@ -459,6 +462,17 @@ export async function toggleProviderIsAktif(
   isAktif:    boolean
 ): Promise<void> {
   return updateProviderIsAktif(providerId, isAktif)
+}
+
+/**
+ * Update business_impact satu instance.
+ * S#349 — B3 Dampak Bisnis.
+ */
+export async function patchInstanceBusinessImpact(
+  instanceId:    string,
+  businessImpact: string | null
+): Promise<void> {
+  return updateInstanceBusinessImpact(instanceId, businessImpact)
 }
 
 /**
