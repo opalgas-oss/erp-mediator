@@ -34,7 +34,6 @@ import { findRecentByProvider }    from '@/lib/repositories/provider-metrics.rep
 import { autoResolveAlert }        from '@/lib/services/alert-lifecycle.service'
 import { enqueueWA, enqueueEmail } from '@/lib/services/alert-queue.service'
 import { findActiveWindow }        from '@/lib/repositories/maintenance-window.repository'
-import { isQuietHour }             from '@/lib/helpers/alert-quiet-hours.helper'
 import type { MonitoringStatus }   from '@/lib/types/monitoring.types'
 import { MONITORING_STATUS, ALERT_TYPE } from '@/lib/constants/monitoring.constant'
 
@@ -121,37 +120,6 @@ async function evaluateRule(
       dedup_key:      dedupKey,
     })
     return
-  }
-
-  // B2: Filter quiet hours berdasarkan severity
-  // CRITICAL selalu dikirim walau jam tenang
-  // WARNING/INFO tidak dikirim saat jam tenang — insert SUPPRESSED
-  if (rule.severity !== 'CRITICAL') {
-    const quietNow = await isQuietHour()
-    if (quietNow) {
-      const cfgQH     = await getConfigValues('monitoring')
-      const startHour = cfgQH['alert.quiet_hours_start'] ?? '22'
-      const endHour   = cfgQH['alert.quiet_hours_end']   ?? '6'
-      const quietTpl  = await getMessage('alert.log.quiet_hour_message')
-      const quietMsg  = interpolate(quietTpl, {
-        alert_type:    rule.alert_type,
-        provider_name: providerId,
-        start_hour:    startHour,
-        end_hour:      endHour,
-      })
-      await insertAlertLog({
-        rule_id:        rule.id,
-        provider_id:    providerId,
-        alert_type:     rule.alert_type,
-        message:        quietMsg,
-        notif_channels: rule.notif_channels,
-        sent_via_wa:    false,
-        sent_via_email: false,
-        status:         'SUPPRESSED',
-        dedup_key:      dedupKey,
-      })
-      return
-    }
   }
 
   const { waNumber, email } = await getAlertTarget()
