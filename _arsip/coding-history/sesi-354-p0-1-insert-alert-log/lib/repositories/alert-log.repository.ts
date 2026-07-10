@@ -10,10 +10,6 @@
 //   - tambah updateAlertLogNotifResult() — catat error WA/Email ke DLQ setelah drain queue
 // PERUBAHAN Sesi #349 — B3 Dampak Bisnis:
 //   - tambah findRecentAlertLogsWithImpact() — Opsi B: fungsi baru JOIN ke provider_instances
-// PERUBAHAN Sesi #354 — P0-1 (hasil audit S#353):
-//   - insertAlertLog(): tambah status + dedup_key ke .insert()
-//     Sebelumnya kedua field dibuang diam-diam. Menghidupkan M3 Deduplication + A2
-//     Auto-Resolve, dan mengembalikan kejujuran log M4 Maintenance Window + B2 Quiet Hours.
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getPastISOTimestamp } from '@/lib/utils/date.utils'
@@ -152,12 +148,6 @@ export async function insertAlertLog(
       sent_via_email: payload.sent_via_email,
       error_wa:       payload.error_wa    ?? null,
       error_email:    payload.error_email ?? null,
-      // FIX P0-1 (S#354): dua kolom di bawah sebelumnya TIDAK disebut di .insert()
-      // sehingga dibuang diam-diam meski pemanggil mengirimkannya.
-      // Akibat: dedup_key selalu NULL (M3 + A2 mati), status selalu default 'TRIGGERED'
-      // (log M4 + B2 berbohong). Default dipertahankan agar perilaku pemanggil lama aman.
-      status:         payload.status    ?? 'TRIGGERED',
-      dedup_key:      payload.dedup_key ?? null,
     })
     .select('id')
     .single()
