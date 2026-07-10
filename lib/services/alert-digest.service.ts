@@ -12,11 +12,11 @@
 //   - Fungsi kirim Email: sendResendEmailPlain() dari lib/utils/resend.server.ts (ATURAN 19)
 
 import 'server-only'
-import { getConfigValues }             from '@/lib/config-registry'
 import { getMessage, interpolate }     from '@/lib/message-library'
 import { sendFonnteWA }                from '@/lib/utils/fonnte.server'
 import { sendResendEmailPlain }        from '@/lib/utils/resend.server'
 import { getCredential }               from '@/lib/services/credential.service'
+import { getAlertTarget }             from '@/lib/services/alert-helpers.service'
 import {
   findYesterdayIncidents,
   type DigestIncident,
@@ -129,13 +129,10 @@ export async function sendDailyDigest(): Promise<DigestResult> {
   // 1. Ambil insiden kemarin
   const incidents = await findYesterdayIncidents()
 
-  // 2. Ambil config: recipient + tanggal display
-  const cfg = await getConfigValues('alert')
+  // 2. Ambil recipient via getAlertTarget() — shared function (ATURAN 19)
+  const { waNumbers, emails } = await getAlertTarget()
 
-  const waNumber = cfg['superadmin_alert_wa_number'] ?? ''
-  const email    = cfg['superadmin_alert_email']     ?? ''
-
-  if (!waNumber && !email) {
+  if (waNumbers.length === 0 && emails.length === 0) {
     return {
       success:       false,
       sent_wa:       false,
@@ -161,27 +158,37 @@ export async function sendDailyDigest(): Promise<DigestResult> {
     buildDigestEmail(incidents, tanggal),
   ])
 
-  // 5. Kirim WA
-  let sent_wa   = false
+  // 5. Kirim WA — loop per nomor (multi-recipient)
+  let sent_wa    = false
   let sent_email = false
   const errors: string[] = []
 
-  if (waNumber) {
+  if (waNumbers.length > 0) {
     const fonnteToken = await getCredential('fonnte', 'api_token')
     if (!fonnteToken) {
       errors.push('Fonnte api_token belum dikonfigurasi di M3')
     } else {
-      const waResult = await sendFonnteWA(waNumber, waText, fonnteToken)
-      sent_wa = waResult.success
-      if (!waResult.success) errors.push(`WA: ${waResult.reason ?? 'unknown'}`)
+      const waResults = await Promise.allSettled(
+        waNumbers.map(num => sendFonnteWA(num, waText, fonnteToken))
+      )
+      sent_wa = waResults.some(r => r.status === 'fulfilled' && r.value.success)
+      waResults.forEach((r, i) => {
+        if (r.status === 'rejected') errors.push(`WA[${waNumbers[i]}]: ${r.reason}`)
+        else if (!r.value.success) errors.push(`WA[${waNumbers[i]}]: ${r.value.reason ?? 'unknown'}`)
+      })
     }
   }
 
-  // 6. Kirim Email
-  if (email) {
-    const emailResult = await sendResendEmailPlain(email, emailContent.subject, emailContent.body)
-    sent_email = emailResult.success
-    if (!emailResult.success) errors.push(`Email: ${emailResult.reason ?? 'unknown'}`)
+  // 6. Kirim Email — loop per alamat (multi-recipient)
+  if (emails.length > 0) {
+    const emailResults = await Promise.allSettled(
+      emails.map(addr => sendResendEmailPlain(addr, emailContent.subject, emailContent.body))
+    )
+    sent_email = emailResults.some(r => r.status === 'fulfilled' && r.value.success)
+    emailResults.forEach((r, i) => {
+      if (r.status === 'rejected') errors.push(`Email[${emails[i]}]: ${r.reason}`)
+      else if (!r.value.success) errors.push(`Email[${emails[i]}]: ${r.value.reason ?? 'unknown'}`)
+    })
   }
 
   return {
