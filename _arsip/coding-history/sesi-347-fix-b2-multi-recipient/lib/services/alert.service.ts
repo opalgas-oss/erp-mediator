@@ -3,13 +3,22 @@
 // Dipakai oleh: metrics-collector.service.ts (setelah setiap batch metrics)
 // Dibuat: Sesi #151
 // PERUBAHAN S#333: M3 Deduplication (dedup_key, incrementAlertOccurrence)
-// PERUBAHAN S#334: M6 Alert Queue (enqueue ke Redis, bukan kirim langsung)
-// PERUBAHAN S#336: M4 Maintenance Window (suppress jika window aktif)
-// PERUBAHAN S#337: FIX-2+3+4 (semua teks dari message_library)
-// PERUBAHAN S#347: FIX-B2-MULTI-RECIPIENT — loop per penerima WA + Email
-//   Helper dipecah ke: alert-helpers.service.ts (ATURAN 9 — file >10KB)
+// PERUBAHAN S#334: M6 Alert Queue
+//   - evaluateRule() enqueue ke Redis (WA + Email) vs kirim langsung
+//   - insertAlertLog() dipanggil SEBELUM enqueue agar alertLogId tersedia untuk DLQ
+//   - sendWAAlert() + sendEmailAlert() dihapus dari file ini (ada di alert-queue.service)
+// PERUBAHAN S#336: M4 Maintenance Window
+//   - evaluateRule() cek findActiveWindow() sebelum enqueue
+//   - Jika window aktif → insert alert_log status SUPPRESSED, tidak enqueue
+// PERUBAHAN S#337: FIX-2+3+4 — hapus semua hardcode pesan ke message_library
+//   FIX-2: buildAlertMessage() baca template dari message_library key alert.wa.incident_triggered
+//   FIX-3: subject email baca dari message_library key alert.email.incident_subject
+//   FIX-4: pesan SUPPRESSED baca dari message_library key alert.log.suppressed_message
 //
 // PENTING: Tidak ada hardcode credential, nomor kontak, atau teks pesan di file ini.
+// Semua credential dari M3 DB via credential.service.
+// Semua teks pesan dari message_library (LL#11).
+// Target notifikasi dari config_registry.
 
 import 'server-only'
 import { getConfigValues }     from '@/lib/config-registry'
@@ -27,13 +36,17 @@ import { enqueueWA, enqueueEmail } from '@/lib/services/alert-queue.service'
 import { findActiveWindow }        from '@/lib/repositories/maintenance-window.repository'
 import { isQuietHour }             from '@/lib/helpers/alert-quiet-hours.helper'
 import type { MonitoringStatus }   from '@/lib/types/monitoring.types'
-import { MONITORING_STATUS }       from '@/lib/constants/monitoring.constant'
-import {
-  getAlertTarget,
-  checkRuleTrigger,
-  buildIncidentUrl,
-  buildAlertMessage,
-} from '@/lib/services/alert-helpers.service'
+import { MONITORING_STATUS, ALERT_TYPE } from '@/lib/constants/monitoring.constant'
+
+// ─── getAlertTarget ───────────────────────────────────────────────────────────
+
+async function getAlertTarget(): Promise<{ waNumber: string | null; email: string | null }> {
+  const cfg = await getConfigValues('monitoring')
+  return {
+    waNumber: cfg['superadmin_alert_wa_number'] || null,
+    email:    cfg['superadmin_alert_email']    || null,
+  }
+}
 
 // ─── checkAndSendAlerts ───────────────────────────────────────────────────────
 
@@ -90,7 +103,8 @@ async function evaluateRule(
     return
   }
 
-  // M4: Cek maintenance window — suppress jika window aktif
+  // M4: Cek maintenance window aktif — jika ada, suppress notifikasi
+  // FIX-4: pesan SUPPRESSED dari message_library key alert.log.suppressed_message
   const activeWindow = await findActiveWindow(providerId)
   if (activeWindow) {
     const suppressedTpl = await getMessage('alert.log.suppressed_message')
@@ -109,7 +123,9 @@ async function evaluateRule(
     return
   }
 
-  // B2: Filter quiet hours (CRITICAL selalu dikirim, WARNING/INFO tidak)
+  // B2: Filter quiet hours berdasarkan severity
+  // CRITICAL selalu dikirim walau jam tenang
+  // WARNING/INFO tidak dikirim saat jam tenang — insert SUPPRESSED
   if (rule.severity !== 'CRITICAL') {
     const quietNow = await isQuietHour()
     if (quietNow) {
@@ -138,20 +154,13 @@ async function evaluateRule(
     }
   }
 
-  const { waNumbers, emails } = await getAlertTarget()
+  const { waNumber, email } = await getAlertTarget()
   const incidentUrl = buildIncidentUrl()
 
-  // Guard: tidak ada penerima terdaftar
-  const hasWA    = rule.notif_channels.includes('WA')    && waNumbers.length > 0
-  const hasEmail = rule.notif_channels.includes('EMAIL') && emails.length > 0
-  if (!hasWA && !hasEmail) {
-    console.warn(`[evaluateRule] Tidak ada penerima untuk provider ${providerId} — alert tidak dikirim`)
-    return
-  }
+  // FIX-2: message WA dari message_library key alert.wa.incident_triggered
+  const message = await buildAlertMessage(providerId, rule.alert_type, incidentUrl)
 
-  const message      = await buildAlertMessage(providerId, rule.alert_type, incidentUrl)
-
-  // Insert log DULU agar alertLogId tersedia untuk referensi DLQ
+  // M6: Insert log DULU agar alertLogId tersedia untuk referensi DLQ di queue
   const newAlertId = await insertAlertLog({
     rule_id:        rule.id,
     provider_id:    providerId,
@@ -164,30 +173,88 @@ async function evaluateRule(
     dedup_key:      dedupKey,
   })
 
+  // Ambil config delay Fonnte dari config_registry
   const alertCfg    = await getConfigValues('alert.fonnte_delay_seconds')
   const fonnteDelay = parseInt(alertCfg['alert.fonnte_delay_seconds'] ?? '2', 10)
+
+  // FIX-3: subject email dari message_library key alert.email.incident_subject
   const emailSubject = await getMessage('alert.email.incident_subject')
 
-  // Loop per penerima — enqueueWA/enqueueEmail interface tidak diubah (single target)
+  // M6: Enqueue ke Redis — tidak kirim langsung
   const enqueueJobs: Promise<boolean>[] = []
 
-  if (hasWA) {
-    for (const targetNumber of waNumbers) {
-      enqueueJobs.push(
-        enqueueWA({ alertLogId: newAlertId, targetNumber, message, delaySeconds: fonnteDelay })
-      )
-    }
+  if (rule.notif_channels.includes('WA') && waNumber) {
+    enqueueJobs.push(
+      enqueueWA({
+        alertLogId:   newAlertId,
+        targetNumber: waNumber,
+        message,
+        delaySeconds: fonnteDelay,
+      })
+    )
   }
 
-  if (hasEmail) {
-    for (const targetEmail of emails) {
-      enqueueJobs.push(
-        enqueueEmail({ alertLogId: newAlertId, targetEmail, subject: emailSubject, message })
-      )
-    }
+  if (rule.notif_channels.includes('EMAIL') && email) {
+    enqueueJobs.push(
+      enqueueEmail({
+        alertLogId:  newAlertId,
+        targetEmail: email,
+        subject:     emailSubject,
+        message,
+      })
+    )
   }
 
   if (enqueueJobs.length > 0) {
     await Promise.allSettled(enqueueJobs)
   }
+}
+
+// ─── checkRuleTrigger ─────────────────────────────────────────────────────────
+
+function checkRuleTrigger(
+  alertType:      string,
+  status:         MonitoringStatus,
+  responseTimeMs: number | null,
+  threshold:      number
+): boolean {
+  switch (alertType) {
+    case ALERT_TYPE.DOWN:            return status === MONITORING_STATUS.DOWN
+    case ALERT_TYPE.SLOW:            return responseTimeMs !== null && responseTimeMs > threshold
+    case ALERT_TYPE.HIGH_ERROR_RATE: return status === MONITORING_STATUS.DEGRADED
+    case ALERT_TYPE.QUOTA_WARNING:   return status === MONITORING_STATUS.DEGRADED
+    default:                         return false
+  }
+}
+
+// ─── buildIncidentUrl ─────────────────────────────────────────────────────────
+
+function buildIncidentUrl(alertLogId?: string): string {
+  const base = process.env.NEXT_PUBLIC_APP_URL ?? ''
+  if (alertLogId) {
+    return `${base}/dashboard/superadmin/monitoring/incidents/${alertLogId}`
+  }
+  return `${base}/dashboard/superadmin/monitoring`
+}
+
+// ─── buildAlertMessage ────────────────────────────────────────────────────────
+
+/**
+ * Bangun pesan WA alert dari message_library key alert.wa.incident_triggered.
+ * FIX-2 S#337: sebelumnya hardcode template di sini — sekarang dari message_library.
+ *
+ * Template: "*{provider_name}* tidak bisa dihubungi ({alert_type}). Lihat detail: {incident_url}"
+ * SA bisa ubah template dari Dashboard → Modul Pesan tanpa deploy ulang.
+ */
+async function buildAlertMessage(
+  providerId:  string,
+  alertType:   string,
+  incidentUrl: string
+): Promise<string> {
+  const tpl = await getMessage('alert.wa.incident_triggered')
+  return interpolate(tpl, {
+    provider_name: providerId,
+    alert_type:    alertType,
+    incident_url:  incidentUrl,
+  })
 }
