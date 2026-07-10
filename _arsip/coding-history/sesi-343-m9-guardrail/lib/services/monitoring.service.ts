@@ -2,8 +2,6 @@
 // Service: snapshot data L1+L4 untuk dashboard
 // Dipakai oleh: GET /api/monitoring/metrics, GET /api/monitoring/alert-rules
 // Dibuat: Sesi #151 — PL-S09 Monitoring Dashboard
-// PERUBAHAN Sesi #343 — M9 Guardrail:
-//   - tambah bulkDisableStaleAlertRules() — expose ke API route bulk-disable
 
 import {
   findLatestMetricsPerProvider,
@@ -13,7 +11,6 @@ import {
   findAllAlertRules,
   findAlertRuleById,
   updateAlertRule,
-  bulkDisableStaleRules,
 } from '@/lib/repositories/alert-rules.repository'
 import {
   findRecentAlertLogs,
@@ -29,10 +26,6 @@ import type {
 
 // ─── getMonitoringSnapshot ────────────────────────────────────────────────────
 
-/**
- * Ambil snapshot lengkap semua sistem untuk dashboard L1 + L4.
- * Include: status terbaru, uptime 24h, uptime 7d, has_active_alert.
- */
 export async function getMonitoringSnapshot(): Promise<{
   systems:       ProviderSnapshot[]
   alertCount:    number
@@ -62,19 +55,12 @@ export async function getMonitoringSnapshot(): Promise<{
 
 // ─── getAlertRules ────────────────────────────────────────────────────────────
 
-/**
- * Ambil semua alert rules dengan nama provider untuk tampilan dashboard (M5 S#340).
- */
 export async function getAlertRules(): Promise<AlertRuleWithProvider[]> {
   return findAllAlertRules()
 }
 
 // ─── patchAlertRule ───────────────────────────────────────────────────────────
 
-/**
- * Update satu alert rule dari form pengaturan SuperAdmin.
- * Validasi sederhana: threshold_value harus positif.
- */
 export async function patchAlertRule(
   id:        string,
   payload:   UpdateAlertRulePayload,
@@ -94,34 +80,15 @@ export async function patchAlertRule(
   }
 
   const VALID_SEVERITY = ['CRITICAL', 'WARNING', 'INFO'] as const
-  if (
-    payload.severity !== undefined &&
-    !(VALID_SEVERITY as readonly string[]).includes(payload.severity)
-  ) {
+  if (payload.severity !== undefined && !(VALID_SEVERITY as readonly string[]).includes(payload.severity)) {
     throw new Error('Severity harus CRITICAL, WARNING, atau INFO')
   }
 
   return updateAlertRule(id, payload, updatedBy)
 }
 
-// ─── bulkDisableStaleAlertRules (M9) ──────────────────────────────────────────
-
-/**
- * Nonaktifkan semua alert rules yang provider-nya sudah tidak aktif.
- * Dipanggil dari POST /api/monitoring/alert-rules/bulk-disable.
- *
- * @param disabledBy  UUID SA yang memicu aksi ini
- * @returns           Jumlah rule yang berhasil dinonaktifkan
- */
-export async function bulkDisableStaleAlertRules(disabledBy: string): Promise<number> {
-  return bulkDisableStaleRules(disabledBy)
-}
-
 // ─── getRecentAlertLogs ───────────────────────────────────────────────────────
 
-/**
- * Ambil riwayat alert untuk Layer 5 dashboard.
- */
 export async function getRecentAlertLogs(limit: number = 10): Promise<AlertLog[]> {
   return findRecentAlertLogs(limit)
 }

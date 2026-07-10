@@ -3,6 +3,10 @@
 // Sub-komponen RuleCard beserta badge dan selector untuk AlertRulesPanel.
 // Dipecah dari AlertRulesPanel.tsx (ATURAN 9 — file 15.8KB > 10KB) — M5 S#340
 // HUTANG-M5-03 S#341: tambah RuleCardTexts interface + pakai texts props (LL#11)
+// PERUBAHAN Sesi #343 — M9 Guardrail:
+//   - RuleCardTexts: tambah 4 key konfirmasi nonaktifkan (LL#11)
+//   - handleToggle(false): tampilkan modal konfirmasi inline sebelum eksekusi
+//   - Toggle ON (enable kembali): langsung eksekusi tanpa konfirmasi
 
 import { useState } from 'react'
 import type { AlertRuleWithProvider } from '@/lib/types/monitoring.types'
@@ -72,20 +76,68 @@ export function SeveritySelector({
 // Semua teks yang berpotensi diubah SA tersentralisasi di sini.
 // Fetch dilakukan di AlertRulesPanel, di-pass ke RuleCard via props.
 // 'Threshold' dan 'Severity' tidak dimigrasi — istilah teknis internasional tetap.
+// M9: tambah 4 key konfirmasi nonaktifkan.
 
 export interface RuleCardTexts {
-  pengaturan_lanjutan:  string  // alert_rules.label.pengaturan_lanjutan
-  berturut:             string  // alert_rules.label.berturut
-  cooldown:             string  // alert_rules.label.cooldown
-  notifikasi:           string  // alert_rules.label.notifikasi
-  aktif:                string  // alert_rules.label.aktif
-  simpan:               string  // alert_rules.action.simpan
-  menyimpan:            string  // alert_rules.action.menyimpan
-  tersimpan:            string  // alert_rules.feedback.tersimpan
-  nonaktif:             string  // alert_rules.status.nonaktif
-  dinonaktifkan_sistem: string  // alert_rules.status.dinonaktifkan_sistem
-  gagal_simpan:         string  // alert_rules.error.gagal_simpan
-  empty_belum_ada:      string  // alert_rules.empty.belum_ada (dipakai AlertRulesPanel)
+  pengaturan_lanjutan:      string  // alert_rules.label.pengaturan_lanjutan
+  berturut:                 string  // alert_rules.label.berturut
+  cooldown:                 string  // alert_rules.label.cooldown
+  notifikasi:               string  // alert_rules.label.notifikasi
+  aktif:                    string  // alert_rules.label.aktif
+  simpan:                   string  // alert_rules.action.simpan
+  menyimpan:                string  // alert_rules.action.menyimpan
+  tersimpan:                string  // alert_rules.feedback.tersimpan
+  nonaktif:                 string  // alert_rules.status.nonaktif
+  dinonaktifkan_sistem:     string  // alert_rules.status.dinonaktifkan_sistem
+  gagal_simpan:             string  // alert_rules.error.gagal_simpan
+  empty_belum_ada:          string  // alert_rules.empty.belum_ada (dipakai AlertRulesPanel)
+  // M9 Guardrail — konfirmasi nonaktifkan satu rule
+  confirm_nonaktifkan_rule: string  // alert_rules.confirm.nonaktifkan_rule
+  confirm_nonaktifkan_desc: string  // alert_rules.confirm.nonaktifkan_desc
+  confirm_ya_nonaktifkan:   string  // alert_rules.confirm.ya_nonaktifkan
+  confirm_batal:            string  // alert_rules.confirm.batal
+}
+
+// ─── ConfirmModal — modal konfirmasi inline (M9) ──────────────────────────────
+
+function ConfirmModal({
+  judul, deskripsi, labelKonfirmasi, labelBatal, onKonfirmasi, onBatal, loading,
+}: {
+  judul:           string
+  deskripsi:       string
+  labelKonfirmasi: string
+  labelBatal:      string
+  onKonfirmasi:    () => void
+  onBatal:         () => void
+  loading:         boolean
+}) {
+  return (
+    <div className="mt-2 rounded-lg border border-[#EF9F27] bg-[#FFFBF5] px-3.5 py-3">
+      <p className="text-[12px] font-semibold text-[#854F0B]">{judul}</p>
+      <p className="mt-0.5 text-[11px] text-[#854F0B] leading-snug">{deskripsi}</p>
+      <div className="mt-2.5 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onKonfirmasi}
+          disabled={loading}
+          className="px-3 py-1.5 rounded text-xs font-medium bg-[#854F0B] text-white hover:bg-[#6b3f08] disabled:opacity-50 transition-colors"
+        >
+          {loading
+            ? <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin inline-block" /> Menyimpan...</span>
+            : labelKonfirmasi
+          }
+        </button>
+        <button
+          type="button"
+          onClick={onBatal}
+          disabled={loading}
+          className="px-3 py-1.5 rounded text-xs font-medium bg-white border border-[#d1d5db] text-[#374151] hover:bg-[#f9fafb] disabled:opacity-50 transition-colors"
+        >
+          {labelBatal}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // ─── RuleCard: satu rule (DOWN atau SLOW) ────────────────────────────────────
@@ -97,24 +149,24 @@ export function RuleCard({
   onUpdate: (updater: (prev: AlertRuleWithProvider[]) => AlertRuleWithProvider[]) => void
   texts:    RuleCardTexts
 }) {
-  const [savingToggle,  setSavingToggle]  = useState(false)
-  const [savingForm,    setSavingForm]    = useState(false)
-  const [formError,     setFormError]     = useState('')
-  const [formSuccess,   setFormSuccess]   = useState(false)
-  const [openSettings,  setOpenSettings]  = useState(false)
+  const [savingToggle,   setSavingToggle]   = useState(false)
+  const [savingForm,     setSavingForm]     = useState(false)
+  const [formError,      setFormError]      = useState('')
+  const [formSuccess,    setFormSuccess]    = useState(false)
+  const [openSettings,   setOpenSettings]   = useState(false)
+  // M9: state modal konfirmasi nonaktifkan
+  const [showConfirmOff, setShowConfirmOff] = useState(false)
 
-  // Form state lokal untuk field yang pakai tombol Simpan
   const [threshold,   setThreshold]   = useState(rule.threshold_value)
   const [consecutive, setConsecutive] = useState(rule.consecutive_failures)
   const [cooldown,    setCooldown]    = useState(rule.cooldown_minutes)
   const [channels,    setChannels]    = useState<string[]>(rule.notif_channels)
   const [severity,    setSeverity]    = useState<'CRITICAL' | 'WARNING' | 'INFO'>(rule.severity)
 
-  // Apakah dinonaktifkan sistem (ada disabled_reason)
   const isSystemDisabled = !rule.is_active && !!rule.disabled_reason
 
-  // ── Auto-save toggle is_active ─────────────────────────────────────────────
-  async function handleToggle(checked: boolean) {
+  // ── Eksekusi toggle setelah konfirmasi ────────────────────────────────────
+  async function doToggle(checked: boolean) {
     setSavingToggle(true)
     try {
       const res  = await fetch(`/api/monitoring/alert-rules/${rule.id}`, {
@@ -126,8 +178,22 @@ export function RuleCard({
       if (data.success) {
         onUpdate(prev => prev.map(r => r.id === rule.id ? { ...r, ...data.data } : r))
       }
-    } catch { /* silent — toggle kembali ke nilai lama */ }
-    finally { setSavingToggle(false) }
+    } catch { /* silent */ }
+    finally {
+      setSavingToggle(false)
+      setShowConfirmOff(false)
+    }
+  }
+
+  // ── Handler klik checkbox — M9: intercept jika OFF ────────────────────────
+  function handleToggleClick(checked: boolean) {
+    if (!checked) {
+      // Nonaktifkan → tampilkan modal konfirmasi dulu
+      setShowConfirmOff(true)
+    } else {
+      // Aktifkan kembali → langsung eksekusi tanpa konfirmasi
+      void doToggle(true)
+    }
   }
 
   // ── Simpan form (severity + channels + threshold + consecutive + cooldown) ──
@@ -187,7 +253,7 @@ export function RuleCard({
             </span>
           )}
         </div>
-        {/* Toggle is_active */}
+        {/* Toggle is_active — M9: klik OFF → modal konfirmasi */}
         <label className="flex items-center gap-1.5 cursor-pointer">
           {savingToggle && (
             <span className="w-3 h-3 rounded-full border-2 border-[#185FA5] border-t-transparent animate-spin inline-block" />
@@ -195,7 +261,7 @@ export function RuleCard({
           <input
             type="checkbox"
             checked={rule.is_active}
-            onChange={e => handleToggle(e.target.checked)}
+            onChange={e => handleToggleClick(e.target.checked)}
             disabled={savingToggle}
             className="h-4 w-4 accent-[#185FA5]"
           />
@@ -203,11 +269,24 @@ export function RuleCard({
         </label>
       </div>
 
-      {/* disabled_reason inline — hanya tampil jika dinonaktifkan sistem */}
+      {/* disabled_reason — hanya tampil jika dinonaktifkan sistem */}
       {isSystemDisabled && (
         <p className="mt-2 text-[11px] text-[#854F0B] leading-snug">
           {rule.disabled_reason}
         </p>
+      )}
+
+      {/* M9: Modal konfirmasi nonaktifkan */}
+      {showConfirmOff && (
+        <ConfirmModal
+          judul={texts.confirm_nonaktifkan_rule}
+          deskripsi={texts.confirm_nonaktifkan_desc}
+          labelKonfirmasi={texts.confirm_ya_nonaktifkan}
+          labelBatal={texts.confirm_batal}
+          loading={savingToggle}
+          onKonfirmasi={() => void doToggle(false)}
+          onBatal={() => setShowConfirmOff(false)}
+        />
       )}
 
       {/* Collapsible Pengaturan Lanjutan */}
@@ -225,9 +304,9 @@ export function RuleCard({
           {/* Threshold + Consecutive + Cooldown */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Threshold',     val: threshold,   set: setThreshold   },
-              { label: texts.berturut,  val: consecutive, set: setConsecutive },
-              { label: texts.cooldown,  val: cooldown,    set: setCooldown    },
+              { label: 'Threshold',    val: threshold,   set: setThreshold   },
+              { label: texts.berturut, val: consecutive, set: setConsecutive },
+              { label: texts.cooldown, val: cooldown,    set: setCooldown    },
             ].map(({ label, val, set }) => (
               <label key={label} className="flex flex-col gap-1">
                 <span className="text-[11px] text-[#6b7280]">{label}</span>
@@ -261,7 +340,7 @@ export function RuleCard({
             </div>
           </div>
 
-          {/* Severity segmented control — 'Severity' tetap hardcode (istilah teknis) */}
+          {/* Severity */}
           <div>
             <span className="text-[11px] text-[#6b7280] block mb-1.5">Severity</span>
             <SeveritySelector value={severity} onChange={setSeverity} disabled={savingForm} />

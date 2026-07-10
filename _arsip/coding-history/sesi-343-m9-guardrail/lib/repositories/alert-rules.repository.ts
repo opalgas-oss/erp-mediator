@@ -4,9 +4,6 @@
 // Dibuat: Sesi #151 — PL-S09 Monitoring Dashboard
 // PERUBAHAN Sesi #342 — M8 Audit Trail:
 //   - updateAlertRule() → catat RULE_UPDATE ke monitoring_audit_log setelah update berhasil
-// PERUBAHAN Sesi #343 — M9 Guardrail:
-//   - updateAlertRule() → bedakan RULE_DISABLE / RULE_ENABLE / RULE_UPDATE di audit trail
-//   - tambah bulkDisableStaleRules() — soft-disable rules milik provider tidak aktif
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { writeMonitoringAudit }       from '@/lib/repositories/monitoring-audit-log.repository'
@@ -33,6 +30,7 @@ export async function findAllAlertRules(): Promise<AlertRuleWithProvider[]> {
 
   if (error) throw new Error(`findAllAlertRules: ${error.message}`)
 
+  // Flatten hasil JOIN: service_providers { nama, kode, kategori } → field flat
   return ((data ?? []) as unknown[]).map((row) => {
     const r = row as AlertRule & {
       service_providers: { nama: string; kode: string; kategori: string } | null
@@ -50,7 +48,7 @@ export async function findAllAlertRules(): Promise<AlertRuleWithProvider[]> {
 // ─── findByProvider ───────────────────────────────────────────────────────────
 
 /**
- * Ambil semua rules aktif untuk satu provider.
+ * Ambil semua rules untuk satu provider tertentu.
  * Dipakai oleh alert.service saat threshold check.
  */
 export async function findRulesByProvider(providerId: string): Promise<AlertRule[]> {
@@ -89,12 +87,7 @@ export async function findAlertRuleById(id: string): Promise<AlertRule | null> {
 /**
  * Update threshold/cooldown/channel/status satu alert rule.
  * Hanya SuperAdmin yang boleh — RLS sudah guard di DB level.
- *
- * M8: catat audit trail setelah update berhasil (fire-and-forget).
- * M9: bedakan action audit berdasarkan payload:
- *   - hanya is_active=false  → RULE_DISABLE
- *   - hanya is_active=true   → RULE_ENABLE
- *   - field lain (± is_active) → RULE_UPDATE
+ * M8: catat RULE_UPDATE ke monitoring_audit_log setelah update berhasil (fire-and-forget).
  */
 export async function updateAlertRule(
   id:        string,
@@ -103,6 +96,7 @@ export async function updateAlertRule(
 ): Promise<AlertRule> {
   const supabase = createServerSupabaseClient()
 
+  // Ambil data sebelum update untuk detail audit (before state)
   const before = await findAlertRuleById(id)
 
   const { data, error } = await supabase
@@ -120,14 +114,10 @@ export async function updateAlertRule(
 
   const updated = data as AlertRule
 
-  // M9: tentukan action audit yang tepat
+  // M8: audit trail — fire-and-forget, tidak gagalkan aksi utama
   try {
-    const fieldsChanged  = Object.keys(payload) as Array<keyof UpdateAlertRulePayload>
-    const onlyIsActive   = fieldsChanged.length === 1 && fieldsChanged[0] === 'is_active'
-    const auditAction    = onlyIsActive
-      ? (payload.is_active === false ? 'RULE_DISABLE' : 'RULE_ENABLE')
-      : 'RULE_UPDATE'
-
+    const fieldsChanged = Object.keys(payload) as Array<keyof UpdateAlertRulePayload>
+    // Double cast via unknown diperlukan karena AlertRule bukan index signature type
     const beforeSnap = before
       ? Object.fromEntries(fieldsChanged.map(k => [k, (before  as unknown as Record<string, unknown>)[k]]))
       : null
@@ -136,7 +126,7 @@ export async function updateAlertRule(
     await writeMonitoringAudit({
       actor:       updatedBy,
       actor_label: `SA:${updatedBy}`,
-      action:      auditAction,
+      action:      'RULE_UPDATE',
       entity_type: 'alert_rules',
       entity_id:   id,
       detail_json: {
@@ -148,78 +138,10 @@ export async function updateAlertRule(
       },
     })
   } catch (auditErr) {
-    console.error('[alert-rules.repository] audit gagal:', auditErr)
+    console.error('[alert-rules.repository] audit RULE_UPDATE gagal:', auditErr)
   }
 
   return updated
-}
-
-// ─── bulkDisableStaleRules (M9) ───────────────────────────────────────────────
-
-/**
- * Soft-disable semua alert rules yang is_active=true tapi provider-nya
- * sudah tidak aktif (is_active=false di service_providers).
- *
- * Definisi "usang": rule aktif yang provider-nya nonaktif.
- * Soft-disable: set is_active=false + disabled_reason.
- * Catat RULE_DISABLE di audit per rule (fire-and-forget).
- *
- * @param disabledBy  UUID SA yang memicu aksi ini
- * @returns           Jumlah rule yang dinonaktifkan
- */
-export async function bulkDisableStaleRules(disabledBy: string): Promise<number> {
-  const supabase = createServerSupabaseClient()
-
-  // Ambil rules aktif yang provider-nya tidak aktif
-  const { data: staleRules, error: fetchErr } = await supabase
-    .from('alert_rules')
-    .select('id, provider_id, alert_type, service_providers!inner(is_active)')
-    .eq('is_active', true)
-    .eq('service_providers.is_active', false)
-
-  if (fetchErr) throw new Error(`bulkDisableStaleRules fetch: ${fetchErr.message}`)
-  if (!staleRules || staleRules.length === 0) return 0
-
-  const staleIds    = staleRules.map(r => r.id as string)
-  const now         = new Date().toISOString()
-  const reasonText  = 'Provider tidak aktif — dinonaktifkan oleh SA via Bersihkan Aturan Usang'
-
-  const { error: updateErr } = await supabase
-    .from('alert_rules')
-    .update({
-      is_active:       false,
-      disabled_reason: reasonText,
-      disabled_at:     now,
-      disabled_by:     disabledBy,
-      updated_at:      now,
-      updated_by:      disabledBy,
-    })
-    .in('id', staleIds)
-
-  if (updateErr) throw new Error(`bulkDisableStaleRules update: ${updateErr.message}`)
-
-  // Audit setiap rule — fire-and-forget, tidak gagalkan aksi utama
-  for (const rule of staleRules) {
-    try {
-      await writeMonitoringAudit({
-        actor:       disabledBy,
-        actor_label: `SA:${disabledBy}`,
-        action:      'RULE_DISABLE',
-        entity_type: 'alert_rules',
-        entity_id:   rule.id as string,
-        detail_json: {
-          provider_id:     rule.provider_id,
-          alert_type:      rule.alert_type,
-          disabled_reason: reasonText,
-          source:          'bulk_disable_stale',
-        },
-      })
-    } catch (auditErr) {
-      console.error('[alert-rules.repository] audit RULE_DISABLE bulk gagal:', auditErr)
-    }
-  }
-
-  return staleIds.length
 }
 
 // ─── upsertDefaultRules ───────────────────────────────────────────────────────
@@ -228,6 +150,11 @@ export async function bulkDisableStaleRules(disabledBy: string): Promise<number>
  * Buat default alert rules untuk semua provider jika belum ada.
  * Dipanggil dari collect-metrics cron saat pertama kali jalan.
  * Nilai threshold dari config_registry monitoring.* keys.
+ *
+ * @param providerIds Daftar UUID semua provider aktif
+ * @param thresholdMs Dari config monitoring.alert_threshold_response_ms
+ * @param cooldown    Dari config monitoring.alert_cooldown_minutes
+ * @param consecutive Dari config monitoring.alert_consecutive_failures
  */
 export async function upsertDefaultRules(
   providerIds: string[],
@@ -261,8 +188,8 @@ export async function upsertDefaultRules(
   const { error } = await supabase
     .from('alert_rules')
     .upsert(rows, {
-      onConflict:       'provider_id,alert_type',
-      ignoreDuplicates: true,
+      onConflict:        'provider_id,alert_type',
+      ignoreDuplicates:  true,  // tidak overwrite yang sudah diubah manual SuperAdmin
     })
 
   if (error) throw new Error(`upsertDefaultRules: ${error.message}`)
