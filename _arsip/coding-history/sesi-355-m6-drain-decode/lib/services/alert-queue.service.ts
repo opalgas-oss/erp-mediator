@@ -68,7 +68,7 @@ export async function enqueueWA(item: AlertQueueItemWA): Promise<boolean> {
     console.warn('[alert-queue] Redis tidak tersedia — WA tidak di-enqueue:', item.alertLogId)
     return false
   }
-  await redis.rpush(QUEUE_KEY_WA, item)
+  await redis.rpush(QUEUE_KEY_WA, JSON.stringify(item))
   return true
 }
 
@@ -86,7 +86,7 @@ export async function enqueueEmail(item: AlertQueueItemEmail): Promise<boolean> 
     console.warn('[alert-queue] Redis tidak tersedia — Email tidak di-enqueue:', item.alertLogId)
     return false
   }
-  await redis.rpush(QUEUE_KEY_EMAIL, item)
+  await redis.rpush(QUEUE_KEY_EMAIL, JSON.stringify(item))
   return true
 }
 
@@ -119,12 +119,14 @@ async function drainWAQueue(): Promise<void> {
     return
   }
 
-  // LPOP satu per satu — proses sampai queue kosong.
-  // @upstash/redis auto-deserialize: lpop kembalikan object, jangan JSON.parse lagi.
-  let item: AlertQueueItemWA | null
-  while ((item = await redis.lpop<AlertQueueItemWA>(QUEUE_KEY_WA)) !== null) {
-    if (!item?.targetNumber || !item?.message) {
-      console.error('[alert-queue:wa] Item tidak valid (field kurang):', item)
+  let raw: string | null
+  // LPOP satu per satu — proses sampai queue kosong
+  while ((raw = await redis.lpop(QUEUE_KEY_WA)) !== null) {
+    let item: AlertQueueItemWA
+    try {
+      item = JSON.parse(raw) as AlertQueueItemWA
+    } catch {
+      console.error('[alert-queue:wa] Item tidak valid (JSON parse error):', raw)
       continue
     }
 
@@ -156,10 +158,13 @@ async function drainEmailQueue(): Promise<void> {
   const backoffMax      = parseInt(cfg['resend_backoff_max_ms']     ?? '30000', 10)
   const delayBetween    = Math.ceil(1000 / ratePerSec) // ms antar item (rate limit)
 
-  let item: AlertQueueItemEmail | null
-  while ((item = await redis.lpop<AlertQueueItemEmail>(QUEUE_KEY_EMAIL)) !== null) {
-    if (!item?.targetEmail || !item?.subject) {
-      console.error('[alert-queue:email] Item tidak valid (field kurang):', item)
+  let raw: string | null
+  while ((raw = await redis.lpop(QUEUE_KEY_EMAIL)) !== null) {
+    let item: AlertQueueItemEmail
+    try {
+      item = JSON.parse(raw) as AlertQueueItemEmail
+    } catch {
+      console.error('[alert-queue:email] Item tidak valid (JSON parse error):', raw)
       continue
     }
 
