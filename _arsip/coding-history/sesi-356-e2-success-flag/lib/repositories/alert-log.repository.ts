@@ -196,24 +196,16 @@ export async function incrementAlertOccurrence(alertLogId: string): Promise<void
 // ─── updateAlertLogNotifResult (M6 — S#334) ──────────────────────────────────
 
 /**
- * Update hasil notifikasi pada alert_log — error DAN/ATAU flag sukses.
- * Dipanggil dari alert-queue.service setelah drain queue:
- *   - jalur GAGAL  → { error_wa } / { error_email } (DLQ pattern)
- *   - jalur SUKSES → { sent_via_wa: true } / { sent_via_email: true } (E-2 S#356)
+ * Update kolom error_wa dan/atau error_email pada alert_log.
+ * Dipanggil dari alert-queue.service saat item gagal dikirim setelah drain queue (DLQ pattern).
  * Tidak overwrite data lain — hanya update field notifikasi yang diberikan.
- * Kolom sukses & error terpisah: partial success (1 dari N penerima) tercatat jujur.
  *
  * @param alertLogId  UUID alert_log target
- * @param payload     error_wa/error_email dan/atau sent_via_wa/sent_via_email
+ * @param payload     Object berisi error_wa dan/atau error_email yang akan diupdate
  */
 export async function updateAlertLogNotifResult(
   alertLogId: string,
-  payload: Partial<{
-    error_wa:       string
-    error_email:    string
-    sent_via_wa:    boolean
-    sent_via_email: boolean
-  }>
+  payload: Partial<{ error_wa: string; error_email: string }>
 ): Promise<void> {
   const supabase = createServerSupabaseClient()
 

@@ -130,9 +130,7 @@ async function drainWAQueue(): Promise<void> {
 
     try {
       const result = await sendFonnteWA(item.targetNumber, item.message, token)
-      if (result.success) {
-        await recordWASuccess(item.alertLogId)
-      } else {
+      if (!result.success) {
         await recordWAError(item.alertLogId, `Fonnte error: ${result.reason ?? 'Unknown'}`)
       }
     } catch (err) {
@@ -193,9 +191,7 @@ async function drainEmailQueue(): Promise<void> {
       }
     }
 
-    if (success) {
-      await recordEmailSuccess(item.alertLogId)
-    } else {
+    if (!success) {
       await recordEmailError(item.alertLogId, `Gagal setelah ${maxRetries}x retry: ${lastError}`)
     }
 
@@ -219,27 +215,6 @@ async function recordEmailError(alertLogId: string, reason: string): Promise<voi
     await updateAlertLogNotifResult(alertLogId, { error_email: reason })
   } catch (err) {
     console.error('[alert-queue:email] Gagal catat DLQ error:', alertLogId, err)
-  }
-}
-
-// ─── Helper: catat sukses ke alert_log (E-2 S#356 — HUTANG-M6-SUCCESS-FLAG) ───
-// Jalur sukses sebelumnya tidak menandai apa pun → sent_via_wa/email tampak false
-// meski terkirim ("log berbohong"). Kolom sukses terpisah dari error → partial
-// success (1 dari N penerima) tetap tercatat jujur.
-
-async function recordWASuccess(alertLogId: string): Promise<void> {
-  try {
-    await updateAlertLogNotifResult(alertLogId, { sent_via_wa: true })
-  } catch (err) {
-    console.error('[alert-queue:wa] Gagal catat flag sukses:', alertLogId, err)
-  }
-}
-
-async function recordEmailSuccess(alertLogId: string): Promise<void> {
-  try {
-    await updateAlertLogNotifResult(alertLogId, { sent_via_email: true })
-  } catch (err) {
-    console.error('[alert-queue:email] Gagal catat flag sukses:', alertLogId, err)
   }
 }
 
