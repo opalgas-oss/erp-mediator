@@ -37,14 +37,10 @@ export default async function MonitoringSettingsPage() {
   ])
 
   // ── Pisah: recipient rows → AlertConfigPageClient, sisanya → ConfigPageClient ──
-  // S#356 P1-2: recipient (superadmin_alert_wa_number/email) ber-feature_key='monitoring'
-  // (kategori='Monitoring'), jadi ADA DI monitoringRows, BUKAN alertRows. Sebelumnya difilter
-  // dari alertRows → recipientRows selalu [] → recipient jatuh ke ConfigItem (multi_text →
-  // number-unit → paksa 0 → data loss T-1). Fix: filter dari monitoringRows.
-  const recipientRows = monitoringRows.filter(
+  const recipientRows = alertRows.filter(
     (row) => RECIPIENT_KEYS.has(row.policy_key ?? '')
   )
-  const nonRecipientMonitoringRows = monitoringRows.filter(
+  const nonRecipientAlertRows = alertRows.filter(
     (row) => !RECIPIENT_KEYS.has(row.policy_key ?? '')
   )
 
@@ -95,10 +91,10 @@ export default async function MonitoringSettingsPage() {
     groupMap.get(kat)!.items.push(item)
   }
 
-  for (const row of nonRecipientMonitoringRows) {
+  for (const row of monitoringRows) {
     processRow(row)
   }
-  for (const row of alertRows) {
+  for (const row of nonRecipientAlertRows) {
     processRow(row)
   }
 

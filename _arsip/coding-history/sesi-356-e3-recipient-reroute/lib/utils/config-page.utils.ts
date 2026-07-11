@@ -80,7 +80,6 @@ export function mapTipe(tipeData: string, policyKey?: string): ConfigItemType {
   if (tipeData === 'json')                                            return 'json-per-role'
   if (tipeData === 'text')                                            return 'text-field'
   if (tipeData === 'string')                                          return 'text-field'   // T-029: platform_timezone + field string lain
-  if (tipeData === 'multi_text')                                      return 'text-field'   // S#356 P1-2: defense — jangan paksa number/0. Recipient sudah dirute ke AlertConfigItem; ini jaring pengaman kalau multi_text nyasar ke ConfigItem.
   if (tipeData === 'number' && policyKey && isTimingField(policyKey))    return 'timing'
   if (tipeData === 'integer' && policyKey && isTimingField(policyKey))   return 'timing'
   if (tipeData === 'integer')                                             return 'number-unit'
