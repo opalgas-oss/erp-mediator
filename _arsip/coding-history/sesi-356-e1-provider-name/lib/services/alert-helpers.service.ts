@@ -61,18 +61,16 @@ export function buildIncidentUrl(alertLogId?: string): string {
 /**
  * Bangun pesan WA alert dari message_library key alert.wa.incident_triggered.
  * FIX-2 S#337: sebelumnya hardcode template — sekarang dari message_library.
- * S#356 E-1: param providerNama = nama asli provider (mis. "Resend"), BUKAN UUID.
- *   Formatter murni — nama di-resolve caller (evaluateRule dari rule.provider_nama).
  * Template: "*{provider_name}* tidak bisa dihubungi ({alert_type}). Lihat detail: {incident_url}"
  */
 export async function buildAlertMessage(
-  providerNama: string,
-  alertType:    string,
-  incidentUrl:  string
+  providerId:  string,
+  alertType:   string,
+  incidentUrl: string
 ): Promise<string> {
   const tpl = await getMessage('alert.wa.incident_triggered')
   return interpolate(tpl, {
-    provider_name: providerNama,
+    provider_name: providerId,
     alert_type:    alertType,
     incident_url:  incidentUrl,
   })

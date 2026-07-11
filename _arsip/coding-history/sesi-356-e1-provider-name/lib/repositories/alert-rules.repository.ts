@@ -50,34 +50,20 @@ export async function findAllAlertRules(): Promise<AlertRuleWithProvider[]> {
 // ─── findByProvider ───────────────────────────────────────────────────────────
 
 /**
- * Ambil semua rules aktif untuk satu provider — JOIN service_providers(nama).
+ * Ambil semua rules aktif untuk satu provider.
  * Dipakai oleh alert.service saat threshold check.
- * S#356 E-1: sertakan provider_nama agar pesan alert menampilkan nama asli
- * (mis. "Resend"), bukan UUID. Nol query tambahan — JOIN embed di query yang
- * memang sudah jalan. Pola sama dengan findAllAlertRules(). Fallback ke
- * provider_id jika nama kosong (seperti digest).
  */
-export async function findRulesByProvider(
-  providerId: string
-): Promise<(AlertRule & { provider_nama: string })[]> {
+export async function findRulesByProvider(providerId: string): Promise<AlertRule[]> {
   const supabase = createServerSupabaseClient()
 
   const { data, error } = await supabase
     .from('alert_rules')
-    .select('*, service_providers(nama)')
+    .select('*')
     .eq('provider_id', providerId)
     .eq('is_active', true)
 
   if (error) throw new Error(`findRulesByProvider: ${error.message}`)
-
-  return ((data ?? []) as unknown[]).map((row) => {
-    const r = row as AlertRule & { service_providers: { nama: string } | null }
-    return {
-      ...r,
-      provider_nama:     r.service_providers?.nama ?? r.provider_id,
-      service_providers: undefined,
-    } as AlertRule & { provider_nama: string }
-  })
+  return (data ?? []) as AlertRule[]
 }
 
 // ─── findById ─────────────────────────────────────────────────────────────────

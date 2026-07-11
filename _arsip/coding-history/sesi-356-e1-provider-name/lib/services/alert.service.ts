@@ -119,7 +119,7 @@ async function evaluateRule(
       const quietTpl  = await getMessage('alert.log.quiet_hour_message')
       const quietMsg  = interpolate(quietTpl, {
         alert_type:    rule.alert_type,
-        provider_name: rule.provider_nama,
+        provider_name: providerId,
         start_hour:    startHour,
         end_hour:      endHour,
       })
@@ -149,7 +149,7 @@ async function evaluateRule(
     return
   }
 
-  const message      = await buildAlertMessage(rule.provider_nama, rule.alert_type, incidentUrl)
+  const message      = await buildAlertMessage(providerId, rule.alert_type, incidentUrl)
 
   // Insert log DULU agar alertLogId tersedia untuk referensi DLQ
   const newAlertId = await insertAlertLog({
