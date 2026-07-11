@@ -34,8 +34,10 @@ interface AlertConfigPageClientProps {
 }
 
 // ─── Helper: parse comma-separated string ke array ───────────────────────────
-// parseMultiValue DIPINDAH ke lib/utils/config-page.utils.ts (S#356 e3fix) — dulu di sini
-// ('use client') tapi dipanggil dari page.tsx (RSC/server) = runtime error. Kini di util server-safe.
+export function parseMultiValue(nilai: string | null | undefined): string[] {
+  if (!nilai) return []
+  return nilai.split(',').map((s) => s.trim()).filter(Boolean)
+}
 
 // ─── Helper: deteksi ada perubahan dari state awal ───────────────────────────
 function detectHasChanges(

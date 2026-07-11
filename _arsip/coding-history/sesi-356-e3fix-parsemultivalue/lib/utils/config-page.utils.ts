@@ -103,17 +103,3 @@ export function mapValue(nilai: string, tipeData: string): number | boolean | st
   if (tipeData === 'integer') return Number(nilai)
   return nilai  // json, text, select → tetap string
 }
-
-// ─── parseMultiValue ──────────────────────────────────────────────
-
-/**
- * Parse comma-separated string dari config_registry → array nilai bersih (trim + buang kosong).
- * Dipakai untuk field multi_text (recipient WA/Email).
- * S#356 e3fix: DIPINDAH dari AlertConfigPageClient ('use client') ke sini (util server-safe)
- * karena page.tsx (RSC) memanggilnya — memanggil fungsi client dari server = runtime error
- * ("Attempted to call parseMultiValue() from the server but ... is on the client").
- */
-export function parseMultiValue(nilai: string | null | undefined): string[] {
-  if (!nilai) return []
-  return nilai.split(',').map((s) => s.trim()).filter(Boolean)
-}

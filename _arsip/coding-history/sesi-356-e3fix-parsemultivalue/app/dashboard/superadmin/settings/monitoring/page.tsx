@@ -18,9 +18,9 @@
 export const dynamic = 'force-dynamic'
 
 import { getConfigPageItems, getConfigItemsByKategori } from '@/lib/config-registry'
-import { mapTipe, mapValue, parseMultiValue }           from '@/lib/utils/config-page.utils'
+import { mapTipe, mapValue }                            from '@/lib/utils/config-page.utils'
 import { ConfigPageClient }                             from '../security-login/ConfigPageClient'
-import { AlertConfigPageClient }                        from './AlertConfigPageClient'
+import { AlertConfigPageClient, parseMultiValue }       from './AlertConfigPageClient'
 import type { ConfigItemData }                          from '@/components/ConfigItem'
 
 // policy_key yang masuk multi-input UI (bukan text-field biasa)
