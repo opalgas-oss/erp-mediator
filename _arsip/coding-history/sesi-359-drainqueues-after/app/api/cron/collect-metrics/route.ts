@@ -18,11 +18,6 @@ import { Receiver } from '@upstash/qstash'
 import { collectL1Metrics, collectL3Metrics } from '@/lib/services/metrics-collector.service'
 import { getConfigValues, parseConfigNumber }   from '@/lib/config-registry'
 
-// FIX S#359: default maxDuration Hobby (unset) = 10s — tak cukup untuk collect (~6s)
-// + drain queue WA/Email di after() (~8s untuk beberapa nomor). Naikkan ke 60s
-// (batas Hobby saat ini dengan fluid compute default-on) supaya kerja after() tuntas.
-export const maxDuration = 60
-
 // ─── verifyQStashSignature ────────────────────────────────────────────────────
 
 async function verifyQStashSignature(req: NextRequest, rawBody: string): Promise<boolean> {

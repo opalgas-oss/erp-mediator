@@ -22,7 +22,6 @@
 // via credential.service.ts. QStash QSTASH_TOKEN tetap di .env (bootstrap level).
 
 import 'server-only'
-import { after }                     from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getCredentialsByProvider }   from '@/lib/services/credential.service'
 import { insertMetric }               from '@/lib/repositories/provider-metrics.repository'
@@ -119,21 +118,13 @@ export async function collectL1Metrics(
   )
 
   // M6: Drain queue notifikasi (WA + Email) — setelah semua ping + enqueue selesai.
-  // FIX S#359: bungkus after() supaya platform (waitUntil) menjaga container hidup
-  // sampai drain tuntas. Sebelumnya fire-and-forget telanjang -> container di-freeze
-  // setelah response terkirim -> drain WA (sleep 2s/nomor) keputus di tengah ->
-  // "fetch failed" acak, sisa item tak sempat terkirim. Butuh maxDuration=60 di route
-  // collect-metrics. Pola sama seperti session-log (S#058).
-  after(async () => {
-    try { await drainQueues() } catch (err) { console.warn('[collectL1Metrics] drainQueues error:', err) }
-  })
+  // Fire-and-forget: tidak blocking return value collectL1Metrics.
+  drainQueues().catch(err => console.warn('[collectL1Metrics] drainQueues error:', err))
 
   try { await deleteOldMetrics(retentionDays) } catch { /* non-critical */ }
 
-  // M7: ping heartbeat — FIX S#359: bungkus after() juga (sebelumnya fire-and-forget telanjang)
-  after(async () => {
-    try { await pingHeartbeat() } catch (err) { console.warn('[collectL1Metrics] pingHeartbeat error:', err) }
-  })
+  // M7: ping heartbeat — fire-and-forget, tidak blocking result
+  pingHeartbeat().catch(err => console.warn('[collectL1Metrics] pingHeartbeat error:', err))
 
   return { processed, errors }
 }
