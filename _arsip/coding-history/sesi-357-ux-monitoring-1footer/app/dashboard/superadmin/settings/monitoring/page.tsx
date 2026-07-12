@@ -20,17 +20,13 @@
 //     Digest (digest_wa_number/digest_email) kategori='Monitoring' -> dari monitoringRows
 //   Keduanya dikirim ke AlertConfigPageClient sebagai initialGroups (2 kartu, satu footer).
 //   Alert card (13 item) kini pakai nonRecipientAlertRows agar recipient tidak dobel muncul.
-// PERUBAHAN S#357 — FIX UI/UX (satu footer sesuai mockup v2):
-//   ConfigPageClient + AlertConfigPageClient ditumpuk -> masing-masing full-height + footer
-//   sticky -> ruang kosong besar + 2 footer. Diganti MonitoringSettingsClient (SATU komponen,
-//   4 kartu grid 2 kolom, SATU footer + SATU simpan). page.tsx tetap membangun data yang sama
-//   (initialData config + recipientGroups), hanya render-nya yang disatukan.
 
 export const dynamic = 'force-dynamic'
 
 import { getConfigPageItems, getConfigItemsByKategori } from '@/lib/config-registry'
 import { mapTipe, mapValue, parseMultiValue }           from '@/lib/utils/config-page.utils'
-import { MonitoringSettingsClient }                     from './MonitoringSettingsClient'
+import { ConfigPageClient }                             from '../security-login/ConfigPageClient'
+import { AlertConfigPageClient }                        from './AlertConfigPageClient'
 import type { ConfigItemData }                          from '@/components/ConfigItem'
 
 // policy_key penerima Alert real-time -> kartu "Penerima Notifikasi Alert" (feature_key='alert')
@@ -146,11 +142,17 @@ export default async function MonitoringSettingsPage() {
 
   const initialData = Array.from(groupMap.values())
 
-  // ── Render: satu komponen terpadu, satu footer (mockup v2) ───────────────────
+  // ── Render: dua section dalam satu halaman ───────────────────────────────────
   return (
-    <MonitoringSettingsClient
-      configData={initialData}
-      recipientGroups={recipientGroups}
-    />
+    <div className="flex flex-col gap-0">
+      {/* Section 1: Monitoring + Alert non-recipient — pakai ConfigPageClient shared */}
+      {initialData.length > 0 && (
+        <ConfigPageClient initialData={initialData} />
+      )}
+      {/* Section 2: Penerima Alert + Digest — 2 kartu multi-input via AlertConfigPageClient */}
+      {recipientGroups.length > 0 && (
+        <AlertConfigPageClient initialGroups={recipientGroups} />
+      )}
+    </div>
   )
 }
