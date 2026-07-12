@@ -112,13 +112,13 @@ export function ConfigItem({ item, onValueChange, onUnitChange, onAdminCanChange
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <StatusText enabled={item.enabled} />
             <Switch checked={item.enabled} onCheckedChange={onEnabledToggle} className="h-4 w-8 data-[state=checked]:bg-blue-600 flex-shrink-0" />
-            {/* STANDAR BAB 2.2: input h-9 py-2 px-3 text-[13px]. S#357: w-14->w-20 agar nilai 4-5 digit (3000/30000) tidak terpotong. */}
+            {/* STANDAR BAB 2.2: input h-9 py-2 px-3 text-[13px] */}
             <Input
               type="number"
               value={typeof item.value === 'number' ? item.value : 0}
               onChange={(e) => onValueChange(Number(e.target.value))}
               disabled={!item.enabled}
-              className="w-20 h-8 px-2 text-center text-[13px] disabled:bg-[#f9f9f8] disabled:text-[#9ca3af] disabled:cursor-not-allowed"
+              className="w-14 h-8 px-2 text-center text-[13px] disabled:bg-[#f9f9f8] disabled:text-[#9ca3af] disabled:cursor-not-allowed"
             />
             {hasUnitDropdown ? (
               <Select value={item.unit ?? ''} onValueChange={onUnitChange} disabled={!item.enabled}>
