@@ -20,26 +20,9 @@ import { MONITORING_STATUS, ALERT_TYPE } from '@/lib/constants/monitoring.consta
 // FIX-B2-MULTI-RECIPIENT S#347: return arrays dari comma-separated string di config_registry
 
 export async function getAlertTarget(): Promise<{ waNumbers: string[]; emails: string[] }> {
-  // S#356 (BLUEPRINT_RECIPIENT_ALERT_VS_DIGEST): penerima ALERT di feature_key='alert'
-  // (alert_wa_number/alert_email). Terpisah dari penerima DIGEST (getDigestTarget).
-  const cfg = await getConfigValues('alert')
-  const waRaw    = cfg['alert_wa_number'] ?? ''
-  const emailRaw = cfg['alert_email']    ?? ''
-  return {
-    waNumbers: waRaw.split(',').map((s) => s.trim()).filter(Boolean),
-    emails:    emailRaw.split(',').map((s) => s.trim()).filter(Boolean),
-  }
-}
-
-// ─── getDigestTarget ─────────────────────────────────────────────
-// S#356 (BLUEPRINT_RECIPIENT_ALERT_VS_DIGEST): penerima LAPORAN HARIAN (digest 07:00 WIB),
-//   terpisah dari alert real-time. feature_key='monitoring' (digest_wa_number/digest_email).
-//   Alasan bisnis: yang bangun tengah malam (alert) != yang baca laporan pagi (digest).
-
-export async function getDigestTarget(): Promise<{ waNumbers: string[]; emails: string[] }> {
   const cfg = await getConfigValues('monitoring')
-  const waRaw    = cfg['digest_wa_number'] ?? ''
-  const emailRaw = cfg['digest_email']    ?? ''
+  const waRaw    = cfg['superadmin_alert_wa_number'] ?? ''
+  const emailRaw = cfg['superadmin_alert_email']    ?? ''
   return {
     waNumbers: waRaw.split(',').map((s) => s.trim()).filter(Boolean),
     emails:    emailRaw.split(',').map((s) => s.trim()).filter(Boolean),

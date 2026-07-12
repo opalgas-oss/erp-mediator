@@ -8,11 +8,7 @@
 // DB tipe_data='multi_text' — hanya sebagai penanda UI, bukan schema constraint.
 //
 // Dibuat: Sesi #347 — FIX-B2-MULTI-RECIPIENT
-// PERUBAHAN S#356 — BLUEPRINT_RECIPIENT_ALERT_VS_DIGEST:
-//   Refactor 1-kartu (initialFields) -> multi-grup (initialGroups). Tiap grup = 1 kartu:
-//   "Penerima Notifikasi Alert" (feature_key=alert) + "Penerima Laporan Harian" (feature_key=monitoring).
-//   Satu footer Reset/Simpan untuk semua grup. Bulk API terima feature_key per-item (campur alert+monitoring aman).
-// File terlindungi (TIDAK diubah): ConfigPageClient.tsx, ConfigItem.tsx, config-page.utils.ts, AlertConfigItem.tsx
+// File terlindungi (TIDAK diubah): ConfigPageClient.tsx, ConfigItem.tsx, config-page.utils.ts
 
 import { useState }       from 'react'
 import { toast }          from 'sonner'
@@ -33,15 +29,8 @@ interface RecipientField {
   placeholder?: string  // hint di input tambah
 }
 
-// Satu grup recipient (satu kartu) — mis. "Penerima Notifikasi Alert"
-interface RecipientGroup {
-  title:       string
-  description: string
-  fields:      RecipientField[]
-}
-
 interface AlertConfigPageClientProps {
-  initialGroups: RecipientGroup[]
+  initialFields: RecipientField[]
 }
 
 // ─── Helper: parse comma-separated string ke array ───────────────────────────
@@ -50,25 +39,23 @@ interface AlertConfigPageClientProps {
 
 // ─── Helper: deteksi ada perubahan dari state awal ───────────────────────────
 function detectHasChanges(
-  current:  RecipientGroup[],
-  original: RecipientGroup[],
+  current:  RecipientField[],
+  original: RecipientField[],
 ): boolean {
-  return current.some((group, gi) =>
-    group.fields.some((field, fi) => {
-      const orig = original[gi]?.fields[fi]
-      if (!orig) return false
-      return (
-        field.enabled !== orig.enabled ||
-        JSON.stringify(field.values) !== JSON.stringify(orig.values)
-      )
-    })
-  )
+  return current.some((field, i) => {
+    const orig = original[i]
+    if (!orig) return false
+    return (
+      field.enabled !== orig.enabled ||
+      JSON.stringify(field.values) !== JSON.stringify(orig.values)
+    )
+  })
 }
 
-export function AlertConfigPageClient({ initialGroups }: AlertConfigPageClientProps) {
-  const [groups, setGroups]         = useState<RecipientGroup[]>(initialGroups)
-  const [origGroups, setOrigGroups] = useState<RecipientGroup[]>(
-    JSON.parse(JSON.stringify(initialGroups))
+export function AlertConfigPageClient({ initialFields }: AlertConfigPageClientProps) {
+  const [fields, setFields]         = useState<RecipientField[]>(initialFields)
+  const [origFields, setOrigFields] = useState<RecipientField[]>(
+    JSON.parse(JSON.stringify(initialFields))
   )
   const [saving, setSaving]         = useState(false)
   const [error, setError]           = useState<string | null>(null)
@@ -76,24 +63,24 @@ export function AlertConfigPageClient({ initialGroups }: AlertConfigPageClientPr
 
   const LoadingIcon = ICON_STATUS.loading
 
-  // Update nilai array satu field (grup gi, field fi)
-  const handleValuesChange = (gi: number, fi: number, values: string[]): void => {
-    const next = JSON.parse(JSON.stringify(groups)) as RecipientGroup[]
-    next[gi].fields[fi].values = values
-    setGroups(next)
-    setHasChanges(detectHasChanges(next, origGroups))
+  // Update nilai array satu field
+  const handleValuesChange = (index: number, values: string[]): void => {
+    const next = JSON.parse(JSON.stringify(fields)) as RecipientField[]
+    next[index].values = values
+    setFields(next)
+    setHasChanges(detectHasChanges(next, origFields))
   }
 
-  // Toggle enabled satu field (grup gi, field fi)
-  const handleEnabledToggle = (gi: number, fi: number, enabled: boolean): void => {
-    const next = JSON.parse(JSON.stringify(groups)) as RecipientGroup[]
-    next[gi].fields[fi].enabled = enabled
-    setGroups(next)
-    setHasChanges(detectHasChanges(next, origGroups))
+  // Toggle enabled satu field
+  const handleEnabledToggle = (index: number, enabled: boolean): void => {
+    const next = JSON.parse(JSON.stringify(fields)) as RecipientField[]
+    next[index].enabled = enabled
+    setFields(next)
+    setHasChanges(detectHasChanges(next, origFields))
   }
 
   const handleReset = (): void => {
-    setGroups(JSON.parse(JSON.stringify(origGroups)))
+    setFields(JSON.parse(JSON.stringify(origFields)))
     setHasChanges(false)
   }
 
@@ -109,32 +96,30 @@ export function AlertConfigPageClient({ initialGroups }: AlertConfigPageClientPr
         is_active?:  boolean
       }> = []
 
-      groups.forEach((group, gi) => {
-        group.fields.forEach((field, fi) => {
-          const orig = origGroups[gi]?.fields[fi]
-          if (!orig) return
+      fields.forEach((field, i) => {
+        const orig = origFields[i]
+        if (!orig) return
 
-          const valuesChanged  = JSON.stringify(field.values) !== JSON.stringify(orig.values)
-          const enabledChanged = field.enabled !== orig.enabled
+        const valuesChanged  = JSON.stringify(field.values) !== JSON.stringify(orig.values)
+        const enabledChanged = field.enabled !== orig.enabled
 
-          if (!valuesChanged && !enabledChanged) return
+        if (!valuesChanged && !enabledChanged) return
 
-          const update: typeof updates[number] = {
-            id:          field.id,
-            feature_key: field.feature_key,
-          }
+        const update: typeof updates[number] = {
+          id:          field.id,
+          feature_key: field.feature_key,
+        }
 
-          if (valuesChanged) {
-            // Simpan sebagai comma-separated string — konsisten dengan tipe_data='multi_text'
-            update.nilai = field.values.join(',')
-          }
+        if (valuesChanged) {
+          // Simpan sebagai comma-separated string — konsisten dengan tipe_data='multi_text'
+          update.nilai = field.values.join(',')
+        }
 
-          if (enabledChanged) {
-            update.is_active = field.enabled
-          }
+        if (enabledChanged) {
+          update.is_active = field.enabled
+        }
 
-          updates.push(update)
-        })
+        updates.push(update)
       })
 
       if (updates.length === 0) { setHasChanges(false); return }
@@ -153,7 +138,7 @@ export function AlertConfigPageClient({ initialGroups }: AlertConfigPageClientPr
       toast.success(`${updates.length} konfigurasi penerima berhasil disimpan`)
 
       // Sinkron baseline setelah save sukses
-      setOrigGroups(JSON.parse(JSON.stringify(groups)))
+      setOrigFields(JSON.parse(JSON.stringify(fields)))
       setHasChanges(false)
 
     } catch (err) {
@@ -169,36 +154,30 @@ export function AlertConfigPageClient({ initialGroups }: AlertConfigPageClientPr
     <div className="flex flex-col min-h-full">
       <div className="flex-1 px-8 pt-4 pb-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {groups.map((group, gi) => (
-            <Card
-              key={group.title}
-              className="bg-white/80 backdrop-blur-sm border-slate-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all"
-            >
-              <CardHeader className="pt-2 pb-1 px-4 border-b border-slate-100">
-                <CardTitle className={TYPOGRAPHY.cardTitle}>
-                  {group.title}
-                </CardTitle>
-                <p className="text-[12px] text-slate-500 mt-1">{group.description}</p>
-              </CardHeader>
-              <CardContent className="pt-1 pb-2 px-4">
-                {group.fields.map((field, fi) => (
-                  <div
-                    key={field.id}
-                    className={fi > 0 ? 'border-t border-slate-100' : ''}
-                  >
-                    <AlertConfigItem
-                      label={field.label}
-                      values={field.values}
-                      enabled={field.enabled}
-                      placeholder={field.placeholder}
-                      onChange={(values) => handleValuesChange(gi, fi, values)}
-                      onEnabledToggle={(enabled) => handleEnabledToggle(gi, fi, enabled)}
-                    />
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          ))}
+          <Card className="bg-white/80 backdrop-blur-sm border-slate-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all">
+            <CardHeader className="pt-2 pb-1 px-4 border-b border-slate-100">
+              <CardTitle className={TYPOGRAPHY.cardTitle}>
+                Penerima Notifikasi Alert
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-1 pb-2 px-4">
+              {fields.map((field, index) => (
+                <div
+                  key={field.id}
+                  className={index > 0 ? 'border-t border-slate-100' : ''}
+                >
+                  <AlertConfigItem
+                    label={field.label}
+                    values={field.values}
+                    enabled={field.enabled}
+                    placeholder={field.placeholder}
+                    onChange={(values) => handleValuesChange(index, values)}
+                    onEnabledToggle={(enabled) => handleEnabledToggle(index, enabled)}
+                  />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </div>
 
         {error && (

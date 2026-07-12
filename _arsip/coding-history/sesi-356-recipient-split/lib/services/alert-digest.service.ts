@@ -16,7 +16,7 @@ import { getMessage, interpolate }     from '@/lib/message-library'
 import { sendFonnteWA }                from '@/lib/utils/fonnte.server'
 import { sendResendEmailPlain }        from '@/lib/utils/resend.server'
 import { getCredential }               from '@/lib/services/credential.service'
-import { getDigestTarget }           from '@/lib/services/alert-helpers.service'
+import { getAlertTarget }             from '@/lib/services/alert-helpers.service'
 import {
   findYesterdayIncidents,
   type DigestIncident,
@@ -129,8 +129,8 @@ export async function sendDailyDigest(): Promise<DigestResult> {
   // 1. Ambil insiden kemarin
   const incidents = await findYesterdayIncidents()
 
-  // 2. Ambil recipient DIGEST via getDigestTarget() — terpisah dari alert real-time (S#356)
-  const { waNumbers, emails } = await getDigestTarget()
+  // 2. Ambil recipient via getAlertTarget() — shared function (ATURAN 19)
+  const { waNumbers, emails } = await getAlertTarget()
 
   if (waNumbers.length === 0 && emails.length === 0) {
     return {
@@ -138,7 +138,7 @@ export async function sendDailyDigest(): Promise<DigestResult> {
       sent_wa:       false,
       sent_email:    false,
       insiden_count: incidents.length,
-      error:         'Recipient digest belum dikonfigurasi (monitoring/digest_wa_number + digest_email)',
+      error:         'Recipient belum dikonfigurasi (superadmin_alert_wa_number + superadmin_alert_email)',
     }
   }
 
