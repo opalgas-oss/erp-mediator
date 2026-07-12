@@ -14,7 +14,7 @@
 //   - Tombol : text-[12px]
 
 import type { JSX }  from 'react'
-import { useRef, useState } from 'react'
+import { useState }  from 'react'
 import { Input }     from '@/components/ui/input'
 import { Button }    from '@/components/ui/button'
 import { Switch }    from '@/components/ui/switch'
@@ -37,7 +37,6 @@ export function AlertConfigItem({
   onEnabledToggle,
 }: AlertConfigItemProps): JSX.Element {
   const [draftValue, setDraftValue] = useState<string>('')
-  const inputRef = useRef<HTMLInputElement>(null)
 
   // Hapus satu entry berdasarkan index
   const handleRemove = (index: number): void => {
@@ -48,15 +47,9 @@ export function AlertConfigItem({
   // Tambah entry baru dari draft
   const handleAdd = (): void => {
     const trimmed = draftValue.trim()
-    // Kotak kosong: jangan diam — arahkan kursor ke kotak input supaya jelas "ketik di sini dulu"
-    if (!trimmed) {
-      inputRef.current?.focus()
-      return
-    }
+    if (!trimmed) return
     onChange([...values, trimmed])
     setDraftValue('')
-    // Fokus balik ke kotak agar mudah menambah entry berikutnya
-    inputRef.current?.focus()
   }
 
   // Enter key di input draft = tambah
@@ -112,7 +105,6 @@ export function AlertConfigItem({
       {enabled && (
         <div className="flex items-center gap-1.5">
           <Input
-            ref={inputRef}
             type="text"
             value={draftValue}
             onChange={(e) => setDraftValue(e.target.value)}
@@ -125,7 +117,8 @@ export function AlertConfigItem({
             variant="outline"
             size="sm"
             onClick={handleAdd}
-            className="h-8 px-3 text-[12px] border-slate-300 text-slate-700 hover:bg-slate-50"
+            disabled={!draftValue.trim()}
+            className="h-8 px-3 text-[12px] border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-40"
           >
             + Tambah
           </Button>
