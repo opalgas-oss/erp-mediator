@@ -108,8 +108,7 @@ export async function POST(req: NextRequest) {
       const thresholdMs   = parseConfigNumber(cfg['alert_threshold_response_ms'] ?? '3000', 3000)
       const cooldown      = parseConfigNumber(cfg['alert_cooldown_minutes']       ?? '30',   30)
       const consecutive   = parseConfigNumber(cfg['alert_consecutive_failures']   ?? '3',    3)
-      const pingTimeoutMs = parseConfigNumber(cfg['ping_timeout_ms']              ?? '5000', 5000)
-      const result        = await collectL1Metrics(retentionDays, thresholdMs, cooldown, consecutive, pingTimeoutMs)
+      const result        = await collectL1Metrics(retentionDays, thresholdMs, cooldown, consecutive)
       return NextResponse.json({
         success:   true,
         layer:     'L1',

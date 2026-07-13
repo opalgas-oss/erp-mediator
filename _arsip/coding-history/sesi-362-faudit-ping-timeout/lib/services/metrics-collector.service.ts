@@ -45,6 +45,7 @@ import type {
   InsertProviderMetricPayload,
 } from '@/lib/types/monitoring.types'
 
+const PING_TIMEOUT_MS       = 5_000
 const DEGRADED_THRESHOLD_MS = 2_000
 
 // ─── collectL1Metrics ─────────────────────────────────────────────────────────
@@ -57,14 +58,12 @@ const DEGRADED_THRESHOLD_MS = 2_000
  * @param thresholdMs   - Dari config monitoring.alert_threshold_response_ms (default 3000)
  * @param cooldown      - Dari config monitoring.alert_cooldown_minutes (default 30)
  * @param consecutive   - Dari config monitoring.alert_consecutive_failures (default 3)
- * @param pingTimeoutMs - Dari config monitoring.ping_timeout_ms (default 5000) [S#362 F-AUDIT]
  */
 export async function collectL1Metrics(
   retentionDays: number = 30,
   thresholdMs:   number = 3000,
   cooldown:      number = 30,
-  consecutive:   number = 3,
-  pingTimeoutMs: number = 5000
+  consecutive:   number = 3
 ): Promise<{
   processed: number
   errors:    string[]
@@ -109,7 +108,7 @@ export async function collectL1Metrics(
   await Promise.allSettled(
     pingableProviders.map(async p => {
       try {
-        const result = await pingProvider(p.id, p.kode, p.status_url, pingTimeoutMs)
+        const result = await pingProvider(p.id, p.kode, p.status_url)
         await insertMetric(result)
         await checkAndSendAlerts(p.id, result.status, result.response_time_ms)
         processed++
@@ -213,10 +212,9 @@ async function collectDeepMetrics(
 async function pingProvider(
   providerId: string,
   kode:       string,
-  statusUrl:  string | null,
-  pingTimeoutMs: number
+  statusUrl:  string | null
 ): Promise<InsertProviderMetricPayload> {
-  if (kode === 'fonnte') return pingFonnte(providerId, pingTimeoutMs)
+  if (kode === 'fonnte') return pingFonnte(providerId)
 
   const targetUrl = statusUrl ?? PING_URLS[kode] ?? null
 
@@ -235,7 +233,7 @@ async function pingProvider(
     const res = await fetchWithTimeout(
       targetUrl,
       { method: 'GET', headers: { 'User-Agent': 'ERP-Mediator-Monitor/1.0' } },
-      pingTimeoutMs
+      PING_TIMEOUT_MS
     )
     const ms = Date.now() - start
     const status: MonitoringStatus =
@@ -253,7 +251,7 @@ async function pingProvider(
     return {
       provider_id:      providerId,
       status:           'DOWN',
-      response_time_ms: ms < pingTimeoutMs ? ms : null,
+      response_time_ms: ms < PING_TIMEOUT_MS ? ms : null,
       layer:            'L1',
       error_detail:     String(err),
     }
@@ -262,7 +260,7 @@ async function pingProvider(
 
 // ─── pingFonnte ───────────────────────────────────────────────────────────────
 
-async function pingFonnte(providerId: string, pingTimeoutMs: number): Promise<InsertProviderMetricPayload> {
+async function pingFonnte(providerId: string): Promise<InsertProviderMetricPayload> {
   const creds = await getCredentialsByProvider('fonnte')
   const token = creds['api_token']
   if (!token) {
@@ -280,7 +278,7 @@ async function pingFonnte(providerId: string, pingTimeoutMs: number): Promise<In
     const res = await fetchWithTimeout(
       'https://api.fonnte.com/device',
       { method: 'POST', headers: { Authorization: token } },
-      pingTimeoutMs
+      PING_TIMEOUT_MS
     )
     const ms = Date.now() - start
 
@@ -306,7 +304,7 @@ async function pingFonnte(providerId: string, pingTimeoutMs: number): Promise<In
     return {
       provider_id:      providerId,
       status:           'DOWN',
-      response_time_ms: ms < pingTimeoutMs ? ms : null,
+      response_time_ms: ms < PING_TIMEOUT_MS ? ms : null,
       layer:            'L1',
       error_detail:     String(err),
     }
