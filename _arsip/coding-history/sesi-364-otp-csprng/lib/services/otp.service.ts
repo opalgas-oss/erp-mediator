@@ -47,17 +47,12 @@
 //   sendOTP() channel=email — ganti sendSmtpOTP() dengan sendResendEmail()
 //   dari lib/utils/resend.server.ts. Credentials dibaca SA dari dashboard Providers.
 //
-// PERUBAHAN Sesi #364 — F-AUDIT security: generateOTPCode() pakai crypto.randomInt
-//   (CSPRNG) menggantikan Math.floor(Math.random()*max) yang tidak aman untuk OTP.
-//   Uniform + tidak bias. Perilaku output tidak berubah (tetap N digit, zero-pad).
-//
 // ARSITEKTUR:
 //   Route Handler → OTPService → OTPRepository + CredentialService + MessageLibrary
 //   OTPService juga panggil: config-registry untuk config OTP.
 //   Redis (Upstash) via getRedisClient() sebagai primary OTP store.
 
 import 'server-only'
-import { randomInt } from 'crypto'
 import {
   upsert as otpUpsert,
   spVerifyAndConsume,
@@ -115,11 +110,9 @@ function makeOTPResendRedisKey(uid: string, tenantId: string): string {
 }
 
 // ─── PRIVATE: generate kode OTP ──────────────────────────────────────────────
-// S#364 F-AUDIT security: crypto.randomInt (CSPRNG, uniform, tidak bias).
-// Sebelumnya Math.floor(Math.random()*max) — tidak aman untuk kode OTP.
 function generateOTPCode(panjang: number): string {
   const max = Math.pow(10, panjang)
-  return randomInt(0, max).toString().padStart(panjang, '0')
+  return Math.floor(Math.random() * max).toString().padStart(panjang, '0')
 }
 
 // ─── FUNGSI: sendOTP ──────────────────────────────────────────────────────────
