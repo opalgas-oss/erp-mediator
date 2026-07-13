@@ -10,7 +10,6 @@
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getConfigValues }            from '@/lib/config-registry'
-import { getMessage }                 from '@/lib/message-library'
 
 // ─── autoDisableRulesWithoutInstances (M2) ────────────────────────────────────
 
@@ -53,10 +52,7 @@ export async function autoDisableRulesWithoutInstances(): Promise<number> {
     .from('alert_rules')
     .update({
       is_active:       false,
-      disabled_reason: await getMessage(
-        'alert_rules.reason.provider_tanpa_instance',
-        'Provider tidak memiliki instance aktif saat ini',
-      ),
+      disabled_reason: 'Provider tidak memiliki instance aktif saat ini',
       disabled_at:     now,
       disabled_by:     'SYSTEM',
       updated_at:      now,

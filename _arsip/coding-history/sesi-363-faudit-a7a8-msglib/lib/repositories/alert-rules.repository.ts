@@ -10,7 +10,6 @@
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { writeMonitoringAudit }       from '@/lib/repositories/monitoring-audit-log.repository'
-import { getMessage }                 from '@/lib/message-library'
 import type {
   AlertRule,
   AlertRuleWithProvider,
@@ -197,10 +196,7 @@ export async function bulkDisableStaleRules(disabledBy: string): Promise<number>
 
   const staleIds    = staleRules.map(r => r.id as string)
   const now         = new Date().toISOString()
-  const reasonText  = await getMessage(
-    'alert_rules.reason.provider_nonaktif_manual',
-    'Provider tidak aktif — dinonaktifkan oleh SA via Bersihkan Aturan Usang',
-  )
+  const reasonText  = 'Provider tidak aktif — dinonaktifkan oleh SA via Bersihkan Aturan Usang'
 
   const { error: updateErr } = await supabase
     .from('alert_rules')
