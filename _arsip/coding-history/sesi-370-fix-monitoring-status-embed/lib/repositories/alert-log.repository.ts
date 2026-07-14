@@ -14,11 +14,6 @@
 //   - insertAlertLog(): tambah status + dedup_key ke .insert()
 //     Sebelumnya kedua field dibuang diam-diam. Menghidupkan M3 Deduplication + A2
 //     Auto-Resolve, dan mengembalikan kejujuran log M4 Maintenance Window + B2 Quiet Hours.
-// PERUBAHAN Sesi #370 — FIX embed provider_instances (halaman M01 Status gagal load):
-//   - findRecentAlertLogsWithImpact(): embed provider_instances DILARANG langsung dari
-//     alert_log (tidak ada FK alert_log->provider_instances -> PostgREST PGRST200 ->
-//     seluruh halaman M01 Status gagal load). Diperbaiki ke embed BERSARANG lewat
-//     service_providers (FK ada di kedua sisi). Nol perubahan DB.
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getPastISOTimestamp } from '@/lib/utils/date.utils'
@@ -71,11 +66,11 @@ export async function findRecentAlertLogsWithImpact(
     .select(`
       *,
       service_providers(
-        nama,
-        provider_instances(
-          business_impact,
-          is_default
-        )
+        nama
+      ),
+      provider_instances(
+        business_impact,
+        is_default
       )
     `)
     .order('triggered_at', { ascending: false })
@@ -85,19 +80,15 @@ export async function findRecentAlertLogsWithImpact(
   if (!data) return []
 
   return data.map(row => {
-    // provider_instances kini BERSARANG di bawah service_providers (embed nested S#370)
-    const sp  = row.service_providers as {
-      nama: string
-      provider_instances: Array<{ business_impact: string | null; is_default: boolean }> | null
-    } | null
+    const sp  = row.service_providers as { nama: string } | null
     // Ambil instance is_default=true untuk business_impact
-    const pis = sp?.provider_instances ?? null
+    const pis = row.provider_instances as Array<{ business_impact: string | null; is_default: boolean }> | null
     const defaultInstance = pis?.find(i => i.is_default)
     const impact = defaultInstance?.business_impact ?? null
 
-    // Bersihkan join field dari hasil
-    const { service_providers: _sp, ...base } = row as Record<string, unknown>
-    void _sp
+    // Bersihkan join fields dari hasil
+    const { service_providers: _sp, provider_instances: _pi, ...base } = row as Record<string, unknown>
+    void _sp; void _pi
 
     return {
       ...(base as unknown as AlertLog),
