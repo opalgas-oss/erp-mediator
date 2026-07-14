@@ -8,10 +8,6 @@
 //     (sebelumnya: process.env.HEALTHCHECKS_PING_URL — melanggar ATURAN 8)
 //   getHeartbeatStatus(): fix feature_key getConfigValues dari 'alert' ke
 //     'alert.heartbeat_grace_minutes' agar cocok dengan format key di DB
-// PERUBAHAN S#368 — F0 namespace konsolidasi (MEMBATALKAN pola majemuk S#337):
-//   config alert dikonsolidasi ke feature_key='alert' policy_key bare.
-//   pingHeartbeat:      getConfigValue('alert','healthchecks_ping_url','')
-//   getHeartbeatStatus: getConfigValue('alert','heartbeat_grace_minutes','180')
 //
 // Dua lapis M7:
 //   Lapis 1 (eksternal): ping URL Healthchecks.io setelah cron sukses.
@@ -20,7 +16,7 @@
 //   Lapis 2 (internal):  simpan last_run_at ke Redis (key: monitoring:heartbeat:last_run_at).
 //                        API /monitoring/metrics membaca ini → banner merah di UI kalau terlalu lama.
 //
-// Grace time dari config_registry: feature_key='alert' policy_key='heartbeat_grace_minutes' (default 180 menit = 3 jam).
+// Grace time dari config_registry: alert.heartbeat_grace_minutes (default 180 menit = 3 jam).
 // SA bisa ubah kedua nilai ini dari Dashboard → Konfigurasi → Monitoring → section Alert.
 
 import 'server-only'
@@ -40,7 +36,7 @@ const HEARTBEAT_TTL_SEC   = 60 * 60 * 24 * 7 // 7 hari — cukup untuk deteksi
  * Fire-and-forget — error tidak menghalangi cron selesai.
  * Dipanggil di akhir collectL1Metrics, bukan di awal.
  *
- * URL Healthchecks.io dibaca dari config_registry (feature_key='alert', policy_key='healthchecks_ping_url').
+ * URL Healthchecks.io dibaca dari config_registry (feature_key=alert.healthchecks_ping_url).
  * Jika nilai kosong atau belum diisi SA, skip ping dengan diam (tidak throw).
  */
 export async function pingHeartbeat(): Promise<void> {
@@ -62,8 +58,8 @@ export async function pingHeartbeat(): Promise<void> {
   let pingUrl: string | null = null
   try {
     pingUrl = await getConfigValue(
-      'alert',
-      'healthchecks_ping_url',
+      'alert.healthchecks_ping_url',
+      'alert.healthchecks_ping_url',
       ''
     )
   } catch {
@@ -101,12 +97,12 @@ export async function getHeartbeatStatus(): Promise<{
   graceMinutes: number
 }> {
   // Baca grace minutes dari config_registry (ATURAN 8 — anti hardcode)
-  // feature_key='alert' policy_key='heartbeat_grace_minutes' (F0 S#368 — namespace konsolidasi)
+  // feature_key = policy_key = 'alert.heartbeat_grace_minutes' (format DB aktual)
   let graceMinutes = 180
   try {
     const val = await getConfigValue(
-      'alert',
-      'heartbeat_grace_minutes',
+      'alert.heartbeat_grace_minutes',
+      'alert.heartbeat_grace_minutes',
       '180'
     )
     graceMinutes = parseInt(val ?? '180', 10)

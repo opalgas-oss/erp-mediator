@@ -113,10 +113,9 @@ async function evaluateRule(
   if (rule.severity !== 'CRITICAL') {
     const quietNow = await isQuietHour()
     if (quietNow) {
-      // [F0 S#368] namespace konsolidasi: feature_key='alert' policy_key bare (dulu 'monitoring' + 'alert.quiet_hours_*' = mismatch)
-      const cfgQH     = await getConfigValues('alert')
-      const startHour = cfgQH['quiet_hours_start'] ?? '22'
-      const endHour   = cfgQH['quiet_hours_end']   ?? '6'
+      const cfgQH     = await getConfigValues('monitoring')
+      const startHour = cfgQH['alert.quiet_hours_start'] ?? '22'
+      const endHour   = cfgQH['alert.quiet_hours_end']   ?? '6'
       const quietTpl  = await getMessage('alert.log.quiet_hour_message')
       const quietMsg  = interpolate(quietTpl, {
         alert_type:    rule.alert_type,
@@ -165,9 +164,8 @@ async function evaluateRule(
     dedup_key:      dedupKey,
   })
 
-  // [F0 S#368] namespace konsolidasi: feature_key='alert' policy_key bare (dulu majemuk 'alert.fonnte_delay_seconds')
-  const alertCfg    = await getConfigValues('alert')
-  const fonnteDelay = parseInt(alertCfg['fonnte_delay_seconds'] ?? '2', 10)
+  const alertCfg    = await getConfigValues('alert.fonnte_delay_seconds')
+  const fonnteDelay = parseInt(alertCfg['alert.fonnte_delay_seconds'] ?? '2', 10)
   const emailSubject = await getMessage('alert.email.incident_subject')
 
   // Loop per penerima — enqueueWA/enqueueEmail interface tidak diubah (single target)

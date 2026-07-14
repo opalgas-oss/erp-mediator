@@ -4,10 +4,8 @@
 // Dibuat: Sesi #345 — B2 Severity Logic
 //
 // Jam tenang dari config_registry (SA-configurable, anti-hardcode — ATURAN 8):
-//   feature_key='alert' policy_key='quiet_hours_start'  (default: '22')
-//   feature_key='alert' policy_key='quiet_hours_end'    (default: '6')
-// [F0 S#368] namespace dikonsolidasi: dulu dibaca dari feature_key='monitoring' key
-//   'alert.quiet_hours_*' (mismatch -> selalu null -> quiet hours MATI). Kini feature_key='alert' bare.
+//   alert.quiet_hours_start  (default: '22')
+//   alert.quiet_hours_end    (default: '6')
 //
 // Fail-safe: jika config tidak ada atau error → return false (tidak suppress, kirim tetap)
 // Kasus lintas tengah malam ditangani: start=22, end=6 → jamWIB >= 22 ATAU < 6
@@ -25,9 +23,9 @@ import { getConfigValues } from '@/lib/config-registry'
  */
 export async function isQuietHour(): Promise<boolean> {
   try {
-    const cfg        = await getConfigValues('alert')
-    const startRaw   = cfg['quiet_hours_start']
-    const endRaw     = cfg['quiet_hours_end']
+    const cfg        = await getConfigValues('monitoring')
+    const startRaw   = cfg['alert.quiet_hours_start']
+    const endRaw     = cfg['alert.quiet_hours_end']
 
     // Jika config belum diisi SA — tidak suppress (fail-safe)
     if (startRaw == null || endRaw == null) return false
