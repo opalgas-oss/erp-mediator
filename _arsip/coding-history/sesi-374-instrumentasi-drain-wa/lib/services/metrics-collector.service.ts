@@ -19,8 +19,6 @@
 //   bukan sebaliknya) — tidak boleh masuk loop L1.
 // PERUBAHAN S#373: FIX BUG-038 — catch kosong pada autoDisableRulesWithoutInstances()
 //   diganti console.warn. Kegagalan M2 tetap non-critical, tapi tidak lagi senyap.
-// PERUBAHAN S#374: drainQueues() pindah sumber import ke alert-queue-drain.service.ts
-//   (pemecahan file ATURAN 31). Pemanggilan + posisi di dalam after() tidak berubah.
 //
 // PENTING: Token management API (Supabase, GitHub, Vercel) diambil dari M3 DB
 // via credential.service.ts. QStash QSTASH_TOKEN tetap di .env (bootstrap level).
@@ -42,7 +40,7 @@ import { collectGithubMetrics }       from '@/lib/services/collectors/github.col
 import { getConfigItemsByKategori }   from '@/lib/config-registry'
 import { pingHeartbeat }              from '@/lib/services/alert-heartbeat.service'
 import { autoDisableRulesWithoutInstances } from '@/lib/services/alert-rules.service'
-import { drainQueues }                from '@/lib/services/alert-queue-drain.service'
+import { drainQueues }                from '@/lib/services/alert-queue.service'
 import type {
   MonitoringStatus,
   MonitoringLayer,
