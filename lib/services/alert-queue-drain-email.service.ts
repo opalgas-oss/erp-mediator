@@ -14,8 +14,12 @@
 //   resend_rate_per_second, resend_max_retries, resend_backoff_initial_ms, resend_backoff_max_ms
 //   → keempatnya adalah sisa bukti P0-2 yang diuji TC-4.
 //
-// Instrumentasi drain email (HUTANG-INSTR-EMAIL) menyusul di langkah berikutnya —
-//   file ini sengaja disiapkan dengan ruang cukup untuk itu (batas kode 10 KB).
+// Instrumentasi INSTR-TC4 (S#375, HUTANG-INSTR-EMAIL): 1 baris ringkasan JSON per drain —
+//   jumlah percobaan per item + jeda backoff NYATA + jeda antar item + keempat config yang
+//   terbaca. Alasannya sama seperti INSTR-TC3 di kanal WA: tanpa alat ukur, keempat config
+//   di atas hanya bisa DIKIRA (alert_log cuma simpan hasil akhir per alert, bukan jejak
+//   percobaan per penerima; jalur sukses tak mencatat apa pun). Sifat: pengamatan murni —
+//   logika pengiriman, urutan, dan penanganan error NOL berubah.
 //
 // ATURAN: import 'server-only' — tidak boleh dipakai di client component.
 
@@ -47,6 +51,20 @@ export async function drainEmailQueue(): Promise<void> {
   const backoffMax      = parseInt(cfg['resend_backoff_max_ms']     ?? '30000', 10)
   const delayBetween    = Math.ceil(1000 / ratePerSec) // ms antar item (rate limit)
 
+  // INSTR-TC4 S#375: variabel pengamatan — tidak dibaca logika pengiriman/retry
+  const drainStart = Date.now()
+  const jedaAntarItem: number[] = []
+  const ringkasanItem: Array<{
+    target_tersamar:       string
+    percobaan:             number
+    sukses:                boolean
+    jeda_backoff_nyata_ms: number[]
+    alasan_terakhir:       string | null
+  }> = []
+  let itemSebelumnyaAt = 0
+  let sukses = 0
+  let gagal  = 0
+
   let item: AlertQueueItemEmail | null
   while ((item = await redis.lpop<AlertQueueItemEmail>(QUEUE_KEY_EMAIL)) !== null) {
     if (!item?.targetEmail || !item?.subject) {
@@ -54,12 +72,28 @@ export async function drainEmailQueue(): Promise<void> {
       continue
     }
 
+    // INSTR-TC4: jarak nyata antar AWAL pemrosesan item berturut-turut.
+    // Nilai = durasi total item sebelumnya + sleep(delayBetween), jadi selalu >= delayBetween.
+    const itemAt = Date.now()
+    if (itemSebelumnyaAt > 0) jedaAntarItem.push(itemAt - itemSebelumnyaAt)
+    itemSebelumnyaAt = itemAt
+
     // Retry dengan exponential backoff
     let attempt = 0
     let success = false
     let lastError = ''
 
+    // INSTR-TC4: pengamatan per item — tidak dibaca logika retry
+    let percobaanSebelumnyaAt = 0
+    const jedaBackoffNyata: number[] = []
+
     while (attempt < maxRetries && !success) {
+      // INSTR-TC4: jarak nyata antar AWAL percobaan berturut-turut untuk item ini.
+      // Nilai = durasi panggilan Resend sebelumnya + sleep(backoff), jadi selalu >= backoff.
+      const percobaanAt = Date.now()
+      if (percobaanSebelumnyaAt > 0) jedaBackoffNyata.push(percobaanAt - percobaanSebelumnyaAt)
+      percobaanSebelumnyaAt = percobaanAt
+
       try {
         const result = await sendResendEmailPlain(item.targetEmail, item.subject, item.message)
         if (result.success) {
@@ -83,13 +117,46 @@ export async function drainEmailQueue(): Promise<void> {
     }
 
     if (success) {
+      sukses++
       await recordEmailSuccess(item.alertLogId)
     } else {
+      gagal++
       await recordEmailError(item.alertLogId, `Gagal setelah ${maxRetries}x retry: ${lastError}`)
     }
 
+    // INSTR-TC4: catatan per item. `percobaan` diturunkan dari jumlah jeda + 1 = jumlah
+    // percobaan yang BENAR-BENAR dimulai (bukan dari counter logika retry) — angka hasil
+    // pengamatan, bukan angka yang diklaim kode tentang dirinya sendiri.
+    // Alamat disamarkan: cukup untuk membedakan penerima, tanpa menaruh alamat penuh di log.
+    ringkasanItem.push({
+      target_tersamar:       item.targetEmail.slice(0, 3) + '***',
+      percobaan:             jedaBackoffNyata.length + 1,
+      sukses:                success,
+      jeda_backoff_nyata_ms: jedaBackoffNyata,
+      alasan_terakhir:       success ? null : lastError.slice(0, 120),
+    })
+
     // Delay antar item — respek rate limit Resend
     await sleep(delayBetween)
+  }
+
+  // INSTR-TC4: satu baris ringkasan per drain (pola sama INSTR-TC3 di kanal WA).
+  // - JSON.stringify: seluruh bukti muat dalam SATU baris console.log
+  //   (get_runtime_logs MCP hanya kembalikan console.log pertama per request)
+  // - Diam total kalau queue kosong: tidak menambah kebisingan log cron tiap menit
+  if (sukses + gagal > 0) {
+    console.log('[alert-queue:email] drain-selesai ' + JSON.stringify({
+      sukses,
+      gagal,
+      config_resend_rate_per_second:    cfg['resend_rate_per_second']    ?? '(kosong, pakai default 2)',
+      config_resend_max_retries:        cfg['resend_max_retries']        ?? '(kosong, pakai default 3)',
+      config_resend_backoff_initial_ms: cfg['resend_backoff_initial_ms'] ?? '(kosong, pakai default 1000)',
+      config_resend_backoff_max_ms:     cfg['resend_backoff_max_ms']     ?? '(kosong, pakai default 30000)',
+      delay_antar_item_terpakai_ms:     delayBetween,
+      jeda_nyata_antar_item_ms:         jedaAntarItem,
+      item:                             ringkasanItem,
+      total_drain_ms:                   Date.now() - drainStart,
+    }))
   }
 }
 
