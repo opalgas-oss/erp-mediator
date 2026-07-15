@@ -7,9 +7,6 @@
 // PERUBAHAN Sesi #343 — M9 Guardrail:
 //   - updateAlertRule() → bedakan RULE_DISABLE / RULE_ENABLE / RULE_UPDATE di audit trail
 //   - tambah bulkDisableStaleRules() — soft-disable rules milik provider tidak aktif
-// PERUBAHAN Sesi #373 — FIX BUG-039:
-//   - bulkDisableStaleRules() — kolom `service_providers.is_active` (tidak ada) diperbaiki
-//     ke `is_aktif` di 2 titik (embed + filter). Tombol "Bersihkan Aturan Usang" 500 sejak S#343.
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { writeMonitoringAudit }       from '@/lib/repositories/monitoring-audit-log.repository'
@@ -176,17 +173,11 @@ export async function updateAlertRule(
 
 /**
  * Soft-disable semua alert rules yang is_active=true tapi provider-nya
- * sudah tidak aktif (is_aktif=false di service_providers).
+ * sudah tidak aktif (is_active=false di service_providers).
  *
  * Definisi "usang": rule aktif yang provider-nya nonaktif.
  * Soft-disable: set is_active=false + disabled_reason.
  * Catat RULE_DISABLE di audit per rule (fire-and-forget).
- *
- * ⚠️ BEDA KOLOM (FIX S#373 — BUG-039): `alert_rules` memakai `is_active` (Inggris),
- *   `service_providers` memakai `is_aktif` (Indonesia). Versi lama menulis
- *   `service_providers!inner(is_active)` + `.eq('service_providers.is_active', false)`
- *   — kolom itu TIDAK ADA -> PostgREST error -> tombol "Bersihkan Aturan Usang" 500.
- *   Jangan samakan kedua nama kolom ini.
  *
  * @param disabledBy  UUID SA yang memicu aksi ini
  * @returns           Jumlah rule yang dinonaktifkan
@@ -197,9 +188,9 @@ export async function bulkDisableStaleRules(disabledBy: string): Promise<number>
   // Ambil rules aktif yang provider-nya tidak aktif
   const { data: staleRules, error: fetchErr } = await supabase
     .from('alert_rules')
-    .select('id, provider_id, alert_type, service_providers!inner(is_aktif)')
+    .select('id, provider_id, alert_type, service_providers!inner(is_active)')
     .eq('is_active', true)
-    .eq('service_providers.is_aktif', false)
+    .eq('service_providers.is_active', false)
 
   if (fetchErr) throw new Error(`bulkDisableStaleRules fetch: ${fetchErr.message}`)
   if (!staleRules || staleRules.length === 0) return 0

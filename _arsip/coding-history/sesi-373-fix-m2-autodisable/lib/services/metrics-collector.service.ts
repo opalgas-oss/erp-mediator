@@ -17,8 +17,6 @@
 // PERUBAHAN S#337: FIX L1 filter — skip provider tanpa status_url DAN tidak punya
 //   PING_URLS entry DAN bukan Fonnte. Contoh: healthchecks.io (kita yang ping dia,
 //   bukan sebaliknya) — tidak boleh masuk loop L1.
-// PERUBAHAN S#373: FIX BUG-038 — catch kosong pada autoDisableRulesWithoutInstances()
-//   diganti console.warn. Kegagalan M2 tetap non-critical, tapi tidak lagi senyap.
 //
 // PENTING: Token management API (Supabase, GitHub, Vercel) diambil dari M3 DB
 // via credential.service.ts. QStash QSTASH_TOKEN tetap di .env (bootstrap level).
@@ -82,14 +80,9 @@ export async function collectL1Metrics(
 
   // M2: disable dulu rules yang providernya tidak punya instance aktif,
   // sebelum upsert default rules. Urutan penting: disable → upsert → ping.
-  // FIX S#373 (BUG-038): catch di bawah SEBELUMNYA KOSONG (`catch { /* non-critical */ }`)
-  // -> M2 gagal setiap menit sejak S#332 tanpa meninggalkan satu pun jejak error.
-  // Tetap non-critical (kegagalan M2 tidak boleh menjatuhkan ping/alert), TAPI wajib tercatat.
   try {
     await autoDisableRulesWithoutInstances()
-  } catch (err) {
-    console.warn('[collectL1Metrics] autoDisableRulesWithoutInstances error:', err)
-  }
+  } catch { /* non-critical */ }
 
   try {
     await upsertDefaultRules(

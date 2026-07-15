@@ -3,9 +3,6 @@
 // Dipakai oleh: metrics-collector.service.ts (sebelum health check)
 //               app/api/superadmin/monitoring/alert-rules/route.ts
 // Dibuat: Sesi #331 — FASE 1 Alert Monitoring
-// PERUBAHAN S#373 — FIX BUG-038 (M2 mati senyap sejak S#332):
-//   autoDisableRulesWithoutInstances() — filter subquery PostgREST (tidak didukung)
-//   diganti pola 2-query + saring di sisi aplikasi. Dibuktikan runtime, bukan build.
 //
 // M2: Sebelum health check, provider tanpa instance aktif → is_active=false otomatis.
 // Nilai konfigurasi dari config_registry (ATURAN 8 — anti hardcode).
@@ -34,37 +31,20 @@ export async function autoDisableRulesWithoutInstances(): Promise<number> {
 
   const supabase = createServerSupabaseClient()
 
-  // Ambil provider_id yang PUNYA instance aktif.
-  // FIX S#373 (BUG-038): versi lama menyelipkan subquery SQL ke dalam filter PostgREST
-  //   .not('provider_id','in','(select distinct provider_id from provider_instances ...)')
-  // PostgREST TIDAK mendukung subquery di filter — string itu diperlakukan sebagai daftar
-  // nilai literal lalu di-cast ke uuid -> ERROR 22P02 -> fungsi throw SETIAP menit, dan
-  // pemanggil (metrics-collector) menelannya dengan catch kosong -> M2 tak pernah jalan.
-  // Pola benar (sudah jadi standar project, mis. membershipRepo_findAll): 2 query,
-  // penyaringan dilakukan di sisi aplikasi.
-  const { data: activeInstances, error: instErr } = await supabase
-    .from('provider_instances')
-    .select('provider_id')
-    .eq('is_aktif', true)
-
-  if (instErr) throw new Error(`autoDisableRulesWithoutInstances instances: ${instErr.message}`)
-
-  const providerIdsWithActiveInstance = new Set(
-    (activeInstances ?? []).map(i => i.provider_id as string)
-  )
-
-  // Ambil semua rule aktif, lalu saring yang provider-nya tidak punya instance aktif
-  const { data: activeRules, error } = await supabase
+  // Ambil provider_id yang tidak punya instance aktif
+  // dan masih punya rule aktif
+  const { data: rulesWithoutActiveInstance, error } = await supabase
     .from('alert_rules')
     .select('id, provider_id')
     .eq('is_active', true)
+    .not(
+      'provider_id',
+      'in',
+      `(select distinct provider_id from provider_instances where is_aktif = true)`
+    )
 
   if (error) throw new Error(`autoDisableRulesWithoutInstances query: ${error.message}`)
-
-  const rulesWithoutActiveInstance = (activeRules ?? []).filter(
-    r => !providerIdsWithActiveInstance.has(r.provider_id as string)
-  )
-  if (rulesWithoutActiveInstance.length === 0) return 0
+  if (!rulesWithoutActiveInstance || rulesWithoutActiveInstance.length === 0) return 0
 
   const ruleIds = rulesWithoutActiveInstance.map(r => r.id)
   const now = new Date().toISOString()
