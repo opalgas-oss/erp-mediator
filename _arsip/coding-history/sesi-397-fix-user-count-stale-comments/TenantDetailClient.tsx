@@ -23,7 +23,7 @@ import type { Tenant } from '@/lib/types/tenant.types'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
-interface Props { tenant: Tenant; activeUserCount: number }
+interface Props { tenant: Tenant }
 
 // ─── Tipe dialog ──────────────────────────────────────────────────────────────
 
@@ -244,7 +244,7 @@ function DialogAktifkanKembali({
 
 // ─── Komponen utama ───────────────────────────────────────────────────────────
 
-export function TenantDetailClient({ tenant: initialTenant, activeUserCount }: Props) {
+export function TenantDetailClient({ tenant: initialTenant }: Props) {
   const [tenant,       setTenant]       = useState<Tenant>(initialTenant)
   const [activeTab,    setActiveTab]    = useState<TenantTabId>('info')
   const [dialogMode,   setDialogMode]   = useState<DialogMode>(null)
@@ -304,7 +304,7 @@ export function TenantDetailClient({ tenant: initialTenant, activeUserCount }: P
 
   const quickStats = {
     kategori_aktif:   0,
-    user_aktif:       activeUserCount,
+    user_aktif:       0,
     user_quota:       tenant.tier === 'starter' ? 5 : tenant.tier === 'growth' ? 15 : 9999,
     kontrak_berakhir: tenant.contract_end_date ?? null,
     auto_renewal:     tenant.auto_renewal,
@@ -327,7 +327,7 @@ export function TenantDetailClient({ tenant: initialTenant, activeUserCount }: P
         {activeTab === 'kontrak'     && <TabKontrakSewa        tenant={tenant} onRefresh={handleRefresh} />}
         {activeTab === 'kategori'    && <TabKategori           tenantId={tenant.id} />}
         {activeTab === 'admintenant' && <TabAdminTenantHistory tenantId={tenant.id} tenantNama={tenant.nama_brand ?? ''} />}
-        {activeTab === 'user'        && <TabUserTenant         tier={tenant.tier} used={activeUserCount} />}
+        {activeTab === 'user'        && <TabUserTenant         tenantId={tenant.id} tier={tenant.tier} />}
         {activeTab === 'config'      && <TabOverrideConfig     tenantId={tenant.id} />}
         {activeTab === 'aksesmenu'   && <TabAksesMenuAT        tenantId={tenant.id} tenantNama={tenant.nama_brand ?? ''} />}
       </div>

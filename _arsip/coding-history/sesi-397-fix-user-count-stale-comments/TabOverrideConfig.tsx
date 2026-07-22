@@ -2,10 +2,7 @@
 
 // app/dashboard/superadmin/tenants/[id]/TabOverrideConfig.tsx
 // Tab Override Config — placeholder
-// CATATAN S#397: M1 (Config & Policy) SUDAH SELESAI (S#097); kapabilitas override per-tenant ADA
-//   di config_registry (tenant_id + tenant_can_override + RLS, sejak S#109). Yang belum = UI grid
-//   override per-tenant (target Mockup_08, status PENDING approval). Saat ini 0 config di-flag
-//   overridable → semua tenant INHERITED default (notice di bawah AKURAT).
+// CATATAN: Implementasi penuh terintegrasi dengan M1 ConfigService — Mockup_08.
 // Sesi #141: placeholder dengan style konsisten dengan mockup design token.
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
@@ -85,7 +82,7 @@ export function TabOverrideConfig({ tenantId: _tenantId }: Props) {
         </div>
         <div style={{ fontSize: 12, color: '#6b7280', maxWidth: 460, margin: '0 auto', lineHeight: 1.5 }}>
           Grid konfigurasi per kunci dengan status INHERITED/OVERRIDDEN/LOCKED dan kemampuan ubah
-          per tenant akan tersedia pada rilis UI Override Config (target Mockup_08).
+          per tenant akan tersedia setelah integrasi penuh dengan M1 Config Registry selesai.
         </div>
         <div style={{ marginTop: 10, fontSize: 12, color: '#6b7280' }}>
           Saat ini semua konfigurasi tenant ini menggunakan nilai platform default

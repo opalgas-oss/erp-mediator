@@ -7,7 +7,6 @@ export const dynamic = 'force-dynamic'
 
 import { notFound }              from 'next/navigation'
 import { TenantService_getById } from '@/lib/services/tenant.service'
-import { MembershipService_listMemberships } from '@/lib/services/membership.service'
 import { TenantDetailClient }    from './TenantDetailClient'
 
 type Props = { params: Promise<{ id: string }> }
@@ -19,12 +18,7 @@ export default async function TenantDetailPage({ params }: Props) {
     const tenant = await TenantService_getById(id)
     if (!tenant) notFound()
 
-    // Jumlah user aktif tenant ini — reuse service M8 (DRY, ATURAN 19). total = count exact.
-    const { total: activeUserCount } = await MembershipService_listMemberships({
-      tenant_id: id, status: 'active', per_page: 1,
-    })
-
-    return <TenantDetailClient tenant={tenant} activeUserCount={activeUserCount} />
+    return <TenantDetailClient tenant={tenant} />
 
   } catch {
     return (

@@ -1,10 +1,8 @@
 'use client'
 
 // app/dashboard/superadmin/tenants/[id]/TabUserTenant.tsx
-// Tab User Tenant — quota bar (jumlah user aktif NYATA) + placeholder manajemen user
-// CATATAN S#397: M8 (User Membership) SUDAH SELESAI (S#136). Quota bar kini pakai jumlah user
-//   aktif NYATA (prop 'used' dari user_memberships, dihitung di page.tsx via MembershipService).
-//   Placeholder tersisa = UI manajemen user (undang/role) — target Mockup_07 (PENDING approval).
+// Tab User Tenant — daftar user + quota bar
+// CATATAN: Implementasi penuh menunggu M8 (User Membership) — Mockup_07.
 // Sesi #141: placeholder dengan style konsisten dengan mockup design token.
 //
 // Dibuat: Sesi #132 — M6 FASE 3 Step 3.7
@@ -13,16 +11,17 @@
 import type { TenantTier } from '@/lib/types/tenant.types'
 import { S }               from './_shared/tenant-tab-ui'
 
-interface Props { tier: TenantTier; used: number }
+interface Props { tenantId: string; tier: TenantTier }
 
 const TIER_INFO: Record<TenantTier, { quota: number; label: string; bg: string; text: string; border: string }> = {
   starter:    { quota: 5,    label: 'Starter (maks. 5 user)',        bg: '#F1EFE8', text: '#5F5E5A', border: '#B4B2A9' },
-  growth:     { quota: 15,   label: 'Growth (maks. 15 user)',        bg: '#E6F1FB', text: '#185FA5', border: '#85B7EB' },  // S#397: 20→15 samakan spec Mockup_07 + quickStats (tak ada sumber DB; TD: idealnya config-driven)
+  growth:     { quota: 20,   label: 'Growth (maks. 20 user)',        bg: '#E6F1FB', text: '#185FA5', border: '#85B7EB' },
   enterprise: { quota: 9999, label: 'Enterprise (tidak terbatas)',   bg: '#EAF3DE', text: '#3B6D11', border: '#97C459' },
 }
 
-export function TabUserTenant({ tier, used }: Props) {
+export function TabUserTenant({ tenantId: _tenantId, tier }: Props) {
   const info = TIER_INFO[tier]
+  const used = 0   // placeholder — akan diisi dari M8 API
   const pct  = tier === 'enterprise' ? 0 : Math.round((used / info.quota) * 100)
 
   return (
@@ -84,8 +83,8 @@ export function TabUserTenant({ tier, used }: Props) {
           Fitur Manajemen User Tenant
         </div>
         <div style={{ fontSize: 12, color: '#6b7280', maxWidth: 460, margin: '0 auto', lineHeight: 1.5 }}>
-          Jumlah user aktif sudah ditampilkan di kuota di atas. Daftar rinci user, undangan user baru,
-          dan manajemen role/permission akan tersedia pada rilis fitur Manajemen User Tenant.
+          Daftar user aktif tenant ini, undangan user baru, dan manajemen role/permission akan tersedia
+          setelah modul M8 (User Membership) selesai dikerjakan.
         </div>
         <div style={{ marginTop: 14, fontSize: 11, color: '#9ca3af', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <i className="ti ti-info-circle" />
