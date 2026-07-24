@@ -22,8 +22,8 @@ import { useMobileSidebar }       from '@/components/DashboardShell'
 import {
   SA_NAV_GROUPS,
   navItemToPath,
+  warnUnknownMenuKeys,
 }                                 from '@/lib/constants/nav.constant'
-import { resolveMenuHref }        from '@/lib/constants/menu-route.constant'
 import { NAV_CLS }                from '@/lib/constants/ui-tokens.constant'
 import { ICON_NAV }               from '@/lib/constants/icons.constant'
 import type { MenuGroup }         from '@/lib/types/dashboard-menu.types'
@@ -44,6 +44,12 @@ export function SidebarNav({ brandName, messages, menuGroups }: SidebarNavProps)
 
   function groupSlug(menuKey: string): string {
     return menuKey.replace(/^sa\./, '')
+  }
+
+  function resolveHref(routePath: string | null, featureFlag: string | null): string {
+    if (routePath) return routePath
+    if (featureFlag) return `/dashboard/superadmin/settings/${featureFlag.replace(/_/g, '-')}`
+    return '/dashboard/superadmin'
   }
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
@@ -71,6 +77,11 @@ export function SidebarNav({ brandName, messages, menuGroups }: SidebarNavProps)
     if (groupKey === 'pengguna')    return path.includes('/roles') || path.includes('/permissions') || path.includes('/memberships') || path.includes('/refunds')
     return false
   }
+
+  useEffect(() => {
+    if (useDataDriven) warnUnknownMenuKeys(menuGroups!)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useDataDriven])
 
   useEffect(() => {
     setOpenGroups(prev => {
@@ -178,7 +189,7 @@ export function SidebarNav({ brandName, messages, menuGroups }: SidebarNavProps)
                 {isOpen && (
                   <div className="mt-0.5 mb-1 md:hidden lg:block">
                     {subItems.map(item => {
-                      const href       = resolveMenuHref(item.routePath, item.featureFlag)
+                      const href       = resolveHref(item.routePath, item.featureFlag)
                       const itemActive = pathname === href || pathname.startsWith(href + '/')
                       return (
                         <Link

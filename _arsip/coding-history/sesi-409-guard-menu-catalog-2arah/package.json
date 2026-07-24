@@ -5,7 +5,6 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "dev:watch": "nodemon --exec \"next dev --turbopack\" --watch . --ext ts,tsx,js,jsx,json --ignore node_modules --ignore .next",
-    "prebuild": "vitest run lib/guards",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

@@ -22,7 +22,6 @@
 
 import { ICON_NAV }    from '@/lib/constants/icons.constant'
 import type { LucideIcon } from '@/lib/constants/icons.constant'
-import { resolveMenuHref } from '@/lib/constants/menu-route.constant'
 
 // ─── Tipe ─────────────────────────────────────────────────────────────────────
 
@@ -51,7 +50,8 @@ export interface NavGroup {
 // ─── Helper — generate path dari feature_key ──────────────────────────────────
 
 export function navItemToPath(item: NavSubItem): string {
-  return resolveMenuHref(item.path, item.key)
+  if (item.path) return item.path
+  return `/dashboard/superadmin/settings/${item.key.replace(/_/g, '-')}`
 }
 
 // ─── Definisi grup navigasi SuperAdmin ────────────────────────────────────────
@@ -61,10 +61,10 @@ export function navItemToPath(item: NavSubItem): string {
 //
 // @DEPRECATED S#255 — SA_NAV_GROUPS tidak lagi dipakai untuk render sidebar SA.
 // Sidebar SA sekarang render dari katalog `dashboard_menus` via getEffectiveMenu('super_admin').
-// SA_NAV_GROUPS DIPERTAHANKAN sebagai fallback safety net jika DB/cache
-// getEffectiveMenu gagal (dipakai di SidebarNav.tsx).
-// Guard anti menu-yatim kini = build-time 2-arah live-Supabase
-// (lib/guards/menu-catalog.guard.test.ts, S#409) — menggantikan SA_KNOWN_MENU_KEYS 1-arah.
+// SA_NAV_GROUPS DIPERTAHANKAN sebagai:
+//   1. Fallback safety net jika DB/cache getEffectiveMenu gagal (SidebarNav.tsx)
+//   2. Sumber KNOWN_MENU_KEYS untuk guard build-time anti menu-yatim (Step 6)
+// JANGAN hapus hingga guard KNOWN_MENU_KEYS selesai diimplementasikan.
 
 export const SA_NAV_GROUPS: NavGroup[] = [
   {
@@ -179,3 +179,35 @@ export const SA_NAV_GROUPS: NavGroup[] = [
     ],
   },
 ]
+
+// ─── KNOWN_MENU_KEYS: guard build-time anti menu-yatim (Step 6 FASE 1) ──────────
+// Berisi semua menu_key SA yang PUNYA halaman di kode (route ada, bukan placeholder).
+// Dipakai di SidebarNav (dev mode) untuk warning jika key dari DB tidak dikenali.
+// Dibuat dari SA_NAV_GROUPS agar tidak perlu maintenance manual.
+//
+// Format menu_key di DB: 'sa.{group}.{item}' (mis. 'sa.konfigurasi.security_login')
+// Derivasi dari SA_NAV_GROUPS: 'sa.{group.key}' (grup) + 'sa.{group.key}.{item.key}' (item)
+
+export const SA_KNOWN_MENU_KEYS = new Set<string>([
+  // Grup
+  ...SA_NAV_GROUPS.map(g => `sa.${g.key}`),
+  // Item
+  ...SA_NAV_GROUPS.flatMap(g => g.items.map(i => `sa.${g.key}.${i.key}`)),
+])
+
+// Guard: warning di console (dev only) jika menu_key dari DB tidak dikenali.
+// Dipanggil dari SidebarNav saat useDataDriven=true.
+// Tujuan: cegah menu 404 saat SA menambah entry baru di DB tapi belum ada halaman di kode.
+export function warnUnknownMenuKeys(menuGroups: Array<{ menuKey: string; items: Array<{ menuKey: string }> }>): void {
+  if (process.env.NODE_ENV !== 'development') return
+  for (const group of menuGroups) {
+    if (!SA_KNOWN_MENU_KEYS.has(group.menuKey)) {
+      console.warn(`[NAV-GUARD] menu_key grup tidak dikenali: '${group.menuKey}' — pastikan ada halaman di kode`)
+    }
+    for (const item of group.items) {
+      if (!SA_KNOWN_MENU_KEYS.has(item.menuKey)) {
+        console.warn(`[NAV-GUARD] menu_key item tidak dikenali: '${item.menuKey}' — pastikan ada halaman di kode`)
+      }
+    }
+  }
+}
