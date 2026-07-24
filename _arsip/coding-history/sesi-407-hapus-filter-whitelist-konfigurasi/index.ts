@@ -42,6 +42,7 @@ export type { LucideIcon } from './icons.constant'
 // ─── UI — Navigasi, Typography, Warna, Scroll ─────────────────────────────────
 export {
   SA_NAV_GROUPS,
+  SA_VALID_FEATURE_KEYS,
   navItemToPath,
 } from './nav.constant'
 export type { NavGroup, NavSubItem } from './nav.constant'

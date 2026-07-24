@@ -180,6 +180,14 @@ export const SA_NAV_GROUPS: NavGroup[] = [
   },
 ]
 
+// ─── Set semua feature_key valid (untuk filter dari DB) ───────────────────────
+
+export const SA_VALID_FEATURE_KEYS = new Set<string>(
+  SA_NAV_GROUPS
+    .filter(g => g.key === 'konfigurasi')
+    .flatMap(g => g.items.map(i => i.key))
+)
+
 // ─── KNOWN_MENU_KEYS: guard build-time anti menu-yatim (Step 6 FASE 1) ──────────
 // Berisi semua menu_key SA yang PUNYA halaman di kode (route ada, bukan placeholder).
 // Dipakai di SidebarNav (dev mode) untuk warning jika key dari DB tidak dikenali.

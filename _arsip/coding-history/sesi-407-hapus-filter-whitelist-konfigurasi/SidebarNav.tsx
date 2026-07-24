@@ -21,6 +21,7 @@ import { useGpsInfo }             from '@/lib/hooks/useGpsInfo'
 import { useMobileSidebar }       from '@/components/DashboardShell'
 import {
   SA_NAV_GROUPS,
+  SA_VALID_FEATURE_KEYS,
   navItemToPath,
   warnUnknownMenuKeys,
 }                                 from '@/lib/constants/nav.constant'
@@ -35,7 +36,7 @@ interface SidebarNavProps {
   menuGroups?: MenuGroup[]
 }
 
-export function SidebarNav({ brandName, messages, menuGroups }: SidebarNavProps) {
+export function SidebarNav({ brandName, messages, featureKeys, menuGroups }: SidebarNavProps) {
   const pathname = usePathname()
   const router   = useRouter()
   const { mobileOpen, onMobileClose } = useMobileSidebar()
@@ -111,6 +112,7 @@ export function SidebarNav({ brandName, messages, menuGroups }: SidebarNavProps)
     }
   }
 
+  const validFeatureKeys = new Set(featureKeys.filter(k => SA_VALID_FEATURE_KEYS.has(k)))
   const TabletIcon = ICON_NAV.konfigurasi
 
   return (
@@ -166,7 +168,14 @@ export function SidebarNav({ brandName, messages, menuGroups }: SidebarNavProps)
             const isActive = isGroupActive(slug, pathname)
             const isOpen   = openGroups[group.menuKey] ?? false
 
-            const subItems = group.items
+            const subItems = slug === 'konfigurasi'
+              ? group.items
+                  .filter(item => item.routePath !== null || validFeatureKeys.has(item.featureFlag ?? ''))
+                  .sort((a, b) =>
+                    group.items.findIndex(x => x.menuKey === a.menuKey) -
+                    group.items.findIndex(x => x.menuKey === b.menuKey)
+                  )
+              : group.items
 
             return (
               <div key={group.menuKey}>
@@ -217,7 +226,14 @@ export function SidebarNav({ brandName, messages, menuGroups }: SidebarNavProps)
             const isActive = isGroupActive(group.key, pathname)
             const isOpen   = openGroups[group.key] ?? false
 
-            const subItems = group.items
+            const subItems = group.key === 'konfigurasi'
+              ? group.items
+                  .filter(item => item.path !== undefined || validFeatureKeys.has(item.key))
+                  .sort((a, b) =>
+                    group.items.findIndex(x => x.key === a.key) -
+                    group.items.findIndex(x => x.key === b.key)
+                  )
+              : group.items
 
             return (
               <div key={group.key}>
