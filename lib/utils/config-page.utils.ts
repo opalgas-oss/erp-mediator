@@ -77,6 +77,7 @@ export function mapTipe(tipeData: string, policyKey?: string): ConfigItemType {
   if (tipeData === 'boolean')                                         return 'toggle'
   if (tipeData === 'toggle')                                          return 'toggle'   // S#285: gps_mode pakai tipe_data='toggle' di DB
   if (tipeData === 'select')                                          return 'select-only'
+  if (tipeData === 'illustration')                                    return 'illustration'   // S#412: field maintenance_illustration (preset + upload)
   if (tipeData === 'json')                                            return 'json-per-role'
   if (tipeData === 'text')                                            return 'text-field'
   if (tipeData === 'string')                                          return 'text-field'   // T-029: platform_timezone + field string lain

@@ -15,12 +15,13 @@ import { Switch }            from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TimingInput }       from '@/components/TimingInput'
 import { PerRoleJsonEditor } from '@/components/PerRoleJsonEditor'
+import { MaintenanceIllustrationField } from '@/components/maintenance/MaintenanceIllustrationField'
 
 export interface ConfigItemData {
   id:              string
   label:           string
   fieldName?:      string
-  type:            'toggle' | 'number-unit' | 'select-only' | 'timing' | 'json-per-role' | 'text-field'
+  type:            'toggle' | 'number-unit' | 'select-only' | 'timing' | 'json-per-role' | 'text-field' | 'illustration'
   value:           number | boolean | string
   unit?:           string
   units?:          string[]
@@ -224,6 +225,24 @@ export function ConfigItem({ item, onValueChange, onUnitChange, onAdminCanChange
               placeholder="contoh: PENDING,REVIEW"
             />
           </div>
+        </div>
+        {showAdminToggle && <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />}
+      </div>
+    )
+  }
+
+  // ── illustration (preset bawaan + upload gambar ke Storage) ────────────────
+  if (item.type === 'illustration') {
+    return (
+      <div className="space-y-0.5">
+        <div className="py-1">
+          <ItemLabel label={item.label} enabled={item.enabled} />
+          <MaintenanceIllustrationField
+            value={String(item.value)}
+            options={item.options}
+            disabled={!item.enabled}
+            onValueChange={(v) => onValueChange(v)}
+          />
         </div>
         {showAdminToggle && <AdminCanChangeRow checked={item.adminCanChange} onToggle={onAdminCanChangeToggle} />}
       </div>

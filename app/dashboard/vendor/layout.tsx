@@ -30,6 +30,8 @@ import { VENDOR_LOGIN_ALLOWED, ROLES } from '@/lib/constants'
 import { cekSesiParalel }             from '@/app/login/login-session-check'
 import { DashboardShell }             from '@/components/DashboardShell'
 import { VendorSidebarNav }           from '@/components/VendorSidebarNav'
+import { getMaintenanceConfig }       from '@/lib/maintenance'
+import { MaintenanceView }            from '@/components/maintenance/MaintenanceView'
 
 // ─── Messages cache — B5 ─────────────────────────────────────────────────────
 // Konsisten dengan SA layout (getSidebarData). TTL 1800 detik, tag 'vendor-messages'.
@@ -44,6 +46,10 @@ export default async function VendorLayout({ children }: { children: React.React
   const payload = await verifyJWT()
   // NORMALIZED (8 Juni 2026 CASE SESI-12): cek role dari memberships atau isSuperAdmin
   if (!payload || payload.role !== ROLES.VENDOR) redirect('/login')
+
+  // Gate maintenance (loop config `sistem`, S#412): Vendor melihat halaman maintenance saat mode ON.
+  const maintenance = await getMaintenanceConfig()
+  if (maintenance.on) return <MaintenanceView data={maintenance} />
 
   // Status vendor: utamakan dari JWT (Edge Function v5), fallback ke DB query.
   const fetchStatusVendor = async (): Promise<string> => {
