@@ -73,47 +73,21 @@ export function MaintenanceView({ data }: { data: MaintenanceConfig }) {
         )}
 
         {/*
-          §6.3 — ajakan menghubungi HANYA dirender kalau toggle SA menyala DAN ada kanal tujuan
-          nyata di `team_contacts`. Kedua tautan digerbangi TERPISAH: kontak yang punya email tapi
-          nomornya kosong hanya memunculkan tautan email, dan sebaliknya. Nol kanal → blok ini tidak
-          dirender sama sekali — "tidak ada ajakan menghubungi tanpa alamat di baliknya".
-
-          S#424 — T-424-4 (error yang Philips laporkan sebagai QA halaman maintenance):
-          sebelumnya `href` di sini adalah `mailto:` + alamat SAJA, tanpa perihal dan tanpa isi.
-          Email yang terbuka KOSONG melompong. Sekarang `data.mailtoHref` datang dari
-          `buildBugMailto()` — perihal + isi terisi otomatis.
-
-          S#424 — K-424-1 (Philips): kanal WA ditambahkan. WA = kanal KIRIM, email = kanal
-          DOKUMENTASI & LOG. `wa.me` jalan di aplikasi ponsel, WhatsApp Desktop, DAN WhatsApp Web,
-          jadi ia tidak bisa gagal senyap seperti `mailto:` saat tidak ada aplikasi email terdaftar
-          (persis yang terjadi di jendela Incognito, bukti T-424-4).
+          §6.3 — TIGA syarat harus terpenuhi sekaligus sebelum ajakan ditampilkan:
+          toggle SA menyala, DAN ada alamat tujuan nyata di team_contacts.
+          `emailKontak` null (daftar kosong ATAU nol dicentang publikasi) → blok ini
+          TIDAK dirender sama sekali — "tidak ada ajakan menghubungi tanpa alamat di baliknya".
+          Sebelum S#423 di sini hanya ada paragraf MATI dengan teks hardcode.
         */}
-        {data.showContact && (data.mailtoHref || data.waHref) && (
-          <div className="mt-6 space-y-1.5 text-xs opacity-70">
-            {data.mailtoHref && (
-              <p>
-                <a
-                  href={data.mailtoHref}
-                  className="underline underline-offset-2 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-current rounded"
-                >
-                  {data.ctaText}
-                </a>
-              </p>
-            )}
-
-            {data.waHref && (
-              <p>
-                <a
-                  href={data.waHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-2 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-current rounded"
-                >
-                  {data.waCtaText}
-                </a>
-              </p>
-            )}
-          </div>
+        {data.showContact && data.emailKontak && (
+          <p className="mt-6 text-xs opacity-70">
+            <a
+              href={`mailto:${data.emailKontak}`}
+              className="underline underline-offset-2 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-current rounded"
+            >
+              {data.ctaText}
+            </a>
+          </p>
         )}
       </div>
     </main>

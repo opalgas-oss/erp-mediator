@@ -12,6 +12,9 @@ import 'server-only'
 import { getConfigPageItems } from '@/lib/config-registry'
 import { getMessage }         from '@/lib/message-library'
 import { TeamContactService_getKontakTujuan } from '@/lib/services/team-contact.service'
+import { buildBugMailto }        from '@/lib/utils/bug-mailto.util'
+import { buildBugWaLink }        from '@/lib/utils/wa-link.util'
+import { getNamaBrandPlatform }  from '@/lib/utils/brand.server'
 
 export interface MaintenanceConfig {
   on:           boolean
@@ -35,6 +38,31 @@ export interface MaintenanceConfig {
    * daftar kontak kosong, ATAU ada kontak tapi nol yang dicentang publikasi publik.
    */
   emailKontak:  string | null
+  // ─── S#424 — T-424-4: tautan email KOSONG diperbaiki + kanal WA lahir (K-424-1) ───────
+  /**
+   * Tautan `mailto:` **LENGKAP** — sudah memuat `subject` + `body` terisi otomatis.
+   *
+   * Sebelum S#424 halaman ini memasang `mailto:` + alamat SAJA, tanpa perihal dan tanpa isi.
+   * Akibatnya email yang terbuka KOSONG melompong dan perintah K-422-1 ("untuk menerima Bug
+   * Code") tidak pernah terpenuhi — dan itulah error yang Philips laporkan sebagai QA (T-424-4).
+   * `buildBugMailto()` sudah dibuat S#423 tetapi belum pernah dipanggil dari mana pun.
+   *
+   * `null` = tidak ada alamat tujuan ⇒ tautan email WAJIB tidak dirender (§6.3).
+   */
+  mailtoHref:   string | null
+  /**
+   * Tautan `https://wa.me/...` **LENGKAP** — sudah memuat pesan terisi otomatis.
+   *
+   * K-424-1 (Philips): WA = kanal KIRIM, email = kanal DOKUMENTASI & LOG. Keduanya berdampingan.
+   * Kelebihan WA atas `mailto:`: `wa.me` jalan di aplikasi ponsel, WhatsApp Desktop, DAN WhatsApp
+   * Web — tidak bergantung aplikasi email terpasang, jadi tidak bisa gagal senyap seperti
+   * `mailto:` di jendela Incognito (bukti T-424-4).
+   *
+   * `null` = nomor tujuan kosong / tidak layak ⇒ tautan WA WAJIB tidak dirender (pola §6.3).
+   */
+  waHref:       string | null
+  /** Label tautan WA, dari message_library `maintenance_contact_wa_cta` */
+  waCtaText:    string
 }
 
 // Baca semua field sistem → bentuk MaintenanceConfig.
@@ -64,9 +92,76 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
   // §6.3 — alamat tujuan HANYA dicari kalau memang akan dipakai. Saat maintenance mati
   // atau toggle kontak mati, nol query tambahan ke team_contacts.
   let emailKontak: string | null = null
+  let mailtoHref:  string | null = null
+  let waHref:      string | null = null
+  let waCtaText                  = ''
+
   if (on && showContact) {
     const kontak = await TeamContactService_getKontakTujuan('public_page')
     emailKontak  = kontak?.email ?? null
+
+    if (kontak) {
+      // Bahan tautan dibaca paralel. SENGAJA tanpa nilai fallback untuk ketiga template:
+      // ketiganya baris NYATA di message_library (2 di antaranya di-INSERT S#424). Kalau salah
+      // satu hilang, getMessage() mengembalikan NAMA KEY-nya sehingga kerusakan LANGSUNG TERLIHAT
+      // di email/pesan — gagal berisik jauh lebih baik daripada gagal senyap untuk fitur yang
+      // seluruh tujuannya adalah melaporkan kerusakan.
+      const [templatePerihal, templateIsi, templatePesanWa, ctaWa, brandName, rowsUmum] =
+        await Promise.all([
+          getMessage('error_email_subject'),
+          getMessage('error_email_body'),
+          getMessage('error_wa_message'),
+          getMessage('maintenance_contact_wa_cta'),
+          getNamaBrandPlatform(null),
+          getConfigPageItems('platform_general'),
+        ])
+
+      waCtaText = ctaWa
+
+      // Zona waktu dari config_registry `platform_general.platform_timezone` — NOL hardcode
+      // (ATURAN 8). Nilai live: 'Asia/Jakarta'. Fallback hanya jaring terakhir kalau barisnya
+      // dihapus; memakainya di sini sekaligus MENUTUP loop config yang sebelumnya menganggur
+      // tanpa konsumen (ATURAN 34).
+      const zona =
+        rowsUmum.find((r) => r.policy_key === 'platform_timezone')?.nilai || 'Asia/Jakarta'
+
+      const waktu = new Intl.DateTimeFormat('id-ID', {
+        dateStyle: 'long',
+        timeStyle: 'short',
+        timeZone:  zona,
+      }).format(new Date())
+
+      // Bahan yang sama dipakai kedua kanal supaya isi email dan isi WA tidak bisa berbeda.
+      // `pengguna` + `kodeError` sengaja null: halaman maintenance BUKAN halaman error — di sini
+      // tidak ada `error.digest` dan tidak ada sesi pengguna. Kedua baris itu DIHAPUS otomatis
+      // oleh buangBarisKosong() sesuai §8. Bug Code muncul di halaman error (FASE 3.6e).
+      const bahan = {
+        namaHalaman:   map['maintenance_title'] || 'Sedang Dalam Perbaikan',
+        alamatHalaman: '/',
+        waktu,
+        brandName,
+        pengguna:      null,
+        kodeError:     null,
+      }
+
+      if (kontak.email) {
+        mailtoHref = buildBugMailto({
+          emailTujuan: kontak.email,
+          templatePerihal,
+          templateIsi,
+          ...bahan,
+        })
+      }
+
+      // buildBugWaLink mengembalikan null sendiri kalau nomornya kosong / tidak layak —
+      // tidak melempar, karena ini halaman PUBLIK dan satu nomor salah format DILARANG
+      // menumbangkan halaman.
+      waHref = buildBugWaLink({
+        nomorTujuan:   kontak.telepon ?? '',
+        templatePesan: templatePesanWa,
+        ...bahan,
+      })
+    }
   }
 
   return {
@@ -80,5 +175,8 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
     etaPrefix,
     ctaText,
     emailKontak,
+    mailtoHref,
+    waHref,
+    waCtaText,
   }
 }

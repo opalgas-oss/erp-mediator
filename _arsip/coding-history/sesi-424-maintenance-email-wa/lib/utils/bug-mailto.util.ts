@@ -47,7 +47,7 @@ export interface BugMailtoInput {
 
 const POLA_VARIABEL = /\{(\w+)\}/g
 
-export function isiVariabel(teks: string, nilai: Record<string, string>): string {
+function isiVariabel(teks: string, nilai: Record<string, string>): string {
   return teks.replace(POLA_VARIABEL, (_cocok, kunci: string) => nilai[kunci] ?? `{${kunci}}`)
 }
 
@@ -57,7 +57,7 @@ export function isiVariabel(teks: string, nilai: Record<string, string>): string
  * bukan ditulis "kosong" dan bukan dibiarkan menggantung sebagai "Pengguna   : ".
  * Baris dikenali dari kemunculan placeholder-nya SEBELUM substitusi dijalankan.
  */
-export function buangBarisKosong(template: string, variabelKosong: string[]): string {
+function buangBarisKosong(template: string, variabelKosong: string[]): string {
   if (variabelKosong.length === 0) return template
   return template
     .split('\n')
