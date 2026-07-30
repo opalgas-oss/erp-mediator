@@ -48,7 +48,6 @@ const PAGE_META: Record<string, PageMeta> = {
   '/dashboard/superadmin/permissions':                { titleKey: 'page_title_permissions',        descKey: 'page_desc_permissions'       },
   '/dashboard/superadmin/memberships':                { titleKey: 'page_title_memberships',        descKey: 'page_desc_memberships'       },
   '/dashboard/superadmin/refunds':                    { titleKey: 'page_title_refunds',            descKey: 'page_desc_refunds'           },
-  '/dashboard/superadmin/team-contacts':              { titleKey: 'page_title_tim_kontak',         descKey: 'page_desc_tim_kontak'        },
 
   // ── Monitoring ──
   '/dashboard/superadmin/monitoring':                 { titleKey: 'page_title_monitoring',         descKey: 'page_desc_monitoring'        },
