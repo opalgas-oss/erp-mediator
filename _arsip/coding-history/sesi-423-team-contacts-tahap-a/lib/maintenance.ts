@@ -11,7 +11,6 @@
 import 'server-only'
 import { getConfigPageItems } from '@/lib/config-registry'
 import { getMessage }         from '@/lib/message-library'
-import { TeamContactService_getKontakTujuan } from '@/lib/services/team-contact.service'
 
 export interface MaintenanceConfig {
   on:           boolean
@@ -21,20 +20,6 @@ export interface MaintenanceConfig {
   theme:        string   // terang | brand | senja | mint
   eta:          string
   showContact:  boolean
-  // ─── S#423 — menutup DUA teks hardcode di MaintenanceView.tsx ───────────────
-  /** Awalan ETA, dari message_library `maintenance_eta_prefix` (dulu hardcode "Perkiraan selesai:") */
-  etaPrefix:    string
-  /** Teks ajakan, dari message_library `maintenance_contact_cta` (dulu hardcode) */
-  ctaText:      string
-  /**
-   * Alamat tujuan tautan "hubungi tim kami" — kontak terpublikasi PERTAMA
-   * (`team_contacts`, `publish_public_page`, urut sort_order).
-   *
-   * **null = TIDAK ADA alamat → ajakan menghubungi WAJIB tidak ditampilkan** (DESAIN §6.3:
-   * "tidak ada ajakan menghubungi tanpa alamat di baliknya"). Dua keadaan menghasilkan null:
-   * daftar kontak kosong, ATAU ada kontak tapi nol yang dicentang publikasi publik.
-   */
-  emailKontak:  string | null
 }
 
 // Baca semua field sistem → bentuk MaintenanceConfig.
@@ -47,27 +32,11 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
     if (r.policy_key) map[r.policy_key] = r.nilai
   }
 
-  const on          = map['maintenance_mode']         === 'true'
-  const showContact = map['maintenance_show_contact'] === 'true'
+  const on = map['maintenance_mode'] === 'true'
 
   // Pesan: config menyimpan KEY message_library (keputusan Philips S#412), teks diedit di menu Pesan.
   const messageKey = map['maintenance_message'] || 'maintenance_body'
-
-  // Ketiga teks dibaca paralel — nol tambahan latency dibanding sebelumnya.
-  // Nilai fallback = teks lama PERSIS (pola S#363: zero behavior change kalau key belum ada).
-  const [body, etaPrefix, ctaText] = await Promise.all([
-    getMessage(messageKey, 'Mohon maaf, situs sedang dalam perbaikan. Kami akan segera kembali.'),
-    getMessage('maintenance_eta_prefix',  'Perkiraan selesai:'),
-    getMessage('maintenance_contact_cta', 'Butuh bantuan? Silakan hubungi tim kami.'),
-  ])
-
-  // §6.3 — alamat tujuan HANYA dicari kalau memang akan dipakai. Saat maintenance mati
-  // atau toggle kontak mati, nol query tambahan ke team_contacts.
-  let emailKontak: string | null = null
-  if (on && showContact) {
-    const kontak = await TeamContactService_getKontakTujuan('public_page')
-    emailKontak  = kontak?.email ?? null
-  }
+  const body = await getMessage(messageKey, 'Mohon maaf, situs sedang dalam perbaikan. Kami akan segera kembali.')
 
   return {
     on,
@@ -76,9 +45,6 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
     illustration: map['maintenance_illustration'] || 'preset_wrench',
     theme:        map['maintenance_theme']        || 'terang',
     eta:          map['maintenance_eta']          || '',
-    showContact,
-    etaPrefix,
-    ctaText,
-    emailKontak,
+    showContact:  map['maintenance_show_contact'] === 'true',
   }
 }

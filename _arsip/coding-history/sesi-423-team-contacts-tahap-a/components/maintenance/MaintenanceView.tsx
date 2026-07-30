@@ -68,25 +68,13 @@ export function MaintenanceView({ data }: { data: MaintenanceConfig }) {
 
         {data.eta && (
           <p className="mt-5 inline-block rounded-full bg-black/5 px-4 py-1.5 text-xs font-medium">
-            {data.etaPrefix} {data.eta}
+            Perkiraan selesai: {data.eta}
           </p>
         )}
 
-        {/*
-          §6.3 — TIGA syarat harus terpenuhi sekaligus sebelum ajakan ditampilkan:
-          toggle SA menyala, DAN ada alamat tujuan nyata di team_contacts.
-          `emailKontak` null (daftar kosong ATAU nol dicentang publikasi) → blok ini
-          TIDAK dirender sama sekali — "tidak ada ajakan menghubungi tanpa alamat di baliknya".
-          Sebelum S#423 di sini hanya ada paragraf MATI dengan teks hardcode.
-        */}
-        {data.showContact && data.emailKontak && (
+        {data.showContact && (
           <p className="mt-6 text-xs opacity-70">
-            <a
-              href={`mailto:${data.emailKontak}`}
-              className="underline underline-offset-2 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-current rounded"
-            >
-              {data.ctaText}
-            </a>
+            Butuh bantuan? Silakan hubungi tim kami.
           </p>
         )}
       </div>
