@@ -1,6 +1,15 @@
 // lib/services/app-error.service.ts
-// Orkestrasi laporan gangguan: CATAT ke audit trail → KIRIM email ke tim.
-// Dibuat: Sesi #424 — FASE 3.6e jalur EMAIL. Nol query langsung (semua lewat repository).
+// KATEGORI: ORKESTRASI satu laporan gangguan — bentuk profil pelapor → CATAT → email → eskalasi.
+//
+// Dibuat: Sesi #424 (jalur EMAIL). Dipecah TIGA + ditulis ulang isinya: Sesi #427 (K-427-1).
+//
+// ═══ PETA PECAHAN — buka yang sesuai dengan yang mau diubah ══════════════════════════════════
+//   · berkas ini                        ALUR: profil pelapor → catat → email → eskalasi
+//   · `app-error-email.service.ts`      MENYUSUN + MENGIRIM email laporan pertama
+//   · `app-error-eskalasi.service.ts`   MEMUTUSKAN kapan tim dipanggil + email eskalasinya
+// Sumbunya TANGGUNG JAWAB, bukan ukuran: ketiganya berubah karena alasan yang berbeda. Pemicunya
+// memang plafon — berkas ini 11.285 B SEBELUM disentuh — tetapi K-426-2 mengikat bahwa plafon
+// yang terlewati adalah pemicu PEMECAHAN, bukan pemicu memangkas komentar.
 //
 // ═══ KENAPA EMAIL, DAN KENAPA SERVER YANG MENGIRIM ═══════════════════════════════════════════
 // Keputusan Philips S#424 (verbatim): *"untuk Support Problem hampir / sebagian besar tidak
@@ -8,122 +17,99 @@
 // dan Log History Problem sebuah aplikasi dan memastikan tidak ada penyelesaian case karena
 // subjektif ke dekatan personal."*
 //
-// Sebelum S#424 satu-satunya jalur email adalah `mailto:` — yaitu MENITIPKAN ke aplikasi email
-// pengguna. Diuji nyata di komputer Philips (jendela normal, bukan Incognito): Chrome membentuk
-// Request URL yang SEMPURNA (terbukti dari tab Payload DevTools) lalu BERHENTI — `0 B transferred`,
-// nol aplikasi terbuka, karena tidak ada handler `mailto:` terdaftar. Gagal SENYAP, nol umpan balik.
+// Sebelum S#424 satu-satunya jalur email adalah `mailto:` — MENITIPKAN ke aplikasi email pengguna.
+// Diuji nyata di komputer Philips: Chrome membentuk Request URL yang SEMPURNA lalu BERHENTI —
+// `0 B transferred`, nol aplikasi terbuka. Gagal SENYAP, nol umpan balik. Modul ini memindahkan
+// pengiriman ke SERVER: server TAHU email terkirim atau tidak, dan laporan tercatat SEBELUM email
+// sehingga audit trail tidak bergantung pada keberhasilan pengiriman.
 //
-// Modul ini memindahkan pengiriman ke SERVER. Bedanya bukan selera:
-//   · server TAHU email terkirim atau tidak (`mailto:` tidak pernah tahu)
-//   · laporan tercatat di `app_error_log` SEBELUM email — audit trail tidak bergantung email
-//   · tidak butuh aplikasi apa pun di komputer pengguna
-//
-// DRY (ATURAN 19) — registry `cr_functions` diperiksa lebih dulu, NOL fungsi kirim email baru dibuat:
-//   `sendResendEmail()` di `lib/utils/resend.server.ts` SUDAH ADA (S#218), server-only, sinkron,
-//   credential dari M3 DB. Provider `resend` terverifikasi `is_aktif=true` + 1 instance aktif.
+// ═══ APA YANG BERUBAH DI S#427 ═══════════════════════════════════════════════════════════════
+//  1. `appErrorRepo_upsertDedup(payload, dedupMinutes)` → `appErrorRepo_catatLaporan(payload)`.
+//     Parameter `dedupMinutes` DIBUANG mengikuti K-425-3: waktu BUKAN pelepas penahanan.
+//     Konstanta `DEDUP_MINUTES_DEFAULT = 10` ikut dibuang — ia angka bisnis yang hidup di kode.
+//     ⛔ DILARANG mengembalikan nama lama atau membuat alias supaya build lolos.
+//  2. Profil pelapor dibentuk DI SINI: IP + browser + perangkat + 3 penanda laporan.
+//  3. Header dioper DARI ROUTE. Service TIDAK membaca `request` sendiri — route yang memberi.
+//     IP DILARANG datang dari body: body bisa dipalsukan klien, header tidak.
+//  4. Profil pelapor WAJIB masuk isi email (K-424-5 poin 6) — dikerjakan di service email.
+//  5. IP DILARANG ikut dikembalikan di respons API — lihat catatan di `LaporGangguanResult`.
 
 import 'server-only'
 import {
-  appErrorRepo_upsertDedup,
+  appErrorRepo_catatLaporan,
   type AppErrorInput,
   type AreaError,
 } from '@/lib/repositories/app-error.repository'
-import { getConfigPageItems } from '@/lib/config-registry'
-import { getMessage }         from '@/lib/message-library'
-import { sendResendEmail }    from '@/lib/utils/resend.server'
-import { getNamaBrandPlatform } from '@/lib/utils/brand.server'
-import { TeamContactService_getKontakTujuan } from '@/lib/services/team-contact.service'
-import { isiVariabel, buangBarisKosong } from '@/lib/utils/bug-mailto.util'
+import { bacaIpPelapor }       from '@/lib/utils/ip-pelapor.util'
+import { uraiProfilPerangkat } from '@/lib/utils/perangkat-pelapor.util'
+import { buatInsidenKey, buatSidikProfil, buatDedupKey } from '@/lib/utils/penanda-laporan.util'
+import { AppErrorEmail_kirimLaporanPertama } from '@/lib/services/app-error-email.service'
+import { AppErrorEskalasi_periksaDanKirim }  from '@/lib/services/app-error-eskalasi.service'
 
 // ─── Tipe ─────────────────────────────────────────────────────────────────────
 
 export interface LaporGangguanInput {
-  routePath:   string
   /**
-   * URL LENGKAP halaman yang bermasalah (protokol + host + path + query).
-   *
-   * SENGAJA dipisah dari `routePath`. Koreksi Philips S#424: *"isi nya masih belum menggambarkan
-   * detail page yang problem dan aplikasi nya... ini akan membingungkan team Support."*
-   * Tim Support butuh alamat yang bisa langsung dibuka; `/` saja tidak cukup.
-   *
-   * TAPI alamat lengkap TIDAK BOLEH masuk `dedup_key` — query string yang berubah-ubah
-   * (`?cek=s424f`, `?cek=s424g`) akan memecah dedup dan melahirkan baris + email baru tiap kali.
-   * Karena itu dedup tetap memakai `routePath` (pathname murni), alamat lengkap hanya untuk isi pesan.
+   * Header permintaan, DIOPER DARI ROUTE. Sumber alamat IP dan `user-agent`.
+   * Service sengaja tidak menerima `Request` utuh: yang dibutuhkan hanya header, dan mempersempit
+   * masukan membuat mustahil ada nilai dari body menyelinap jadi identitas pelapor.
+   */
+  headers:       Headers
+  routePath:     string
+  /**
+   * URL LENGKAP halaman bermasalah. SENGAJA dipisah dari `routePath` (koreksi Philips S#424:
+   * *"isi nya masih belum menggambarkan detail page yang problem"*). Hanya untuk isi pesan —
+   * penanda gangguan tetap memakai `routePath` supaya query string yang berubah-ubah tidak
+   * memecah penahanan.
    */
   alamatLengkap: string | null
-  namaHalaman: string | null
-  menuKey:     string | null
-  digest:      string | null
-  pesan:       string | null
-  area:        AreaError
-  uid:         string | null
-  tenantId:    string | null
-  userAgent:   string | null
+  namaHalaman:   string | null
+  menuKey:       string | null
+  digest:        string | null
+  pesan:         string | null
+  area:          AreaError
+  uid:           string | null
+  tenantId:      string | null
 }
 
 export interface LaporGangguanResult {
-  /** id baris app_error_log — dipakai UI sebagai Bug Code kalau `digest` tidak ada */
+  /** id baris app_error_log — dipakai UI sebagai Kode laporan kalau `digest` tidak ada */
   idLaporan:        string
   occurrenceCount:  number
+  /** `false` = laporan DITAHAN (Pop Up 2, nol email) — profil sama + halaman sama, K-425-3 */
   barisBaru:        boolean
   emailTerkirim:    boolean
-  /** alasan email tidak terkirim — untuk ditampilkan jujur ke pengguna, bukan disembunyikan */
   alasanEmailGagal: string | null
+  /** Ringkasan eskalasi — `null` kalau laporannya ditahan (eskalasi tidak dievaluasi). */
+  eskalasi: { menyala: boolean; jumlahPelapor: number; ambangTertembus: number | null } | null
 }
-
-const DEDUP_MINUTES_DEFAULT = 10
+// ⛔ CATATAN KEAMANAN: `ip_pelapor` SENGAJA TIDAK ADA di tipe ini. IP disimpan PENUH di Supabase
+// (K-424-6) dan ikut isi email ke tim, tetapi DILARANG dikembalikan ke pemanggil API — pengunjung
+// tidak boleh menerima kembali alamat IP dari respons halaman publik.
 
 // ─── AppErrorService_laporGangguan ────────────────────────────────────────────
 /**
- * Catat gangguan ke audit trail, lalu kirim email ke kontak tim yang dicentang
- * `publish_bug_dashboard`.
+ * Catat gangguan ke audit trail, kirim email pertama, lalu serahkan keputusan eskalasi.
  *
- * **Urutan SENGAJA: catat DULU, kirim email SESUDAH.** Kalau email gagal, laporannya tetap
- * tercatat — audit trail TIDAK BOLEH bergantung pada keberhasilan pengiriman. Ini inti alasan
- * Philips memilih email sebagai kanal resmi: jejaknya harus ada apa pun yang terjadi.
+ * **Urutan SENGAJA: catat DULU, email SESUDAH.** Kalau email gagal, laporannya tetap tercatat —
+ * audit trail TIDAK BOLEH bergantung pada keberhasilan pengiriman.
  *
- * **Email hanya dikirim saat baris BARU lahir.** Kejadian berulang dalam jendela dedup hanya
- * menaikkan `occurrence_count` — satu gangguan yang diklik 50 kali menghasilkan 1 email, bukan 50.
- * Inilah fungsi bisnis dedup, bukan sekadar kerapian tabel.
+ * **Email dan eskalasi hanya saat baris BARU lahir.** Laporan yang ditahan hanya menaikkan
+ * `occurrence_count`; ia tidak menambah pelapor unik, jadi mengevaluasi eskalasi di sana hanya
+ * membuang query.
  */
 export async function AppErrorService_laporGangguan(
   input: LaporGangguanInput
 ): Promise<LaporGangguanResult> {
-  // ── Jendela dedup dari config (ATURAN 8 — nol hardcode) ────────────────────
-  let dedupMinutes = DEDUP_MINUTES_DEFAULT
-  try {
-    const rows = await getConfigPageItems('monitoring')
-    const baris = rows.find((r) => r.policy_key === 'error_report_dedup_minutes')
-    const angka = Number(baris?.nilai)
-    if (Number.isFinite(angka) && angka > 0) dedupMinutes = angka
-  } catch (err) {
-    // BUKAN catch kosong (BUG-034/BUG-038). Config tak terbaca bukan alasan menggagalkan laporan —
-    // tapi WAJIB berbunyi supaya tidak jadi bug senyap.
-    console.warn('[AppErrorService] gagal membaca error_report_dedup_minutes, pakai default', err)
-  }
+  // ── Profil pelapor: seluruhnya dari HEADER, diurai DI SERVER ────────────────
+  const ip = bacaIpPelapor(input.headers)
+  // `user-agent` juga diambil dari header, bukan dari body — alasan yang sama dengan IP.
+  const userAgent = input.headers.get('user-agent')
+  const { browser, perangkat } = uraiProfilPerangkat(userAgent)
 
-  // ── dedup_key = digest + route_path (K-417-3) ──────────────────────────────
-  // Halaman PUBLIK sengaja tidak mengirim `digest` (tidak ada error boundary di sana), sehingga
-  // dedup_key-nya STABIL. Efek samping yang disengaja: pengunjung anonim tidak bisa melahirkan
-  // baris baru tanpa batas dengan mengarang digest acak — satu halaman = satu baris per jendela.
-  // ⛔⛔ KUNCI DI BAWAH AKAN DIGANTI DI S#425 — PERINTAH PHILIPS K-424-5 ⛔⛔
-  //
-  // Sumbu dedup berubah dari per-INSIDEN menjadi per-PROFIL PELAPOR. Verbatim lengkap:
-  // `PROMPT_SESI_425.md` LANGKAH 1. Ringkas:
-  //   · profil pelapor (User ID kalau login + jenis Browser + IP + Device) WAJIB dicatat DAN ikut
-  //     masuk isi email, supaya Support tahu problemnya kenapa dan di mana
-  //   · pelapor BERBEDA pada halaman sama            → DILARANG di-block
-  //   · halaman BERBEDA oleh pelapor sama            → DILARANG di-block
-  //   · pelapor SAMA + halaman SAMA                  → tidak dikirim ulang, TAPI wajib memberi pesan
-  //     sopan yang TERLIHAT ("…sedang penanganan oleh Team Support") — bukan ditelan diam-diam
-  //   · cookie di perangkat mencatat halaman bermasalah + waktu kirim
-  //
-  // ⚠️ CACAT KUNCI SEKARANG, diakui terbuka: kunci ini BUTA terhadap identitas pelapor. Dua orang
-  //    BERBEDA yang melapor gangguan sama ⇒ laporan orang kedua HILANG TANPA JEJAK, dan tim tidak
-  //    pernah tahu ada 2 orang terdampak. Itu cacat "berpikir satu pengguna" yang dikoreksi Philips
-  //    (*"kamu pikir aplikasi yang kamu buat bukan untuk publik, tapi dibuat untuk dipakai hanya
-  //    satu orang saja"*) — bukan optimasi yang disengaja.
-  const dedupKey = `${input.digest ?? 'tanpa-digest'}::${input.routePath}`
+  const insidenKey  = buatInsidenKey(input.digest, input.routePath)
+  const sidikProfil = buatSidikProfil({ uid: input.uid, ip, browser, perangkat })
+  const dedupKey    = buatDedupKey(insidenKey, sidikProfil)
 
   const payload: AppErrorInput = {
     route_path:   input.routePath,
@@ -134,100 +120,71 @@ export async function AppErrorService_laporGangguan(
     area:         input.area,
     uid:          input.uid,
     tenant_id:    input.tenantId,
-    user_agent:   input.userAgent,
+    user_agent:   userAgent,
     dedup_key:    dedupKey,
+    insiden_key:  insidenKey,
+    sidik_profil: sidikProfil,
+    ip_pelapor:   ip,
+    browser,
+    perangkat,
   }
 
   // ── LANGKAH 1: audit trail. Gagal di sini = gagal beneran, dilempar ke caller.
-  const tercatat = await appErrorRepo_upsertDedup(payload, dedupMinutes)
+  const tercatat = await appErrorRepo_catatLaporan(payload)
 
-  // ── LANGKAH 2: email — hanya untuk baris BARU.
   if (!tercatat.baris_baru) {
     return {
       idLaporan:        tercatat.id,
       occurrenceCount:  tercatat.occurrence_count,
       barisBaru:        false,
       emailTerkirim:    false,
-      alasanEmailGagal: null, // bukan gagal — memang sengaja tidak dikirim (dedup)
+      alasanEmailGagal: null, // bukan gagal — memang ditahan (K-425-3)
+      eskalasi:         null,
     }
   }
 
-  let emailTerkirim = false
-  let alasanGagal: string | null = null
+  const namaHalaman   = input.namaHalaman ?? input.routePath
+  const alamatHalaman = input.alamatLengkap ?? input.routePath
+  // Pengguna SELALU punya satu kode yang bisa disebut ke tim — itu yang membuat case bisa
+  // dilacak, bukan diingat-ingat.
+  const kodeError     = input.digest ?? tercatat.id
 
-  try {
-    const kontak = await TeamContactService_getKontakTujuan('bug_dashboard')
+  // ── LANGKAH 2: email pertama ───────────────────────────────────────────────
+  const email = await AppErrorEmail_kirimLaporanPertama({
+    area:      input.area,
+    namaHalaman,
+    alamatHalaman,
+    kodeError,
+    uid:       input.uid,
+    tenantId:  input.tenantId,
+    ipPelapor: ip,
+    browser,
+    perangkat,
+  })
 
-    if (!kontak?.email) {
-      // §6.3 — tidak ada alamat tujuan. Bukan galat sistem; laporannya sudah tercatat.
-      alasanGagal = 'Belum ada kontak tim yang dicentang untuk laporan bug'
-      console.warn('[AppErrorService] nol kontak bug_dashboard — email dilewati, laporan tetap tercatat')
-    } else {
-      // Label area dalam bahasa manusia — dari message_library (ATURAN 8), bukan kode mentah
-      // seperti 'super_admin' yang tidak berarti apa-apa bagi tim Support.
-      const [templatePerihal, templateIsi, brandName, rowsUmum, labelArea] = await Promise.all([
-        getMessage('error_email_subject'),
-        getMessage('error_email_body'),
-        getNamaBrandPlatform(input.tenantId),
-        getConfigPageItems('platform_general'),
-        getMessage(`error_area_${input.area}`),
-      ])
-
-      const zona =
-        rowsUmum.find((r) => r.policy_key === 'platform_timezone')?.nilai || 'Asia/Jakarta'
-
-      const waktu = new Intl.DateTimeFormat('id-ID', {
-        dateStyle: 'long',
-        timeStyle: 'short',
-        timeZone:  zona,
-      }).format(new Date())
-
-      // Bug Code = `digest` kalau ada; kalau tidak, id baris laporan. Pengguna SELALU punya satu
-      // kode yang bisa disebut ke tim — itu yang membuat case bisa dilacak, bukan diingat-ingat.
-      const bugCode = input.digest ?? tercatat.id
-
-      const kosong: string[] = []
-      if (!input.uid) kosong.push('pengguna')
-
-      const nilai: Record<string, string> = {
-        area:           labelArea,
-        nama_halaman:   input.namaHalaman ?? input.routePath,
-        alamat_halaman: input.alamatLengkap ?? input.routePath,
-        waktu,
-        brand_name:     brandName,
-        pengguna:       input.uid ?? '',
-        kode_error:     bugCode,
-      }
-
-      const perihal = isiVariabel(templatePerihal, nilai)
-      const isi     = isiVariabel(buangBarisKosong(templateIsi, kosong), nilai)
-
-      const hasil = await sendResendEmail({
-        toEmail:  kontak.email,
-        toNama:   kontak.nama,
-        subject:  perihal,
-        textBody: isi,
-      })
-
-      emailTerkirim = hasil.success
-      if (!hasil.success) {
-        alasanGagal = hasil.message ?? 'Pengiriman email gagal'
-        console.error('[AppErrorService] Resend gagal:', hasil.message)
-      }
-    }
-  } catch (err) {
-    // WAJIB berbunyi. Laporan SUDAH tercatat di langkah 1, jadi kegagalan email tidak
-    // menghilangkan jejak — tapi menelannya diam-diam akan mengubah fitur anti-bug-senyap
-    // ini menjadi bug senyap (BUG-034 · BUG-038).
-    alasanGagal = err instanceof Error ? err.message : 'Kesalahan tak dikenal saat mengirim email'
-    console.error('[AppErrorService] pengiriman email gangguan gagal:', err)
-  }
+  // ── LANGKAH 3: eskalasi (K-425-2) — kegagalannya TIDAK menggagalkan laporan ─
+  const eskalasi = await AppErrorEskalasi_periksaDanKirim({
+    insidenKey,
+    namaHalaman,
+    alamatHalaman,
+    labelArea: email.labelArea,
+    tenantId:  input.tenantId,
+    kodeError,
+    ipPelapor: ip,
+    browser,
+    perangkat,
+  })
 
   return {
     idLaporan:        tercatat.id,
     occurrenceCount:  tercatat.occurrence_count,
     barisBaru:        true,
-    emailTerkirim,
-    alasanEmailGagal: alasanGagal,
+    emailTerkirim:    email.terkirim,
+    alasanEmailGagal: email.alasanGagal,
+    eskalasi: {
+      menyala:         eskalasi.menyala,
+      jumlahPelapor:   eskalasi.jumlahPelapor,
+      ambangTertembus: eskalasi.ambangTertembus,
+    },
   }
 }

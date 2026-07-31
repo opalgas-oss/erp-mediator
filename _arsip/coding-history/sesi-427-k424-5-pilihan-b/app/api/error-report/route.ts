@@ -2,26 +2,20 @@
 // POST — terima laporan gangguan dari halaman maintenance / halaman error, catat ke audit trail
 // (`app_error_log`) lalu kirim email ke kontak tim.
 //
-// Dibuat: Sesi #424 — FASE 3.6e jalur EMAIL. Direvisi: Sesi #427 (bagian A + B, K-426-1).
+// Dibuat: Sesi #424 — FASE 3.6e jalur EMAIL.
 //
 // ENDPOINT INI SENGAJA PUBLIK (tanpa auth) — halaman maintenance dan halaman error justru muncul
 // saat sistem sedang tidak sehat; mewajibkan sesi login di sana berarti laporan tidak akan pernah
 // sampai. Konsekuensinya dijaga di bawah, bukan diabaikan.
 //
 // PENGAMAN ANTI-BANJIR (disebut terbuka, bukan diam-diam):
-//   1. PENAHANAN PER-PROFIL di repository: profil sama + halaman sama ⇒ nol baris baru, nol email.
-//      ⚠️ KOREKSI S#427 atas komentar versi S#424: pengaman ini TIDAK lagi bersandar pada
-//      "halaman publik tidak mengirim digest sehingga kuncinya stabil". Sejak K-424-5 kuncinya
-//      memuat SIDIK PROFIL, jadi pelapor BERBEDA memang WAJIB melahirkan baris baru — itu inti
-//      perintahnya, bukan celah. Yang menahan banjir dari satu sumber = pengaman 2 di bawah.
-//   2. PEMBATAS LAJU PER-IP (Upstash) — `HUTANG-RATELIMIT-ERROR-REPORT` ditutup S#427.
-//      GAGAL-TERBUKA: Redis mati / config belum diisi ⇒ laporan TETAP diproses + berbunyi di log.
-//   3. DTO Zod membatasi panjang setiap field — payload raksasa ditolak sebelum menyentuh DB.
-//   4. `area` dibatasi enum yang sama persis dengan CHECK constraint di Supabase.
-//
-// ⛔ IDENTITAS PELAPOR TIDAK PERNAH DATANG DARI BODY. IP dan `user-agent` dibaca dari HEADER lalu
-// dioper ke service; body hanya boleh membawa keterangan halaman. Body bisa dipalsukan klien.
-// IP juga DILARANG dikembalikan di respons — lihat blok respons di bawah.
+//   1. `dedup_key` = digest + route_path. Halaman publik TIDAK mengirim digest, jadi kuncinya
+//      STABIL → pengunjung anonim tidak bisa melahirkan baris tanpa batas. Satu halaman = satu
+//      baris per jendela dedup, dan email hanya dikirim saat baris BARU lahir.
+//   2. DTO Zod membatasi panjang setiap field — payload raksasa ditolak sebelum menyentuh DB.
+//   3. `area` dibatasi enum yang sama persis dengan CHECK constraint di Supabase.
+//   ⚠️ Rate limit per-IP (Upstash) BELUM ada — dicatat sebagai HUTANG-RATELIMIT-ERROR-REPORT,
+//      bukan dianggap selesai. Pengaman 1 menahan kasus wajar, bukan penyerang yang gigih.
 //
 // AREA RAWAN — `catch {}` KOSONG (BUG-034 · BUG-038): route inilah yang paling rentan. Kalau galat
 // ditelan diam-diam, fitur anti-bug-senyap BERUBAH menjadi bug senyap. Setiap cabang gagal di
@@ -30,8 +24,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z }                         from 'zod'
 import { AppErrorService_laporGangguan } from '@/lib/services/app-error.service'
-import { bacaIpPelapor }        from '@/lib/utils/ip-pelapor.util'
-import { periksaLajuLaporan }   from '@/lib/utils/pembatas-laju-laporan.util'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,7 +33,7 @@ const AREA = ['publik', 'super_admin', 'admin_tenant', 'vendor'] as const
 
 const SkemaLaporan = z.object({
   routePath:     z.string().min(1).max(500),
-  /** URL lengkap — untuk isi email/pesan saja, TIDAK masuk penanda gangguan (query berubah-ubah) */
+  /** URL lengkap — untuk isi email/pesan saja, TIDAK masuk dedup_key (query string berubah-ubah) */
   alamatLengkap: z.string().max(1000).nullish(),
   namaHalaman: z.string().max(200).nullish(),
   menuKey:     z.string().max(120).nullish(),
@@ -54,19 +46,6 @@ const SkemaLaporan = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    // ── Pembatas laju per-IP (bagian B) — SEBELUM parsing body ────────────────
-    // Ditaruh paling depan supaya banjir permintaan tidak sempat memakai CPU untuk mengurai JSON.
-    const ip   = bacaIpPelapor(request.headers)
-    const laju = await periksaLajuLaporan(ip)
-
-    if (!laju.boleh) {
-      console.warn('[POST /api/error-report] permintaan ditahan pembatas laju')
-      return NextResponse.json(
-        { success: false, message: 'Terlalu banyak laporan dikirim. Coba lagi beberapa saat lagi.' },
-        { status: 429 }
-      )
-    }
-
     const raw = await request.json().catch(() => null)
 
     if (raw === null) {
@@ -90,25 +69,22 @@ export async function POST(request: NextRequest) {
     const d = parsed.data
 
     const hasil = await AppErrorService_laporGangguan({
-      // Header DIOPER dari sini. Service tidak membaca `request` sendiri — ia hanya menerima
-      // header, sehingga mustahil ada nilai dari body menyelinap jadi identitas pelapor.
-      headers:       request.headers,
       routePath:     d.routePath,
       alamatLengkap: d.alamatLengkap ?? null,
-      namaHalaman:   d.namaHalaman ?? null,
-      menuKey:       d.menuKey ?? null,
-      digest:        d.digest ?? null,
-      pesan:         d.pesan ?? null,
-      area:          d.area,
-      // uid + tenantId SENGAJA null di tahap ini: halaman publik tidak punya sesi. Halaman error
-      // dashboard mengisinya nanti lewat sesi SERVER, BUKAN dari body permintaan.
-      uid:           null,
-      tenantId:      null,
+      namaHalaman: d.namaHalaman ?? null,
+      menuKey:     d.menuKey ?? null,
+      digest:      d.digest ?? null,
+      pesan:       d.pesan ?? null,
+      area:        d.area,
+      // uid + tenantId SENGAJA null di Tahap ini: halaman publik tidak punya sesi. Halaman error
+      // dashboard mengisinya di FASE berikutnya lewat sesi server, BUKAN dari body permintaan —
+      // identitas TIDAK BOLEH datang dari klien (bisa dipalsukan).
+      uid:         null,
+      tenantId:    null,
+      userAgent:   request.headers.get('user-agent'),
     })
 
-    // Kode laporan dikembalikan supaya pengguna punya kode yang bisa disebut ke tim.
-    // ⛔ `ip_pelapor` SENGAJA TIDAK ADA di sini — IP tersimpan penuh di Supabase dan ikut isi
-    // email ke tim, tetapi pengunjung tidak boleh menerimanya kembali dari respons publik.
+    // Bug Code dikembalikan supaya pengguna punya kode yang bisa disebut ke tim.
     return NextResponse.json({
       success:          true,
       bugCode:          hasil.idLaporan,
