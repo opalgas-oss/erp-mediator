@@ -63,6 +63,23 @@ export interface MaintenanceConfig {
   waHref:       string | null
   /** Label tautan WA, dari message_library `maintenance_contact_wa_cta` */
   waCtaText:    string
+  /**
+   * Teks tombol LAPOR (aksi utama) — semuanya dari `message_library` kategori `error_ui`.
+   *
+   * Dioper PROP ke Client Component `LaporGangguanButton` karena `getMessage()` ber-`server-only`
+   * (pola K-420-4, sama seperti nama brand).
+   *
+   * K-424 (Philips): support problem WAJIB lewat email demi **audit trail + log history**, supaya
+   * penyelesaian case tidak jadi subjektif karena kedekatan personal. Tombol ini jalur resminya:
+   * server mencatat ke `app_error_log` lalu mengirim email — tidak menitipkan ke aplikasi email
+   * pengguna seperti `mailto:` (yang terbukti gagal senyap tanpa handler).
+   */
+  teksLapor: {
+    tombol:   string
+    mengirim: string
+    sukses:   string
+    gagal:    string
+  }
 }
 
 // Baca semua field sistem → bentuk MaintenanceConfig.
@@ -95,8 +112,20 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
   let mailtoHref:  string | null = null
   let waHref:      string | null = null
   let waCtaText                  = ''
+  let teksLapor = { tombol: '', mengirim: '', sukses: '', gagal: '' }
 
   if (on && showContact) {
+    // Teks tombol LAPOR dibaca lebih dulu dan TIDAK bergantung pada ada/tidaknya kontak:
+    // laporan tetap tercatat ke `app_error_log` walau nol kontak dicentang. Audit trail adalah
+    // alasan kanal ini dipilih (K-424) — ia tidak boleh mati hanya karena daftar kontak kosong.
+    const [tTombol, tMengirim, tSukses, tGagal] = await Promise.all([
+      getMessage('error_report_button'),
+      getMessage('error_report_sending'),
+      getMessage('error_report_success'),
+      getMessage('error_report_failed'),
+    ])
+    teksLapor = { tombol: tTombol, mengirim: tMengirim, sukses: tSukses, gagal: tGagal }
+
     const kontak = await TeamContactService_getKontakTujuan('public_page')
     emailKontak  = kontak?.email ?? null
 
@@ -178,5 +207,6 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
     mailtoHref,
     waHref,
     waCtaText,
+    teksLapor,
   }
 }

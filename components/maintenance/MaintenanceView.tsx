@@ -6,6 +6,7 @@
 // Ilustrasi: id preset (preset_*) → SVG bawaan app; selain itu dianggap URL (hasil upload SA ke Storage).
 
 import type { MaintenanceConfig } from '@/lib/maintenance'
+import { LaporGangguanButton }    from '@/components/maintenance/LaporGangguanButton'
 
 // ─── Tema warna latar (dari config maintenance_theme) ─────────────────────────
 const THEME_CLASS: Record<string, string> = {
@@ -88,8 +89,30 @@ export function MaintenanceView({ data }: { data: MaintenanceConfig }) {
           jadi ia tidak bisa gagal senyap seperti `mailto:` saat tidak ada aplikasi email terdaftar
           (persis yang terjadi di jendela Incognito, bukti T-424-4).
         */}
+        {/*
+          AKSI UTAMA — S#424, keputusan Philips: support problem WAJIB lewat EMAIL demi audit trail
+          + log history, supaya penyelesaian case tidak jadi subjektif karena kedekatan personal.
+          Tombol ini mengirim lewat SERVER: laporan dicatat ke `app_error_log` LEBIH DULU, baru
+          email dikirim ke kontak tim. Ia tidak menitipkan apa pun ke aplikasi email pengguna,
+          sehingga tidak bisa gagal senyap seperti `mailto:` (terbukti T-424-4).
+
+          Digerbangi `showContact` saja — SENGAJA tidak menunggu `mailtoHref`/`waHref`: laporan
+          tetap masuk audit trail walau nol kontak dicentang.
+        */}
+        {data.showContact && (
+          <LaporGangguanButton
+            routePath="/"
+            namaHalaman={data.title}
+            area="publik"
+            teksTombol={data.teksLapor.tombol}
+            teksMengirim={data.teksLapor.mengirim}
+            teksSukses={data.teksLapor.sukses}
+            teksGagal={data.teksLapor.gagal}
+          />
+        )}
+
         {data.showContact && (data.mailtoHref || data.waHref) && (
-          <div className="mt-6 space-y-1.5 text-xs opacity-70">
+          <div className="mt-4 space-y-1.5 text-xs opacity-70">
             {data.mailtoHref && (
               <p>
                 <a
