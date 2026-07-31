@@ -106,6 +106,23 @@ export async function AppErrorService_laporGangguan(
   // Halaman PUBLIK sengaja tidak mengirim `digest` (tidak ada error boundary di sana), sehingga
   // dedup_key-nya STABIL. Efek samping yang disengaja: pengunjung anonim tidak bisa melahirkan
   // baris baru tanpa batas dengan mengarang digest acak — satu halaman = satu baris per jendela.
+  // ⛔⛔ KUNCI DI BAWAH AKAN DIGANTI DI S#425 — PERINTAH PHILIPS K-424-5 ⛔⛔
+  //
+  // Sumbu dedup berubah dari per-INSIDEN menjadi per-PROFIL PELAPOR. Verbatim lengkap:
+  // `PROMPT_SESI_425.md` LANGKAH 1. Ringkas:
+  //   · profil pelapor (User ID kalau login + jenis Browser + IP + Device) WAJIB dicatat DAN ikut
+  //     masuk isi email, supaya Support tahu problemnya kenapa dan di mana
+  //   · pelapor BERBEDA pada halaman sama            → DILARANG di-block
+  //   · halaman BERBEDA oleh pelapor sama            → DILARANG di-block
+  //   · pelapor SAMA + halaman SAMA                  → tidak dikirim ulang, TAPI wajib memberi pesan
+  //     sopan yang TERLIHAT ("…sedang penanganan oleh Team Support") — bukan ditelan diam-diam
+  //   · cookie di perangkat mencatat halaman bermasalah + waktu kirim
+  //
+  // ⚠️ CACAT KUNCI SEKARANG, diakui terbuka: kunci ini BUTA terhadap identitas pelapor. Dua orang
+  //    BERBEDA yang melapor gangguan sama ⇒ laporan orang kedua HILANG TANPA JEJAK, dan tim tidak
+  //    pernah tahu ada 2 orang terdampak. Itu cacat "berpikir satu pengguna" yang dikoreksi Philips
+  //    (*"kamu pikir aplikasi yang kamu buat bukan untuk publik, tapi dibuat untuk dipakai hanya
+  //    satu orang saja"*) — bukan optimasi yang disengaja.
   const dedupKey = `${input.digest ?? 'tanpa-digest'}::${input.routePath}`
 
   const payload: AppErrorInput = {

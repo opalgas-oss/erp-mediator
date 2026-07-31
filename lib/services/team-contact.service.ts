@@ -30,6 +30,7 @@
 
 import 'server-only'
 import { validateSortOrder } from '@/lib/utils/validation.server'
+import { normalkanNomorWaLink } from '@/lib/utils/wa-link.util'
 import {
   TeamContactRepo_findAll,
   TeamContactRepo_findById,
@@ -109,6 +110,39 @@ function pastikanNamaTerisi(nama: string): void {
   }
 }
 
+// ─── Normalisasi nomor telepon SEBELUM disimpan (S#424) ─────────────────────────────
+/**
+ * `TEMUAN-TELEPON-TEAMCONTACTS-BUKAN-62` — ditemukan S#424, ditutup di sesi yang sama atas
+ * tagihan Philips (*"2 temuan itu kapan kamu mau selesaikan atau di biarkan terus saja"*).
+ *
+ * **Masalahnya:** baris pertama tabel ini menyimpan `08164851879`, sedangkan standar platform
+ * adalah `62xxx` (ditegakkan `validateNomorWa` di `validation.server.ts`, dipakai TenantService).
+ * Route S#423 memakai DTO Zod tapi TIDAK menegakkan format itu, jadi dua format hidup
+ * berdampingan — kelas persis ATURAN 41 (nilai `role` uppercase vs lowercase).
+ *
+ * **Kenapa berbahaya:** setiap konsumen baru harus menormalkan sendiri. `buildBugWaLink()`
+ * sudah terpaksa melakukannya saat merender tautan. Menambal di konsumen = tambalan berulang
+ * tanpa akhir; yang benar adalah data masuk sudah bersih.
+ *
+ * **Nol fungsi baru (ATURAN 19):** memakai ulang `normalkanNomorWaLink()` dari `wa-link.util.ts`
+ * — satu-satunya normalisasi nomor di repo ini yang server-safe DAN bebas dependensi berat.
+ *
+ * Kosong dibiarkan kosong (kolom opsional). Terisi tapi tidak layak → DITOLAK, supaya data kotor
+ * tidak pernah mendarat.
+ */
+function normalkanTeleponUntukSimpan(telepon: string | null | undefined): string | null {
+  const mentah = (telepon ?? '').trim()
+  if (!mentah) return null
+
+  const rapi = normalkanNomorWaLink(mentah)
+  if (!rapi) {
+    throw new Error(
+      `Nomor telepon tidak sah: "${mentah}". Gunakan format 08xxx, 8xxx, atau 62xxx (10–15 digit).`
+    )
+  }
+  return rapi
+}
+
 // ─── Helper internal: baris mentah → baris siap-render ────────────────────────
 /**
  * Ubah daftar baris mentah (SUDAH terurut dari repository) menjadi baris tabel SA.
@@ -167,7 +201,11 @@ export async function TeamContactService_create(
   validateSortOrder(sortOrder)
 
   return TeamContactRepo_insert(
-    { ...payload, nama: payload.nama.trim() },
+    {
+      ...payload,
+      nama:    payload.nama.trim(),
+      telepon: normalkanTeleponUntukSimpan(payload.telepon),
+    },
     sortOrder,
     olehUid
   )
@@ -195,6 +233,11 @@ export async function TeamContactService_update(
   const bersih: UbahKontakTimPayload = {
     ...payload,
     ...(payload.nama !== undefined ? { nama: payload.nama.trim() } : {}),
+    // Normalisasi telepon HANYA kalau field-nya memang dikirim — ini update PARSIAL,
+    // dan menyentuh field yang tidak dikirim akan menimpa data lama dengan null.
+    ...(payload.telepon !== undefined
+      ? { telepon: normalkanTeleponUntukSimpan(payload.telepon) }
+      : {}),
   }
 
   return TeamContactRepo_update(id, bersih, olehUid)

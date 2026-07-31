@@ -92,7 +92,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .insert({
         key:        body.key.trim(),
         kategori:   body.kategori.trim(),
-        channel:    body.channel ?? 'ui',
+        // TEMUAN-CHANNEL-CASING-GANDA (S#424) — LAPIS 1 dari 2.
+        // Sebelumnya `body.channel ?? 'ui'` menerima nilai klien apa adanya, sehingga `UI`/`WA`/
+        // `EMAIL` ikut mendarat berdampingan dengan `ui`/`wa`/`email`. Diukur S#424: 52 dari 225
+        // baris berkasing besar — kelas persis ATURAN 41 (nilai `role` uppercase legacy).
+        // Kode yang memfilter `channel` harus menangani dua format, atau salah satu tidak terdeteksi.
+        // Lapis 2 = CHECK constraint di Supabase, dipasang SESUDAH baris ini hidup (memasangnya
+        // lebih dulu akan membuat SA gagal menyimpan = menukar temuan laten dengan bug hidup).
+        channel:    String(body.channel ?? 'ui').trim().toLowerCase(),
         teks:       body.teks.trim(),
         variabel,
         keterangan: body.keterangan?.trim() ?? null,
