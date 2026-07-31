@@ -12,7 +12,6 @@ import 'server-only'
 import { getConfigPageItems } from '@/lib/config-registry'
 import { getMessage }         from '@/lib/message-library'
 import { TeamContactService_getKontakTujuan } from '@/lib/services/team-contact.service'
-import { buildBugMailto }        from '@/lib/utils/bug-mailto.util'
 import { buildBugWaLink }        from '@/lib/utils/wa-link.util'
 import { getNamaBrandPlatform }  from '@/lib/utils/brand.server'
 
@@ -38,18 +37,18 @@ export interface MaintenanceConfig {
    * daftar kontak kosong, ATAU ada kontak tapi nol yang dicentang publikasi publik.
    */
   emailKontak:  string | null
-  // ─── S#424 — T-424-4: tautan email KOSONG diperbaiki + kanal WA lahir (K-424-1) ───────
-  /**
-   * Tautan `mailto:` **LENGKAP** — sudah memuat `subject` + `body` terisi otomatis.
-   *
-   * Sebelum S#424 halaman ini memasang `mailto:` + alamat SAJA, tanpa perihal dan tanpa isi.
-   * Akibatnya email yang terbuka KOSONG melompong dan perintah K-422-1 ("untuk menerima Bug
-   * Code") tidak pernah terpenuhi — dan itulah error yang Philips laporkan sebagai QA (T-424-4).
-   * `buildBugMailto()` sudah dibuat S#423 tetapi belum pernah dipanggil dari mana pun.
-   *
-   * `null` = tidak ada alamat tujuan ⇒ tautan email WAJIB tidak dirender (§6.3).
-   */
-  mailtoHref:   string | null
+  // ─── S#424 — KANAL LAPORAN: tombol server-send (utama) + WhatsApp (pelengkap) ──────────
+  //
+  // ⚠️ `mailtoHref` DIHAPUS di S#424 atas koreksi Philips (*"ini mana yang mau di pakai???"*).
+  //    Dua alasan, keduanya berdasar bukti:
+  //    1. RUSAK — diuji di komputer Philips, jendela normal (bukan Incognito): payload sempurna
+  //       (terbukti tab Payload DevTools) tapi Chrome berhenti `0 B transferred`, nol handler
+  //       `mailto:` terdaftar. Memajang jalur yang diketahui gagal = menjebak pengunjung.
+  //    2. REDUNDAN — tombol lapor sudah mengirim email lewat SERVER, dan hanya jalur itu yang
+  //       memenuhi tuntutan audit trail K-424 (server tahu terkirim atau tidak; `mailto:` tidak
+  //       pernah tahu).
+  //    `buildBugMailto()` di `lib/utils/bug-mailto.util.ts` kini NOL pemakai — dicatat sebagai
+  //    HUTANG-BUGMAILTO-YATIM, bukan dihapus diam-diam di sesi yang sama (anti-overreach).
   /**
    * Tautan `https://wa.me/...` **LENGKAP** — sudah memuat pesan terisi otomatis.
    *
@@ -109,7 +108,6 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
   // §6.3 — alamat tujuan HANYA dicari kalau memang akan dipakai. Saat maintenance mati
   // atau toggle kontak mati, nol query tambahan ke team_contacts.
   let emailKontak: string | null = null
-  let mailtoHref:  string | null = null
   let waHref:      string | null = null
   let waCtaText                  = ''
   let teksLapor = { tombol: '', mengirim: '', sukses: '', gagal: '' }
@@ -135,14 +133,13 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
       // satu hilang, getMessage() mengembalikan NAMA KEY-nya sehingga kerusakan LANGSUNG TERLIHAT
       // di email/pesan — gagal berisik jauh lebih baik daripada gagal senyap untuk fitur yang
       // seluruh tujuannya adalah melaporkan kerusakan.
-      const [templatePerihal, templateIsi, templatePesanWa, ctaWa, brandName, rowsUmum] =
+      const [templatePesanWa, ctaWa, brandName, rowsUmum, labelArea] =
         await Promise.all([
-          getMessage('error_email_subject'),
-          getMessage('error_email_body'),
           getMessage('error_wa_message'),
           getMessage('maintenance_contact_wa_cta'),
           getNamaBrandPlatform(null),
           getConfigPageItems('platform_general'),
+          getMessage('error_area_publik'),
         ])
 
       waCtaText = ctaWa
@@ -165,21 +162,13 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
       // tidak ada `error.digest` dan tidak ada sesi pengguna. Kedua baris itu DIHAPUS otomatis
       // oleh buangBarisKosong() sesuai §8. Bug Code muncul di halaman error (FASE 3.6e).
       const bahan = {
+        area:          labelArea,
         namaHalaman:   map['maintenance_title'] || 'Sedang Dalam Perbaikan',
         alamatHalaman: '/',
         waktu,
         brandName,
         pengguna:      null,
         kodeError:     null,
-      }
-
-      if (kontak.email) {
-        mailtoHref = buildBugMailto({
-          emailTujuan: kontak.email,
-          templatePerihal,
-          templateIsi,
-          ...bahan,
-        })
       }
 
       // buildBugWaLink mengembalikan null sendiri kalau nomornya kosong / tidak layak —
@@ -204,7 +193,6 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
     etaPrefix,
     ctaText,
     emailKontak,
-    mailtoHref,
     waHref,
     waCtaText,
     teksLapor,

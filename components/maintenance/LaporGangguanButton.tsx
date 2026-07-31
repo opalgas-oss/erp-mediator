@@ -67,10 +67,18 @@ export function LaporGangguanButton({
     setKeadaan('mengirim')
 
     try {
+      // URL LENGKAP diambil di klien — hanya di sinilah host + query benar-benar diketahui.
+      // Koreksi Philips S#424: tim Support butuh alamat yang bisa langsung dibuka, bukan `/`.
+      // Dikirim TERPISAH dari `routePath` supaya dedup tidak pecah oleh query string.
+      const alamatLengkap =
+        typeof window !== 'undefined' ? window.location.href : null
+
       const res = await fetch('/api/error-report', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ routePath, namaHalaman, menuKey, digest, pesan, area }),
+        body:    JSON.stringify({
+          routePath, alamatLengkap, namaHalaman, menuKey, digest, pesan, area,
+        }),
       })
 
       const data = await res.json().catch(() => null)

@@ -39,6 +39,18 @@ import { isiVariabel, buangBarisKosong } from '@/lib/utils/bug-mailto.util'
 
 export interface LaporGangguanInput {
   routePath:   string
+  /**
+   * URL LENGKAP halaman yang bermasalah (protokol + host + path + query).
+   *
+   * SENGAJA dipisah dari `routePath`. Koreksi Philips S#424: *"isi nya masih belum menggambarkan
+   * detail page yang problem dan aplikasi nya... ini akan membingungkan team Support."*
+   * Tim Support butuh alamat yang bisa langsung dibuka; `/` saja tidak cukup.
+   *
+   * TAPI alamat lengkap TIDAK BOLEH masuk `dedup_key` — query string yang berubah-ubah
+   * (`?cek=s424f`, `?cek=s424g`) akan memecah dedup dan melahirkan baris + email baru tiap kali.
+   * Karena itu dedup tetap memakai `routePath` (pathname murni), alamat lengkap hanya untuk isi pesan.
+   */
+  alamatLengkap: string | null
   namaHalaman: string | null
   menuKey:     string | null
   digest:      string | null
@@ -134,11 +146,14 @@ export async function AppErrorService_laporGangguan(
       alasanGagal = 'Belum ada kontak tim yang dicentang untuk laporan bug'
       console.warn('[AppErrorService] nol kontak bug_dashboard — email dilewati, laporan tetap tercatat')
     } else {
-      const [templatePerihal, templateIsi, brandName, rowsUmum] = await Promise.all([
+      // Label area dalam bahasa manusia — dari message_library (ATURAN 8), bukan kode mentah
+      // seperti 'super_admin' yang tidak berarti apa-apa bagi tim Support.
+      const [templatePerihal, templateIsi, brandName, rowsUmum, labelArea] = await Promise.all([
         getMessage('error_email_subject'),
         getMessage('error_email_body'),
         getNamaBrandPlatform(input.tenantId),
         getConfigPageItems('platform_general'),
+        getMessage(`error_area_${input.area}`),
       ])
 
       const zona =
@@ -158,8 +173,9 @@ export async function AppErrorService_laporGangguan(
       if (!input.uid) kosong.push('pengguna')
 
       const nilai: Record<string, string> = {
+        area:           labelArea,
         nama_halaman:   input.namaHalaman ?? input.routePath,
-        alamat_halaman: input.routePath,
+        alamat_halaman: input.alamatLengkap ?? input.routePath,
         waktu,
         brand_name:     brandName,
         pengguna:       input.uid ?? '',

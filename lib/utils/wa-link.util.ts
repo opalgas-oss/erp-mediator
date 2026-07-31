@@ -50,6 +50,12 @@ export interface BugWaInput {
   waktu:          string
   /** Nama brand — dioper PROP dari server (K-420-4) */
   brandName:      string
+  /**
+   * Label aplikasi dalam bahasa manusia ("Dashboard SuperAdmin", "Halaman Publik…") dari
+   * `message_library` key `error_area_*`. Ditambahkan S#424 atas koreksi Philips: tanpa ini tim
+   * Support tidak tahu APLIKASI mana yang bermasalah dan laporan jadi membingungkan.
+   */
+  area?:          string | null
   /** Email pengguna dari sesi. Kosong → BARIS ITU DIHAPUS dari pesan (§8) */
   pengguna?:      string | null
   /** `error.digest`. Kosong → BARIS ITU DIHAPUS dari pesan (§8) */
@@ -109,6 +115,7 @@ export function buildBugWaLink(input: BugWaInput): string | null {
   if (!kodeError) kosong.push('kode_error')
 
   const nilai: Record<string, string> = {
+    area:           input.area ?? '',
     nama_halaman:   input.namaHalaman,
     alamat_halaman: input.alamatHalaman,
     waktu:          input.waktu,

@@ -32,7 +32,9 @@ export const dynamic = 'force-dynamic'
 const AREA = ['publik', 'super_admin', 'admin_tenant', 'vendor'] as const
 
 const SkemaLaporan = z.object({
-  routePath:   z.string().min(1).max(500),
+  routePath:     z.string().min(1).max(500),
+  /** URL lengkap — untuk isi email/pesan saja, TIDAK masuk dedup_key (query string berubah-ubah) */
+  alamatLengkap: z.string().max(1000).nullish(),
   namaHalaman: z.string().max(200).nullish(),
   menuKey:     z.string().max(120).nullish(),
   digest:      z.string().max(120).nullish(),
@@ -67,7 +69,8 @@ export async function POST(request: NextRequest) {
     const d = parsed.data
 
     const hasil = await AppErrorService_laporGangguan({
-      routePath:   d.routePath,
+      routePath:     d.routePath,
+      alamatLengkap: d.alamatLengkap ?? null,
       namaHalaman: d.namaHalaman ?? null,
       menuKey:     d.menuKey ?? null,
       digest:      d.digest ?? null,

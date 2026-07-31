@@ -111,32 +111,33 @@ export function MaintenanceView({ data }: { data: MaintenanceConfig }) {
           />
         )}
 
-        {data.showContact && (data.mailtoHref || data.waHref) && (
-          <div className="mt-4 space-y-1.5 text-xs opacity-70">
-            {data.mailtoHref && (
-              <p>
-                <a
-                  href={data.mailtoHref}
-                  className="underline underline-offset-2 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-current rounded"
-                >
-                  {data.ctaText}
-                </a>
-              </p>
-            )}
+        {/*
+          KANAL PELENGKAP — SATU saja, dan sengaja hanya WhatsApp.
 
-            {data.waHref && (
-              <p>
-                <a
-                  href={data.waHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-2 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-current rounded"
-                >
-                  {data.waCtaText}
-                </a>
-              </p>
-            )}
-          </div>
+          ⚠️ TAUTAN `mailto:` DIBUANG di S#424 atas koreksi Philips: *"ini mana yang mau di pakai???"*
+          Menyodorkan tiga ajakan sekaligus (tombol lapor + mailto + WA) membuat pengunjung harus
+          menebak, dan salah satunya — `mailto:` — TERBUKTI RUSAK di komputer nyata (jendela normal,
+          bukan Incognito): payload sempurna, tapi Chrome berhenti `0 B transferred` karena nol
+          handler terdaftar. Memajang jalur yang diketahui gagal = menjebak pengunjung.
+
+          `mailto:` juga REDUNDAN: tombol di atas sudah mengirim email lewat server — jalur yang
+          justru memenuhi tuntutan audit trail (K-424), sesuatu yang `mailto:` tidak pernah bisa
+          karena server tidak pernah tahu emailnya terkirim atau tidak.
+
+          WhatsApp DIPERTAHANKAN sebagai satu-satunya pelengkap (K-424-1) karena ia satu-satunya
+          kanal tempat pengunjung bisa menambahkan penjelasan dengan bahasanya sendiri.
+        */}
+        {data.showContact && data.waHref && (
+          <p className="mt-3 text-xs opacity-70">
+            <a
+              href={data.waHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-current rounded"
+            >
+              {data.waCtaText}
+            </a>
+          </p>
         )}
       </div>
     </main>
