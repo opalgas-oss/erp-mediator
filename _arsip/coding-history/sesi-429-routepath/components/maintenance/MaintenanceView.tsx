@@ -99,19 +99,9 @@ export function MaintenanceView({ data }: { data: MaintenanceConfig }) {
           Digerbangi `showContact` saja — SENGAJA tidak menunggu `mailtoHref`/`waHref`: laporan
           tetap masuk audit trail walau nol kontak dicentang.
         */}
-        {/*
-          S#429 — `routePath` TIDAK LAGI DIOPER (menutup `HUTANG-ROUTEPATH-HARDCODE`).
-          Sebelumnya baris ini berbunyi `routePath="/"` HARFIAH, apa pun halaman yang sedang
-          digerbangi. Karena `insiden_key` diturunkan dari `routePath`, SELURUH laporan jatuh ke
-          satu insiden yang sama — sehingga kondisi "halaman berbeda", salah satu dari PERSIS DUA
-          pelepas penahanan (K-424-5 poin 2), MUSTAHIL lahir.
-
-          Sekarang prop itu OPSIONAL dan tombol membaca `window.location.pathname` sendiri di
-          klien. Komponen ini server-only dan tidak pernah tahu alamat yang sedang tampil; menebak
-          alamatnya di server justru yang melahirkan hutang tadi. Nol tebakan, nol prop baru.
-        */}
         {data.showContact && (
           <LaporGangguanButton
+            routePath="/"
             namaHalaman={data.title}
             area="publik"
             teks={data.teksLapor}
