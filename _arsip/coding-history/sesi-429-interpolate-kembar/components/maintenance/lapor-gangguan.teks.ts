@@ -8,7 +8,6 @@
 //   sendiri membuat titik perbaikannya tunggal, bukan tersebar di dalam komponen.
 //   Komentar dipindah VERBATIM dari berkas asal (K-426-2).
 
-import { interpolate } from '@/lib/utils-client'
 import type { TeksLaporGangguan, TeksPopUpLaporan } from '@/lib/types/lapor-gangguan.type'
 
 export function susunTeksPopUp(teks: TeksLaporGangguan, bugCode: string): TeksPopUpLaporan {
@@ -18,18 +17,10 @@ export function susunTeksPopUp(teks: TeksLaporGangguan, bugCode: string): TeksPo
   // `{kode_error}` tidak lagi ditempel di kalimat. Substitusi tetap dipertahankan supaya kalau
   // key itu suatu saat diisi ulang dengan placeholder lewat **Konten > Message Library**, yang
   // tampil di layar pengunjung bukan tulisan mentah `{kode_error}`.
-  //
-  // ⚠️ KOREKSI S#429 — regexnya TIDAK ditulis ulang di sini lagi. `interpolate()` di
-  // `lib/utils-client.ts` (terdaftar `interpolate_client`) SUDAH memakai kurung TUNGGAL yang sama
-  // DAN fallback yang sama: key tanpa nilai dikembalikan apa adanya sebagai `{key}`. Menyalin
-  // regexnya ke sini berarti dua rumah untuk satu aturan — kelas persis
-  // `TEMUAN-NORMALISASI-WA-EMPAT-RUMAH` (S#424) dan pelanggaran ATURAN 19 poin 5.
-  // Duplikasi itu lahir S#428 (substitusi ditulis inline di komponen); pemecahan S#429 memberinya
-  // nama sehingga terlihat, dan koreksi ini menutupnya di sesi yang sama — bukan ditinggalkan
-  // sebagai hutang yang menunggu meledak.
-  // Perilaku IDENTIK, termasuk saat `bugCode` string kosong: `'' ?? x` tetap `''`.
   return {
     ...teks.popUp,
-    isiTerkirim: interpolate(teks.popUp.isiTerkirim, { kode_error: bugCode }),
+    isiTerkirim: teks.popUp.isiTerkirim.replace(/\{(\w+)\}/g, (_, k: string) =>
+      k === 'kode_error' ? bugCode : `{${k}}`
+    ),
   }
 }
