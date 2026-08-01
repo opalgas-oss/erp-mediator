@@ -11,9 +11,9 @@
 import 'server-only'
 import { getConfigPageItems } from '@/lib/config-registry'
 import { getMessage }         from '@/lib/message-library'
-import { bacaTeksLaporGangguan, TEKS_LAPOR_KOSONG } from '@/lib/maintenance-teks'
-import { bacaKontakMaintenance }                    from '@/lib/maintenance-kontak'
-import type { TeksLaporGangguan }                   from '@/lib/types/lapor-gangguan.type'
+import { TeamContactService_getKontakTujuan } from '@/lib/services/team-contact.service'
+import { buildBugWaLink }        from '@/lib/utils/wa-link.util'
+import { getNamaBrandPlatform }  from '@/lib/utils/brand.server'
 
 export interface MaintenanceConfig {
   on:           boolean
@@ -72,14 +72,13 @@ export interface MaintenanceConfig {
    * penyelesaian case tidak jadi subjektif karena kedekatan personal. Tombol ini jalur resminya:
    * server mencatat ke `app_error_log` lalu mengirim email — tidak menitipkan ke aplikasi email
    * pengguna seperti `mailto:` (yang terbukti gagal senyap tanpa handler).
-   *
-   * ⚠️ S#428 — bagian D K-424-5: BENTUKNYA BERUBAH. Empat medan datar diganti satu objek yang
-   * juga memuat enam teks Pop Up (`popUp`). Pembacanya pindah ke `lib/maintenance-teks.ts`
-   * karena berkas ini sudah 9.615 B = 96,2% batas 10 KB SEBELUM disentuh; menambah enam
-   * pembacaan di sini pasti melewatinya, dan K-426-2 melarang jalan pintas "rampingkan
-   * komentarnya" — yang benar adalah MEMECAH.
    */
-  teksLapor: TeksLaporGangguan
+  teksLapor: {
+    tombol:   string
+    mengirim: string
+    sukses:   string
+    gagal:    string
+  }
 }
 
 // Baca semua field sistem → bentuk MaintenanceConfig.
@@ -111,27 +110,76 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
   let emailKontak: string | null = null
   let waHref:      string | null = null
   let waCtaText                  = ''
-  let teksLapor: TeksLaporGangguan = TEKS_LAPOR_KOSONG
+  let teksLapor = { tombol: '', mengirim: '', sukses: '', gagal: '' }
 
   if (on && showContact) {
     // Teks tombol LAPOR dibaca lebih dulu dan TIDAK bergantung pada ada/tidaknya kontak:
     // laporan tetap tercatat ke `app_error_log` walau nol kontak dicentang. Audit trail adalah
     // alasan kanal ini dipilih (K-424) — ia tidak boleh mati hanya karena daftar kontak kosong.
-    // Sembilan teks (3 tombol + 6 Pop Up) dibaca sekali jalan di `lib/maintenance-teks.ts`.
-    teksLapor = await bacaTeksLaporGangguan()
+    const [tTombol, tMengirim, tSukses, tGagal] = await Promise.all([
+      getMessage('error_report_button'),
+      getMessage('error_report_sending'),
+      getMessage('error_report_success'),
+      getMessage('error_report_failed'),
+    ])
+    teksLapor = { tombol: tTombol, mengirim: tMengirim, sukses: tSukses, gagal: tGagal }
 
-    // Kontak tujuan + tautan WhatsApp DIPINDAH ke `lib/maintenance-kontak.ts` (S#428, pemecahan
-    // KEDUA — pecahan pertama menyisakan berkas ini di 97,0% batas 10 KB, dan TEMUAN-3 S#427
-    // mewajibkan ukur ulang lalu pecah lagi, bukan memangkas komentar).
-    //
-    // Judul halaman DIOPER dari sini, bukan dibaca ulang dari config di sana: satu pembacaan
-    // config, satu sumber kebenaran (ATURAN 36).
-    const kontak = await bacaKontakMaintenance(
-      map['maintenance_title'] || 'Sedang Dalam Perbaikan'
-    )
-    emailKontak = kontak.emailKontak
-    waHref      = kontak.waHref
-    waCtaText   = kontak.waCtaText
+    const kontak = await TeamContactService_getKontakTujuan('public_page')
+    emailKontak  = kontak?.email ?? null
+
+    if (kontak) {
+      // Bahan tautan dibaca paralel. SENGAJA tanpa nilai fallback untuk ketiga template:
+      // ketiganya baris NYATA di message_library (2 di antaranya di-INSERT S#424). Kalau salah
+      // satu hilang, getMessage() mengembalikan NAMA KEY-nya sehingga kerusakan LANGSUNG TERLIHAT
+      // di email/pesan — gagal berisik jauh lebih baik daripada gagal senyap untuk fitur yang
+      // seluruh tujuannya adalah melaporkan kerusakan.
+      const [templatePesanWa, ctaWa, brandName, rowsUmum, labelArea] =
+        await Promise.all([
+          getMessage('error_wa_message'),
+          getMessage('maintenance_contact_wa_cta'),
+          getNamaBrandPlatform(null),
+          getConfigPageItems('platform_general'),
+          getMessage('error_area_publik'),
+        ])
+
+      waCtaText = ctaWa
+
+      // Zona waktu dari config_registry `platform_general.platform_timezone` — NOL hardcode
+      // (ATURAN 8). Nilai live: 'Asia/Jakarta'. Fallback hanya jaring terakhir kalau barisnya
+      // dihapus; memakainya di sini sekaligus MENUTUP loop config yang sebelumnya menganggur
+      // tanpa konsumen (ATURAN 34).
+      const zona =
+        rowsUmum.find((r) => r.policy_key === 'platform_timezone')?.nilai || 'Asia/Jakarta'
+
+      const waktu = new Intl.DateTimeFormat('id-ID', {
+        dateStyle: 'long',
+        timeStyle: 'short',
+        timeZone:  zona,
+      }).format(new Date())
+
+      // Bahan yang sama dipakai kedua kanal supaya isi email dan isi WA tidak bisa berbeda.
+      // `pengguna` + `kodeError` sengaja null: halaman maintenance BUKAN halaman error — di sini
+      // tidak ada `error.digest` dan tidak ada sesi pengguna. Kedua baris itu DIHAPUS otomatis
+      // oleh buangBarisKosong() sesuai §8. Bug Code muncul di halaman error (FASE 3.6e).
+      const bahan = {
+        area:          labelArea,
+        namaHalaman:   map['maintenance_title'] || 'Sedang Dalam Perbaikan',
+        alamatHalaman: '/',
+        waktu,
+        brandName,
+        pengguna:      null,
+        kodeError:     null,
+      }
+
+      // buildBugWaLink mengembalikan null sendiri kalau nomornya kosong / tidak layak —
+      // tidak melempar, karena ini halaman PUBLIK dan satu nomor salah format DILARANG
+      // menumbangkan halaman.
+      waHref = buildBugWaLink({
+        nomorTujuan:   kontak.telepon ?? '',
+        templatePesan: templatePesanWa,
+        ...bahan,
+      })
+    }
   }
 
   return {

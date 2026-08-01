@@ -104,7 +104,10 @@ export function MaintenanceView({ data }: { data: MaintenanceConfig }) {
             routePath="/"
             namaHalaman={data.title}
             area="publik"
-            teks={data.teksLapor}
+            teksTombol={data.teksLapor.tombol}
+            teksMengirim={data.teksLapor.mengirim}
+            teksSukses={data.teksLapor.sukses}
+            teksGagal={data.teksLapor.gagal}
           />
         )}
 
