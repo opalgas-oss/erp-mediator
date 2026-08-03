@@ -74,20 +74,20 @@ export function MaintenanceView({ data }: { data: MaintenanceConfig }) {
         )}
 
         {/*
-          RIWAYAT KANAL DI HALAMAN INI — dua tautan pernah berdiri di sini, KEDUANYA SUDAH DICABUT.
-          Blok ini DIPERBARUI S#433 supaya tidak menjadi penunjuk basi: komentar yang menjelaskan
-          tautan yang sudah tidak ada akan menyesatkan sesi berikutnya (kelas ATURAN 50.3).
+          §6.3 — ajakan menghubungi HANYA dirender kalau toggle SA menyala DAN ada kanal tujuan
+          nyata di `team_contacts`. Kedua tautan digerbangi TERPISAH: kontak yang punya email tapi
+          nomornya kosong hanya memunculkan tautan email, dan sebaliknya. Nol kanal → blok ini tidak
+          dirender sama sekali — "tidak ada ajakan menghubungi tanpa alamat di baliknya".
 
-            · `mailto:` — DICABUT S#424 (T-424-4). Diuji di komputer Philips, jendela normal:
-              payload sempurna tetapi Chrome berhenti `0 B transferred` karena nol handler
-              `mailto:` terdaftar. Gagal SENYAP. Memajang jalur yang diketahui gagal = menjebak
-              pengunjung. Ia juga REDUNDAN terhadap tombol lapor di bawah.
-            · WhatsApp — DICABUT S#433 (K-432-4 + K-432-7). Alasan lengkapnya di komentar
-              tepat di bawah blok tombol lapor.
+          S#424 — T-424-4 (error yang Philips laporkan sebagai QA halaman maintenance):
+          sebelumnya `href` di sini adalah `mailto:` + alamat SAJA, tanpa perihal dan tanpa isi.
+          Email yang terbuka KOSONG melompong. Sekarang `data.mailtoHref` datang dari
+          `buildBugMailto()` — perihal + isi terisi otomatis.
 
-          ⇒ SATU-SATUNYA kanal yang tersisa = TOMBOL LAPOR di bawah. Aturan §6.3 ("tidak ada ajakan
-          menghubungi tanpa alamat di baliknya") kini dipikul tombol itu sendiri, BUKAN oleh dua
-          tautan yang digerbangi terpisah seperti dulu.
+          S#424 — K-424-1 (Philips): kanal WA ditambahkan. WA = kanal KIRIM, email = kanal
+          DOKUMENTASI & LOG. `wa.me` jalan di aplikasi ponsel, WhatsApp Desktop, DAN WhatsApp Web,
+          jadi ia tidak bisa gagal senyap seperti `mailto:` saat tidak ada aplikasi email terdaftar
+          (persis yang terjadi di jendela Incognito, bukti T-424-4).
         */}
         {/*
           AKSI UTAMA — S#424, keputusan Philips: support problem WAJIB lewat EMAIL demi audit trail
@@ -119,25 +119,33 @@ export function MaintenanceView({ data }: { data: MaintenanceConfig }) {
         )}
 
         {/*
-          ⛔ KANAL WHATSAPP DICABUT — S#433, keputusan Philips K-432-4 (ditegaskan K-432-7).
-          Blok tautan `wa.me` yang dulu berdiri di sini SUDAH DIBUANG. Pencabutan ini SADAR dan
-          dicatat terbuka, bukan hilang diam-diam — ia MENCABUT SEBAGIAN K-424-1 (S#424: "WA =
-          kanal KIRIM, email = kanal DOKUMENTASI").
+          KANAL PELENGKAP — SATU saja, dan sengaja hanya WhatsApp.
 
-          Philips, VERBATIM S#432: *"kalau ini jadi lama dan proses nya susah, lebih baik
-          [tautan WA] dihapus saja, kita gunakan email saja."*
+          ⚠️ TAUTAN `mailto:` DIBUANG di S#424 atas koreksi Philips: *"ini mana yang mau di pakai???"*
+          Menyodorkan tiga ajakan sekaligus (tombol lapor + mailto + WA) membuat pengunjung harus
+          menebak, dan salah satunya — `mailto:` — TERBUKTI RUSAK di komputer nyata (jendela normal,
+          bukan Incognito): payload sempurna, tapi Chrome berhenti `0 B transferred` karena nol
+          handler terdaftar. Memajang jalur yang diketahui gagal = menjebak pengunjung.
 
-          ALASANNYA BUKAN SELERA — ia batas keras yang ditemukan pengujian S#432 sendiri:
-          isi pesan WA MUSTAHIL disamakan dengan isi email, karena baris `IP` DILARANG masuk
-          pesan WhatsApp. Pesan itu disusun di perangkat pengunjung dan ikut DIBACA pengunjung,
-          sehingga menyertakan IP melanggar TC-04 — aturan yang lulus di sesi yang sama.
+          `mailto:` juga REDUNDAN: tombol di atas sudah mengirim email lewat server — jalur yang
+          justru memenuhi tuntutan audit trail (K-424), sesuatu yang `mailto:` tidak pernah bisa
+          karena server tidak pernah tahu emailnya terkirim atau tidak.
 
-          ⚠️ JANGAN DIHIDUPKAN LAGI tanpa keputusan Philips yang baru. Menghidupkannya kembali
-          berarti menghidupkan lagi masalah yang pencabutan ini selesaikan.
-
-          Rumah catatan lengkapnya: `#70 TEMUAN-KANAL-WA-DICABUT` +
-          `DESAIN_MAINTENANCE_DAN_KONTAK_TIM`.
+          WhatsApp DIPERTAHANKAN sebagai satu-satunya pelengkap (K-424-1) karena ia satu-satunya
+          kanal tempat pengunjung bisa menambahkan penjelasan dengan bahasanya sendiri.
         */}
+        {data.showContact && data.waHref && (
+          <p className="mt-3 text-xs opacity-70">
+            <a
+              href={data.waHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-current rounded"
+            >
+              {data.waCtaText}
+            </a>
+          </p>
+        )}
       </div>
     </main>
   )

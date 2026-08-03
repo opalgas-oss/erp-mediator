@@ -12,6 +12,7 @@ import 'server-only'
 import { getConfigPageItems } from '@/lib/config-registry'
 import { getMessage }         from '@/lib/message-library'
 import { bacaTeksLaporGangguan, TEKS_LAPOR_KOSONG } from '@/lib/maintenance-teks'
+import { bacaKontakMaintenance }                    from '@/lib/maintenance-kontak'
 import type { TeksLaporGangguan }                   from '@/lib/types/lapor-gangguan.type'
 
 export interface MaintenanceConfig {
@@ -25,22 +26,42 @@ export interface MaintenanceConfig {
   // ─── S#423 — menutup DUA teks hardcode di MaintenanceView.tsx ───────────────
   /** Awalan ETA, dari message_library `maintenance_eta_prefix` (dulu hardcode "Perkiraan selesai:") */
   etaPrefix:    string
+  /** Teks ajakan, dari message_library `maintenance_contact_cta` (dulu hardcode) */
+  ctaText:      string
   /**
-   * ⛔ EMPAT MEDAN DIBUANG S#433 — `ctaText` · `emailKontak` · `waHref` · `waCtaText`.
+   * Alamat tujuan tautan "hubungi tim kami" — kontak terpublikasi PERTAMA
+   * (`team_contacts`, `publish_public_page`, urut sort_order).
    *
-   * Dua sebab, keduanya dari bukti, bukan selera:
-   *   1. `waHref` + `waCtaText` — kanal WhatsApp DICABUT (K-432-4 + K-432-7). Philips S#433:
-   *      *"Semua instruksi saya terkait pengiriman pesan lewat No WA sebelumnya, berarti itu
-   *      semua di cancel."* ⇒ mencabut sebagian K-424-1.
-   *   2. `ctaText` + `emailKontak` — YATIM SEJAK S#424, bukan akibat pekerjaan S#433. Keduanya
-   *      dihitung tiap halaman maintenance dirender, tetapi NOL yang membacanya sesudah tautan
-   *      `mailto:` dicabut. Diverifikasi sapuan simbol S#433: nol pembaca di seluruh kode.
-   *      Philips memerintahkan membersihkannya di sesi ini juga, bukan mewariskannya.
-   *
-   * Akibat lanjutannya dicatat terbuka: `lib/maintenance-kontak.ts` kehilangan seluruh pemakai
-   * dan DIPINDAH ke `_arsip/` (bukan dihapus) atas perintah Philips S#433 — berkas hidup dengan
-   * nol pemanggil adalah jebakan bagi sesi berikutnya.
+   * **null = TIDAK ADA alamat → ajakan menghubungi WAJIB tidak ditampilkan** (DESAIN §6.3:
+   * "tidak ada ajakan menghubungi tanpa alamat di baliknya"). Dua keadaan menghasilkan null:
+   * daftar kontak kosong, ATAU ada kontak tapi nol yang dicentang publikasi publik.
    */
+  emailKontak:  string | null
+  // ─── S#424 — KANAL LAPORAN: tombol server-send (utama) + WhatsApp (pelengkap) ──────────
+  //
+  // ⚠️ `mailtoHref` DIHAPUS di S#424 atas koreksi Philips (*"ini mana yang mau di pakai???"*).
+  //    Dua alasan, keduanya berdasar bukti:
+  //    1. RUSAK — diuji di komputer Philips, jendela normal (bukan Incognito): payload sempurna
+  //       (terbukti tab Payload DevTools) tapi Chrome berhenti `0 B transferred`, nol handler
+  //       `mailto:` terdaftar. Memajang jalur yang diketahui gagal = menjebak pengunjung.
+  //    2. REDUNDAN — tombol lapor sudah mengirim email lewat SERVER, dan hanya jalur itu yang
+  //       memenuhi tuntutan audit trail K-424 (server tahu terkirim atau tidak; `mailto:` tidak
+  //       pernah tahu).
+  //    `buildBugMailto()` di `lib/utils/bug-mailto.util.ts` kini NOL pemakai — dicatat sebagai
+  //    HUTANG-BUGMAILTO-YATIM, bukan dihapus diam-diam di sesi yang sama (anti-overreach).
+  /**
+   * Tautan `https://wa.me/...` **LENGKAP** — sudah memuat pesan terisi otomatis.
+   *
+   * K-424-1 (Philips): WA = kanal KIRIM, email = kanal DOKUMENTASI & LOG. Keduanya berdampingan.
+   * Kelebihan WA atas `mailto:`: `wa.me` jalan di aplikasi ponsel, WhatsApp Desktop, DAN WhatsApp
+   * Web — tidak bergantung aplikasi email terpasang, jadi tidak bisa gagal senyap seperti
+   * `mailto:` di jendela Incognito (bukti T-424-4).
+   *
+   * `null` = nomor tujuan kosong / tidak layak ⇒ tautan WA WAJIB tidak dirender (pola §6.3).
+   */
+  waHref:       string | null
+  /** Label tautan WA, dari message_library `maintenance_contact_wa_cta` */
+  waCtaText:    string
   /**
    * Teks tombol LAPOR (aksi utama) — semuanya dari `message_library` kategori `error_ui`.
    *
@@ -77,17 +98,19 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
   // Pesan: config menyimpan KEY message_library (keputusan Philips S#412), teks diedit di menu Pesan.
   const messageKey = map['maintenance_message'] || 'maintenance_body'
 
-  // Kedua teks dibaca paralel — nol tambahan latency dibanding sebelumnya.
+  // Ketiga teks dibaca paralel — nol tambahan latency dibanding sebelumnya.
   // Nilai fallback = teks lama PERSIS (pola S#363: zero behavior change kalau key belum ada).
-  //
-  // ⛔ S#433 — pembacaan `maintenance_contact_cta` DIBUANG bersama medan `ctaText`. Barisnya TETAP
-  //    HIDUP di `message_library`; yang dibuang hanya pembacaan yang hasilnya tidak pernah dibaca
-  //    siapa pun. Menghapus barisnya = keputusan Philips, bukan efek samping pembersihan ini.
-  const [body, etaPrefix] = await Promise.all([
+  const [body, etaPrefix, ctaText] = await Promise.all([
     getMessage(messageKey, 'Mohon maaf, situs sedang dalam perbaikan. Kami akan segera kembali.'),
     getMessage('maintenance_eta_prefix',  'Perkiraan selesai:'),
+    getMessage('maintenance_contact_cta', 'Butuh bantuan? Silakan hubungi tim kami.'),
   ])
 
+  // §6.3 — alamat tujuan HANYA dicari kalau memang akan dipakai. Saat maintenance mati
+  // atau toggle kontak mati, nol query tambahan ke team_contacts.
+  let emailKontak: string | null = null
+  let waHref:      string | null = null
+  let waCtaText                  = ''
   let teksLapor: TeksLaporGangguan = TEKS_LAPOR_KOSONG
 
   if (on && showContact) {
@@ -97,9 +120,18 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
     // Sembilan teks (3 tombol + 6 Pop Up) dibaca sekali jalan di `lib/maintenance-teks.ts`.
     teksLapor = await bacaTeksLaporGangguan()
 
-    // ⛔ S#433 — panggilan `bacaKontakMaintenance()` DIBUANG. Sesudah kanal WhatsApp dicabut dan
-    //    medan `emailKontak` dibersihkan, nol nilai dari sana yang dibaca siapa pun ⇒ satu query
-    //    Supabase per render halaman maintenance yang hasilnya dibuang. Query itu kini hilang.
+    // Kontak tujuan + tautan WhatsApp DIPINDAH ke `lib/maintenance-kontak.ts` (S#428, pemecahan
+    // KEDUA — pecahan pertama menyisakan berkas ini di 97,0% batas 10 KB, dan TEMUAN-3 S#427
+    // mewajibkan ukur ulang lalu pecah lagi, bukan memangkas komentar).
+    //
+    // Judul halaman DIOPER dari sini, bukan dibaca ulang dari config di sana: satu pembacaan
+    // config, satu sumber kebenaran (ATURAN 36).
+    const kontak = await bacaKontakMaintenance(
+      map['maintenance_title'] || 'Sedang Dalam Perbaikan'
+    )
+    emailKontak = kontak.emailKontak
+    waHref      = kontak.waHref
+    waCtaText   = kontak.waCtaText
   }
 
   return {
@@ -111,6 +143,10 @@ export async function getMaintenanceConfig(): Promise<MaintenanceConfig> {
     eta:          map['maintenance_eta']          || '',
     showContact,
     etaPrefix,
+    ctaText,
+    emailKontak,
+    waHref,
+    waCtaText,
     teksLapor,
   }
 }
