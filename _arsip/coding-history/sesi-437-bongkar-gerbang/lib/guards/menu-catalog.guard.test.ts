@@ -139,20 +139,5 @@ describe('Guard katalog menu SA (2-arah, live Supabase)', () => {
       orphanPages,
       `Page SA tanpa baris dashboard_menus (kode->DB): ${orphanPages.join(', ') || '-'}`,
     ).toEqual([])
-
-  // ⛔ BATAS WAKTU 30 DETIK — S#437, izin Philips. Bawaan vitest 5.000 ms, dan itu TERLALU MEPET
-  //   untuk satu query jaringan hidup. Dibuktikan di komputer Philips S#437, kode IDENTIK:
-  //   1.018 ms LULUS · 5.026 ms GAGAL · 5.020 ms GAGAL · **2.659 ms LULUS** · 5.021 ms GAGAL.
-  //   Jalan yang lulus pun sudah memakai >50% jatah. Build yang gagal karena internet lambat
-  //   MENUDUH KODE untuk masalah jaringan — dan guard yang salah menuduh akan diabaikan orang,
-  //   lalu berhenti menjaga apa pun.
-  //
-  //   ✅ NOL pelonggaran: guard tetap GAGAL-MERAH bila Supabase tak terjangkau, env kosong,
-  //   ada menu yatim (DB->kode), atau ada page SA tanpa baris (kode->DB). Yang berubah hanya
-  //   berapa lama ia SABAR MENUNGGU jawaban, bukan apa yang ia terima sebagai jawaban benar.
-  //
-  //   Sengaja argumen PER-TEST, bukan `testTimeout` global: setelan global akan diam-diam ikut
-  //   berlaku untuk guard AT/Vendor/Customer yang belum ditulis — keputusan untuk test yang
-  //   belum ada bukan milik sesi ini.
-  }, 30_000)
+  })
 })
