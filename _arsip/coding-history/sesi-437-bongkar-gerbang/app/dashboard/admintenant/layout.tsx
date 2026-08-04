@@ -14,14 +14,14 @@ import { getMessagesByKategori } from '@/lib/message-library'
 import { cekSesiParalel }        from '@/app/login/login-session-check'
 import { ROLES }                 from '@/lib/constants'
 import { DashboardShell }        from '@/components/DashboardShell'
+import { gerbangMaintenance }    from '@/components/maintenance/MaintenanceGate'
+import { MaintenanceView }       from '@/components/maintenance/MaintenanceView'
 import AdminTenantSidebarLoader, {
   AdminTenantSidebarSkeleton,
 }                                from '@/components/admintenant/AdminTenantSidebarLoader'
 
-// ⚠️ ALASAN DIKOREKSI S#437 — komentar lama menyebut gerbang maintenance sebagai sebabnya, dan
-// gerbang itu DICABUT di sesi ini (K-436-1). Membiarkan komentarnya = penunjuk basi (ATURAN 50.3).
-// Sebab yang SEBENARNYA dan tetap berlaku: layout ini membaca sesi lewat `verifyJWT()` (cookie) dan
-// memeriksa sesi paralel per permintaan ⇒ memang tidak boleh di-prerender statis. Direktifnya TETAP.
+// Gerbang maintenance membaca `config_registry` tiap permintaan ⇒ layout ini tidak boleh
+// di-prerender statis. Pola yang sama dengan layout Vendor dan `app/page.tsx` (fix build S#412).
 export const dynamic = 'force-dynamic'
 
 async function fetchMessages(): Promise<Record<string, string>> {
@@ -40,11 +40,19 @@ export default async function AdminTenantLayout({ children }: { children: React.
     redirect('/kelola/masuk')
   }
 
-  // ⛔ S#437 — GERBANG MAINTENANCE DICABUT dari layout ini. Gerbangnya baru lahir S#435 dan hidup
-  //   satu sesi: K-436-1 mengunci `maintenance_mode` sebagai saklar TAMPILAN di halaman yang GAGAL
-  //   dibuka, bukan saklar tutup situs ⇒ Dashboard AT yang SEHAT tetap normal apa pun posisi
-  //   saklarnya. Wajah ramah saat halaman rusak kini tugas `app/dashboard/admintenant/error.tsx`.
-  //   Alasan lengkap: `KERJA_SESI_437`.
+  // Gerbang maintenance — BARU S#435. Sebelum sesi ini Dashboard AdminTenant adalah SATU-SATUNYA
+  // permukaan yang §4 A1 tandai DIBLOK tetapi tidak punya gerbang sama sekali: saat SA menyalakan
+  // maintenance, AT tetap masuk dan bekerja di sistem yang sedang diperbaiki.
+  //
+  // Letaknya SESUDAH pemeriksaan auth dan SEBELUM dua query di bawah — urutan yang sama persis
+  // dengan layout Vendor. Keputusannya sendiri tidak dihitung di sini: ia milik
+  // `gerbangMaintenance()`, satu-satunya tempat pertanyaan "permukaan ini diblok atau tidak"
+  // dijawab (§4 A2 koreksi 1.4.1).
+  //
+  // `area="admin_tenant"` — GARIS BAWAH, nilai kolom `app_error_log.area`, BUKAN nama folder route
+  // `admintenant`. Keduanya memang berbeda dan perbedaan itu sudah pernah memakan korban (BUG-039).
+  const gerbang = await gerbangMaintenance('admin_tenant')
+  if (gerbang) return <MaintenanceView data={gerbang} area="admin_tenant" />
 
   const [messages, hasilCekSesi] = await Promise.all([
     fetchMessages(),
