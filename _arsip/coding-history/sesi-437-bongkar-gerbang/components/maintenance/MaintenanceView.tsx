@@ -6,7 +6,7 @@
 // Ilustrasi: id preset (preset_*) → SVG bawaan app; selain itu dianggap URL (hasil upload SA ke Storage).
 
 import type { MaintenanceConfig } from '@/lib/maintenance'
-import type { AreaLaporan }       from '@/lib/types/lapor-gangguan.type'
+import type { AreaGerbang }       from '@/lib/constants/maintenance.constant'
 import { LaporGangguanButton }    from '@/components/maintenance/LaporGangguanButton'
 
 
@@ -29,14 +29,9 @@ import { THEME_CLASS, Illustration } from '@/components/maintenance/maintenance-
  * dan ia gagal SENYAP (data salah, layar normal). Tanpa bawaan, pemanggil yang lupa mengoper
  * `area` ditolak KOMPILATOR — gagal berisik di meja developer, bukan di tabel audit.
  */
-// ⛔ S#437 — tipe `area` dilepas dari `lib/constants/maintenance.constant.ts`; berkas konstanta itu
-//   dibongkar sesi ini (K-436-1: `maintenance_mode` = saklar TAMPILAN, bukan gerbang). `AreaGerbang`
-//   di sana hanya alias murni `AreaLaporan` ⇒ tipe IDENTIK, NOL perubahan perilaku, hanya alamat
-//   impor. Dilepas LEBIH DULU supaya berkas ini tidak ikut patah saat konstanta dibuang — kelas
-//   `ENV_FALLBACK` (S#428) dan `setKeadaan` (S#429). Alasan lengkap: `KERJA_SESI_437`.
 interface MaintenanceViewProps {
   data: MaintenanceConfig
-  area: AreaLaporan
+  area: AreaGerbang
 }
 
 export function MaintenanceView({ data, area }: MaintenanceViewProps) {
