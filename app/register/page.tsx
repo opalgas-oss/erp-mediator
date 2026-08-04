@@ -1,36 +1,27 @@
 // app/register/page.tsx
-// Pembungkus SERVER halaman pendaftaran — isinya digerbangi maintenance (§4 A1).
+// Pembungkus SERVER halaman pendaftaran.
 //
-// Dibuat: Sesi #435 — FASE 3.6e sub-fitur A.
+// ⛔ S#437 — GERBANG MAINTENANCE + `force-dynamic` DICABUT. K-436-1 mengunci `maintenance_mode`
+//   sebagai saklar TAMPILAN di halaman yang GAGAL dibuka, bukan saklar tutup situs ⇒ `/register`
+//   yang SEHAT tetap terbuka apa pun posisi saklarnya. `force-dynamic` ikut dicabut karena
+//   satu-satunya alasannya (gerbang membaca `config_registry` tiap permintaan) sudah hilang ⇒
+//   halaman ini kembali **Static**. Wajah ramah saat halaman rusak kini tugas `app/error.tsx`.
 //
-// KENAPA BERKAS INI ADA, dan kenapa isinya pindah:
-//   `/register` termasuk permukaan yang §4 A1 tandai 🔒 DIBLOK saat maintenance menyala —
-//   alasannya bisnis, bukan teknis: pendaftaran baru yang masuk selagi platform diperbaiki
-//   menghasilkan data setengah jadi yang harus dibereskan manual sesudahnya. Sebelum sesi ini
-//   halaman ini TIDAK punya gerbang sama sekali.
+// ❓ KENAPA PEMBUNGKUS INI TETAP ADA padahal gerbangnya sudah tidak ada — keputusan Philips S#437
+//   (Opsi 1), dicatat supaya sesi berikutnya tidak "merapikannya" sendiri:
+//   Isi halaman ini dipindah ke `components/register/RegisterClient.tsx` di S#435 semata-mata agar
+//   gerbang ber-`server-only` bisa berdiri di atas isi ber-`'use client'`. Mengembalikannya jadi
+//   satu berkas berarti memindahkan isi formulir pendaftaran SEKALI LAGI — risiko byte pada halaman
+//   yang dipakai calon pengguna sungguhan — demi hasil yang **nol terlihat di layar**. Bentuk
+//   server-page + client-component ini juga pola normal Next.js, bukan kejanggalan. Penggabungan
+//   kembali BOLEH dikerjakan nanti kalau Philips memintanya, dan paling murah SESUDAH TC halaman
+//   error lulus.
 //
-//   `MaintenanceGate` ber-`server-only` (ia membaca `config_registry`), sedangkan isi halaman
-//   pendaftaran ber-`'use client'`. Keduanya tidak bisa berdiri di berkas yang sama. Karena itu
-//   isi lamanya DIPINDAH UTUH — bukan diketik ulang — ke
-//   `components/register/RegisterClient.tsx` lewat `move_file` (izin Philips S#435, KAMUS 1.4),
-//   sehingga NOL karakter isi halaman melewati ketikan Claude. Berkas ini murni pembungkus.
-//
-//   Nama fungsi di berkas tujuan sengaja TIDAK diubah (`RegisterPage`) — impor bawaan boleh diberi
-//   nama apa pun di sisi pemanggil, jadi tidak ada alasan menyentuh satu byte pun isinya.
-//
-// Arsip byte-exact pra-pemindahan: _arsip/coding-history/sesi-435-gerbang-maintenance/app/register/
+// Arsip byte-exact: S#435 (pra-pemindahan) `_arsip/coding-history/sesi-435-gerbang-maintenance/app/register/`
+//                   S#437 (pra-pencabutan)  `_arsip/coding-history/sesi-437-bongkar-gerbang/app/register/`
 
-import { MaintenanceGate } from '@/components/maintenance/MaintenanceGate'
-import RegisterClient      from '@/components/register/RegisterClient'
-
-// Gerbang membaca `config_registry` tiap permintaan ⇒ halaman ini tidak boleh di-prerender statis
-// (pola yang sama dengan `app/page.tsx`; fix build S#412).
-export const dynamic = 'force-dynamic'
+import RegisterClient from '@/components/register/RegisterClient'
 
 export default function RegisterPage() {
-  return (
-    <MaintenanceGate area="publik">
-      <RegisterClient />
-    </MaintenanceGate>
-  )
+  return <RegisterClient />
 }
