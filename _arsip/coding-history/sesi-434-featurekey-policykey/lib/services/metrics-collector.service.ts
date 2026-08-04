@@ -206,10 +206,7 @@ async function collectDeepMetrics(
     }
     case 'vercel': {
       const monitoringItems = await getConfigItemsByKategori('Monitoring')
-      // S#434: dicocokkan lewat policy_key, BUKAN feature_key. `feature_key` adalah nama GRUP;
-      // nama ITEM hidup di `policy_key`. Sebelum S#434 baris ini menumpang kekeliruan bahwa
-      // item ini punya feature_key sendiri — lihat #68 TEMUAN-KATALOG-NILAI-TANPA-PENJAGA.
-      const vercelPlanItem  = monitoringItems.find(i => i.policy_key === 'vercel_plan')
+      const vercelPlanItem  = monitoringItems.find(i => i.feature_key === 'vercel_plan')
       const vercelPlan      = vercelPlanItem?.nilai ?? 'hobby'
       return collectVercelMetrics(creds, vercelPlan)
     }

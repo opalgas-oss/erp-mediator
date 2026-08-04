@@ -299,19 +299,15 @@ function SystemPanel({
 
 // ─── Helper: baca config capacity dari config_registry ───────────────────────
 // Opsi A (S#299): pakai getConfigItemsByKategori('Monitoring') — ambil SEMUA item
-// kategori Monitoring sekaligus, map by policy_key (DIKOREKSI S#434).
+// kategori Monitoring sekaligus, map by feature_key.
 // Sebelumnya getConfigPageItems('monitoring') → tidak pernah match karena capacity_*
-// masing-masing dulu punya feature_key sendiri (bukan 'monitoring').
-// S#434 / #68 TEMUAN-KATALOG-NILAI-TANPA-PENJAGA: keadaan itu DIPERBAIKI di data —
-// `feature_key` = nama GRUP, `policy_key` = nama ITEM, keduanya wajib terisi.
-// Kunci map dipindah ke `policy_key` supaya tetap benar sesudah 38 baris dinormalisasi.
-// Nilai kuncinya identik dengan sebelumnya, jadi 9 lookup di bawah tidak berubah.
+// masing-masing punya feature_key sendiri (bukan 'monitoring').
 
 async function loadCapacityConfig(): Promise<CapacityConfig> {
   const items = await getConfigItemsByKategori('Monitoring')
   const map: Record<string, number> = {}
   for (const item of items) {
-    map[item.policy_key ?? item.feature_key] = Number(item.nilai) || 0
+    map[item.feature_key] = Number(item.nilai) || 0
   }
   return {
     supabaseDbMb:          map['capacity_supabase_db_mb']          || 500,
