@@ -14,15 +14,9 @@ import { getMessagesByKategori } from '@/lib/message-library'
 import { cekSesiParalel }        from '@/app/login/login-session-check'
 import { ROLES }                 from '@/lib/constants'
 import { DashboardShell }        from '@/components/DashboardShell'
-import { gerbangMaintenance }    from '@/components/maintenance/MaintenanceGate'
-import { MaintenanceView }       from '@/components/maintenance/MaintenanceView'
 import AdminTenantSidebarLoader, {
   AdminTenantSidebarSkeleton,
 }                                from '@/components/admintenant/AdminTenantSidebarLoader'
-
-// Gerbang maintenance membaca `config_registry` tiap permintaan ⇒ layout ini tidak boleh
-// di-prerender statis. Pola yang sama dengan layout Vendor dan `app/page.tsx` (fix build S#412).
-export const dynamic = 'force-dynamic'
 
 async function fetchMessages(): Promise<Record<string, string>> {
   try {
@@ -39,20 +33,6 @@ export default async function AdminTenantLayout({ children }: { children: React.
   if (!payload || payload.role !== ROLES.ADMIN_TENANT) {
     redirect('/kelola/masuk')
   }
-
-  // Gerbang maintenance — BARU S#435. Sebelum sesi ini Dashboard AdminTenant adalah SATU-SATUNYA
-  // permukaan yang §4 A1 tandai DIBLOK tetapi tidak punya gerbang sama sekali: saat SA menyalakan
-  // maintenance, AT tetap masuk dan bekerja di sistem yang sedang diperbaiki.
-  //
-  // Letaknya SESUDAH pemeriksaan auth dan SEBELUM dua query di bawah — urutan yang sama persis
-  // dengan layout Vendor. Keputusannya sendiri tidak dihitung di sini: ia milik
-  // `gerbangMaintenance()`, satu-satunya tempat pertanyaan "permukaan ini diblok atau tidak"
-  // dijawab (§4 A2 koreksi 1.4.1).
-  //
-  // `area="admin_tenant"` — GARIS BAWAH, nilai kolom `app_error_log.area`, BUKAN nama folder route
-  // `admintenant`. Keduanya memang berbeda dan perbedaan itu sudah pernah memakan korban (BUG-039).
-  const gerbang = await gerbangMaintenance('admin_tenant')
-  if (gerbang) return <MaintenanceView data={gerbang} area="admin_tenant" />
 
   const [messages, hasilCekSesi] = await Promise.all([
     fetchMessages(),

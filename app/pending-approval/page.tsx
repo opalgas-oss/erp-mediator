@@ -1,53 +1,36 @@
-'use client'
-
 // app/pending-approval/page.tsx
-// Halaman konfirmasi untuk Vendor yang menunggu persetujuan Admin
+// Pembungkus SERVER halaman "menunggu persetujuan" — isinya digerbangi maintenance (§4 A1).
 //
-// MIGRASI Sesi #037: Firebase signOut → Supabase signOut
+// Dibuat: Sesi #435 — FASE 3.6e sub-fitur A.
+//
+// KENAPA BERKAS INI ADA, dan kenapa isinya pindah:
+//   `/pending-approval` termasuk permukaan yang §4 A1 tandai 🔒 DIBLOK. Alasannya disebut eksplisit
+//   di desain: halaman ini INFORMASI, bukan jalan pulang — ia tidak dipakai siapa pun untuk masuk
+//   kembali dan mematikan maintenance, jadi memblokirnya tidak mengunci siapa pun. Bandingkan
+//   dengan `/login`, `/sa/masuk`, `/forgot-password` yang justru WAJIB tetap terbuka.
+//
+//   `MaintenanceGate` ber-`server-only` (ia membaca `config_registry`), sedangkan isi halaman ini
+//   ber-`'use client'` — ia memanggil `supabase.auth.signOut()` dan `useRouter()`. Keduanya tidak
+//   bisa berdiri di berkas yang sama. Karena itu isi lamanya DIPINDAH UTUH — bukan diketik ulang —
+//   ke `components/pending-approval/PendingApprovalClient.tsx` lewat `move_file` (izin Philips
+//   S#435, KAMUS 1.4), sehingga NOL karakter isi halaman melewati ketikan Claude.
+//
+//   Nama fungsi di berkas tujuan sengaja TIDAK diubah (`PendingApprovalPage`).
+//
+// Arsip byte-exact pra-pemindahan:
+//   _arsip/coding-history/sesi-435-gerbang-maintenance/app/pending-approval/
 
-import { useRouter }               from 'next/navigation'
-import { createBrowserSupabaseClient } from '@/lib/supabase-client'
+import { MaintenanceGate }   from '@/components/maintenance/MaintenanceGate'
+import PendingApprovalClient from '@/components/pending-approval/PendingApprovalClient'
+
+// Gerbang membaca `config_registry` tiap permintaan ⇒ halaman ini tidak boleh di-prerender statis
+// (pola yang sama dengan `app/page.tsx`; fix build S#412).
+export const dynamic = 'force-dynamic'
 
 export default function PendingApprovalPage() {
-  const router = useRouter()
-
-  async function handleKeluar() {
-    const supabase = createBrowserSupabaseClient()
-    await supabase.auth.signOut()
-    router.push('/login')
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
-
-        <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <div className="w-8 h-8 bg-amber-400 rounded-full" />
-        </div>
-
-        <h1 className="text-xl font-semibold text-gray-900 mb-2">
-          Pendaftaran Berhasil!
-        </h1>
-        <p className="text-sm text-gray-500 mb-6">
-          Akun Vendor Anda sedang menunggu persetujuan dari Admin.
-          Kami akan menghubungi Anda via WhatsApp setelah akun diaktifkan.
-        </p>
-
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-left">
-          <p className="text-xs font-semibold text-amber-700 mb-2">Yang terjadi selanjutnya:</p>
-          <p className="text-xs text-amber-600">1. Admin mereview data toko Anda</p>
-          <p className="text-xs text-amber-600">2. Notifikasi dikirim via WhatsApp</p>
-          <p className="text-xs text-amber-600">3. Anda bisa mulai terima order</p>
-        </div>
-
-        <button
-          onClick={handleKeluar}
-          className="text-sm text-gray-400 hover:text-gray-600 underline"
-        >
-          Keluar dari akun ini
-        </button>
-
-      </div>
-    </div>
+    <MaintenanceGate area="publik">
+      <PendingApprovalClient />
+    </MaintenanceGate>
   )
 }

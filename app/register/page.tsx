@@ -1,44 +1,36 @@
-'use client'
-
 // app/register/page.tsx
-// Halaman pendaftaran — Sprint 1 fokus pada Login SuperAdmin
-// Registrasi Customer & Vendor akan diimplementasi di TAHAP 4
+// Pembungkus SERVER halaman pendaftaran — isinya digerbangi maintenance (§4 A1).
 //
-// MIGRASI Sesi #037: Hapus semua import Firebase — placeholder sampai TAHAP 4
+// Dibuat: Sesi #435 — FASE 3.6e sub-fitur A.
+//
+// KENAPA BERKAS INI ADA, dan kenapa isinya pindah:
+//   `/register` termasuk permukaan yang §4 A1 tandai 🔒 DIBLOK saat maintenance menyala —
+//   alasannya bisnis, bukan teknis: pendaftaran baru yang masuk selagi platform diperbaiki
+//   menghasilkan data setengah jadi yang harus dibereskan manual sesudahnya. Sebelum sesi ini
+//   halaman ini TIDAK punya gerbang sama sekali.
+//
+//   `MaintenanceGate` ber-`server-only` (ia membaca `config_registry`), sedangkan isi halaman
+//   pendaftaran ber-`'use client'`. Keduanya tidak bisa berdiri di berkas yang sama. Karena itu
+//   isi lamanya DIPINDAH UTUH — bukan diketik ulang — ke
+//   `components/register/RegisterClient.tsx` lewat `move_file` (izin Philips S#435, KAMUS 1.4),
+//   sehingga NOL karakter isi halaman melewati ketikan Claude. Berkas ini murni pembungkus.
+//
+//   Nama fungsi di berkas tujuan sengaja TIDAK diubah (`RegisterPage`) — impor bawaan boleh diberi
+//   nama apa pun di sisi pemanggil, jadi tidak ada alasan menyentuh satu byte pun isinya.
+//
+// Arsip byte-exact pra-pemindahan: _arsip/coding-history/sesi-435-gerbang-maintenance/app/register/
 
-import Link from 'next/link'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { MaintenanceGate } from '@/components/maintenance/MaintenanceGate'
+import RegisterClient      from '@/components/register/RegisterClient'
+
+// Gerbang membaca `config_registry` tiap permintaan ⇒ halaman ini tidak boleh di-prerender statis
+// (pola yang sama dengan `app/page.tsx`; fix build S#412).
+export const dynamic = 'force-dynamic'
 
 export default function RegisterPage() {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-1">
-            <span className="text-blue-700 font-semibold text-lg">M</span>
-          </div>
-          <CardTitle className="text-center text-lg font-semibold text-gray-900">
-            Pendaftaran
-          </CardTitle>
-          <p className="text-sm text-muted-foreground text-center">
-            ERP Mediator Hyperlocal
-          </p>
-        </CardHeader>
-        <CardContent className="pb-6 space-y-4 text-center">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-            <p className="text-sm text-blue-700">
-              Fitur pendaftaran Customer dan Vendor sedang dalam pengembangan.
-              Akan tersedia segera.
-            </p>
-          </div>
-          <p className="text-sm text-gray-500">
-            Sudah punya akun?{' '}
-            <Link href="/login" className="text-blue-600 font-medium hover:text-blue-700">
-              Masuk di sini
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+    <MaintenanceGate area="publik">
+      <RegisterClient />
+    </MaintenanceGate>
   )
 }
