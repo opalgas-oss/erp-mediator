@@ -30,6 +30,8 @@ import { VENDOR_LOGIN_ALLOWED, ROLES } from '@/lib/constants'
 import { cekSesiParalel }             from '@/app/login/login-session-check'
 import { DashboardShell }             from '@/components/DashboardShell'
 import { VendorSidebarNav }           from '@/components/VendorSidebarNav'
+import { gerbangMaintenance }         from '@/components/maintenance/MaintenanceGate'
+import { MaintenanceView }            from '@/components/maintenance/MaintenanceView'
 
 // ─── Messages cache — B5 ─────────────────────────────────────────────────────
 // Konsisten dengan SA layout (getSidebarData). TTL 1800 detik, tag 'vendor-messages'.
@@ -45,14 +47,23 @@ export default async function VendorLayout({ children }: { children: React.React
   // NORMALIZED (8 Juni 2026 CASE SESI-12): cek role dari memberships atau isSuperAdmin
   if (!payload || payload.role !== ROLES.VENDOR) redirect('/login')
 
-  // ⛔ S#437 — GERBANG MAINTENANCE DICABUT dari layout ini. K-436-1 mengunci `maintenance_mode`
-  //   sebagai saklar TAMPILAN di halaman yang GAGAL dibuka, bukan saklar tutup situs ⇒ Dashboard
-  //   Vendor yang SEHAT tetap normal apa pun posisi saklarnya. Urutan lama kembali seperti sebelum
-  //   S#435: auth → query → status → render. Wajah ramah saat halaman rusak kini tugas
-  //   `app/dashboard/vendor/error.tsx`. Alasan lengkap: `KERJA_SESI_437`.
+  // Gate maintenance (loop config `sistem`, S#412): Vendor melihat halaman maintenance saat mode ON.
   //
-  //   ⚠️ `force-dynamic` di atas TETAP — ia lahir S#079 untuk alasan lain (JWT + sesi paralel),
-  //   BUKAN karena gerbang. Mencabutnya di sini akan mematahkan layout yang memang wajib dinamis.
+  // ⚠️ S#435 — keputusannya TIDAK lagi dihitung di berkas ini. Ia pindah ke `gerbangMaintenance()`,
+  //   tempat yang sama yang dipakai komponen `<MaintenanceGate>` di halaman publik. Sebelumnya blok
+  //   ini dan blok kembarnya di `app/page.tsx` sama persis; menambah tiga permukaan lagi berarti
+  //   lima salinan satu keputusan (§4 A2 koreksi 1.4.1).
+  //
+  //   Bentuk FUNGSI dipakai di sini, bukan pembungkus JSX, dan itu disengaja: layout ini memanggil
+  //   `redirect()` secara imperatif SEBELUM ada JSX. Membungkus hasil `return` akan menggeser
+  //   gerbang ke paling akhir ⇒ vendor yang belum disetujui dialihkan ke `/login` alih-alih melihat
+  //   halaman maintenance, dan empat query di bawah berjalan sia-sia. Urutan lama dipertahankan
+  //   PERSIS: auth → maintenance → query → status → render.
+  //
+  //   `area="vendor"` dioper eksplisit ⇒ laporan gangguan dari halaman ini tercatat `vendor` di
+  //   `app_error_log`, bukan `publik` (menutup `TEMUAN-429-AREA-HARDCODE` #64).
+  const gerbang = await gerbangMaintenance('vendor')
+  if (gerbang) return <MaintenanceView data={gerbang} area="vendor" />
 
   // Status vendor: utamakan dari JWT (Edge Function v5), fallback ke DB query.
   const fetchStatusVendor = async (): Promise<string> => {
