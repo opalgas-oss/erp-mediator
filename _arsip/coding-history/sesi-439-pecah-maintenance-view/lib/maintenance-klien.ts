@@ -21,14 +21,6 @@
 import type { MaintenanceConfig }   from '@/lib/maintenance'
 import type { TeksLaporGangguan }   from '@/lib/types/lapor-gangguan.type'
 import { ambilJsonKlien }           from '@/lib/utils/ambil-json-klien.util'
-import { MAINTENANCE_CADANGAN, TEKS_LAPOR_KOSONG_KLIEN } from '@/lib/maintenance-cadangan'
-
-// ⚠️ S#439 — TEKS CADANGAN (§5.0.6) DIPINDAH ke `@/lib/maintenance-cadangan`. Sumbu = ALASAN
-//   BERUBAH: teks cadangan berubah kalau kalimat jaring terakhir berubah, berkas ini berubah kalau
-//   ENDPOINT-nya berubah. Pemicunya diukur: berkas ini menyentuh 8.172 B = 79,8% (sisa 20 B) —
-//   memangkas komentar untuk menghindarinya DILARANG (K-426-2), jadi yang benar MEMECAH.
-//   Alasan kedua yang lebih penting: `app/global-error.tsx` WAJIB nol ketergantungan ke pembaca
-//   config, tetapi tetap butuh teks cadangannya. Rumah terpisah membuat itu mungkin.
 
 /** Kategori teks yang ditarik sekali jalan: isi halaman (`page_ui`) + teks halaman gagal (`error_ui`). */
 const KATEGORI_TEKS = 'page_ui,error_ui'
@@ -40,6 +32,28 @@ const KATEGORI_TEKS = 'page_ui,error_ui'
 //   sebut bug arsitektur. Yang dipindah HANYA duplikasi yang pekerjaan S#439 sendiri akan
 //   lahirkan; nol perilaku berubah, nol baris lain disentuh (bukan refactor, ATURAN 5).
 //   Arsip pra-revisi byte-exact: `_arsip/coding-history/sesi-439-resolver-nama-halaman/`.
+
+/**
+ * Teks cadangan DI DALAM KODE — pengecualian sadar terhadap ATURAN 8, ditetapkan §5.0.6.
+ * Dipakai HANYA bila isi dari panel SA gagal dibaca. Alasannya: jaring terakhir tidak boleh punya
+ * tali ke sesuatu yang mungkin sudah putus — kalau yang rusak justru sambungan ke Supabase, membaca
+ * judulnya pun gagal dan pengguna kembali melihat layar mesin, persis yang mau dihindari.
+ */
+export const MAINTENANCE_CADANGAN = {
+  title:      'Sedang Dalam Perbaikan',
+  body:       'Mohon maaf, halaman ini sedang kami perbaiki. Silakan coba beberapa saat lagi.',
+  theme:      'terang',
+  illustration: 'preset_wrench',
+  etaPrefix:  'Perkiraan selesai:',
+} as const
+
+const TEKS_LAPOR_KOSONG_KLIEN: TeksLaporGangguan = {
+  tombol: '', mengirim: '', gagal: '',
+  popUp: {
+    judulTerkirim: '', isiTerkirim: '', judulDitahan: '',
+    isiDitahan: '', labelKode: '', tombolTutup: '',
+  },
+}
 
 /** Ratakan respons `/api/config/sistem` (dikelompokkan per kategori) jadi peta policy_key → nilai. */
 function petaConfig(json: Record<string, unknown> | null): Record<string, string> {
@@ -69,19 +83,7 @@ function petaConfig(json: Record<string, unknown> | null): Record<string, string
  *      yang justru memperlihatkan layar mesin ke pengguna asli.
  * ⇒ HANYA `nilai='false'` yang eksplisit mematikan wajah ramah. Selebihnya AKTIF.
  */
-/**
- * ⚠️ S#439 — bentuk kembalian BERUBAH dari S#438 (dulu `MaintenanceConfig` telanjang). Aman:
- * berkas ini NOL pemanggil sampai S#439, dibuktikan build hijau `ec956b7`. `teks` ikut dipulangkan
- * supaya pemanggil bisa mengambil teks di luar `MaintenanceConfig` (`error_retry_button`) tanpa
- * permintaan KEDUA; menambah medannya ke `MaintenanceConfig` ditolak karena tipe itu dipakai jalur
- * SERVER juga. Alasan panjang: `KERJA_SESI_439.md`.
- */
-export interface HasilBacaKlien {
-  config: MaintenanceConfig
-  teks:   Record<string, string>
-}
-
-export async function bacaMaintenanceConfigKlien(): Promise<HasilBacaKlien> {
+export async function bacaMaintenanceConfigKlien(): Promise<MaintenanceConfig> {
   const [jsonConfig, jsonTeks] = await Promise.all([
     ambilJsonKlien('/api/config/sistem'),
     ambilJsonKlien(`/api/message-library?kategori=${KATEGORI_TEKS}`),
@@ -118,8 +120,6 @@ export async function bacaMaintenanceConfigKlien(): Promise<HasilBacaKlien> {
     : TEKS_LAPOR_KOSONG_KLIEN
 
   return {
-   teks,
-   config: {
     on,
     title:        map['maintenance_title']        || MAINTENANCE_CADANGAN.title,
     body:         teks[kunciPesan]                || MAINTENANCE_CADANGAN.body,
@@ -129,6 +129,5 @@ export async function bacaMaintenanceConfigKlien(): Promise<HasilBacaKlien> {
     showContact,
     etaPrefix:    teks['maintenance_eta_prefix']  || MAINTENANCE_CADANGAN.etaPrefix,
     teksLapor,
-   },
   }
 }
