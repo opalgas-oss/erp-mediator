@@ -20,18 +20,12 @@
 
 import type { MaintenanceConfig }   from '@/lib/maintenance'
 import type { TeksLaporGangguan }   from '@/lib/types/lapor-gangguan.type'
-import { ambilJsonKlien }           from '@/lib/utils/ambil-json-klien.util'
 
 /** Kategori teks yang ditarik sekali jalan: isi halaman (`page_ui`) + teks halaman gagal (`error_ui`). */
 const KATEGORI_TEKS = 'page_ui,error_ui'
 
-// ⚠️ S#439 — `BATAS_MS` + `ambilJson` DIANGKAT ke `lib/utils/ambil-json-klien.util.ts`.
-//   Sebabnya bukan kerapian: pembaca nama halaman sisi-klien (`lib/nama-halaman-klien.ts`, lahir
-//   S#439) membutuhkan perilaku yang PERSIS SAMA. Menyalinnya ke sana melahirkan dua rumah untuk
-//   satu logika — luka sekelas `TEMUAN-NORMALISASI-WA-EMPAT-RUMAH` (S#424) yang ATURAN 19 poin 6
-//   sebut bug arsitektur. Yang dipindah HANYA duplikasi yang pekerjaan S#439 sendiri akan
-//   lahirkan; nol perilaku berubah, nol baris lain disentuh (bukan refactor, ATURAN 5).
-//   Arsip pra-revisi byte-exact: `_arsip/coding-history/sesi-439-resolver-nama-halaman/`.
+/** Batas tunggu tiap permintaan. Halaman error tidak boleh ikut menggantung saat Supabase lambat. */
+const BATAS_MS = 4000
 
 /**
  * Teks cadangan DI DALAM KODE — pengecualian sadar terhadap ATURAN 8, ditetapkan §5.0.6.
@@ -53,6 +47,21 @@ const TEKS_LAPOR_KOSONG_KLIEN: TeksLaporGangguan = {
     judulTerkirim: '', isiTerkirim: '', judulDitahan: '',
     isiDitahan: '', labelKode: '', tombolTutup: '',
   },
+}
+
+/** Ambil JSON dengan batas waktu. Gagal apa pun ⇒ `null`, TIDAK melempar. */
+async function ambilJson(url: string): Promise<Record<string, unknown> | null> {
+  const pembatal = new AbortController()
+  const jam = setTimeout(() => pembatal.abort(), BATAS_MS)
+  try {
+    const res = await fetch(url, { cache: 'no-store', signal: pembatal.signal })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  } finally {
+    clearTimeout(jam)
+  }
 }
 
 /** Ratakan respons `/api/config/sistem` (dikelompokkan per kategori) jadi peta policy_key → nilai. */
@@ -85,8 +94,8 @@ function petaConfig(json: Record<string, unknown> | null): Record<string, string
  */
 export async function bacaMaintenanceConfigKlien(): Promise<MaintenanceConfig> {
   const [jsonConfig, jsonTeks] = await Promise.all([
-    ambilJsonKlien('/api/config/sistem'),
-    ambilJsonKlien(`/api/message-library?kategori=${KATEGORI_TEKS}`),
+    ambilJson('/api/config/sistem'),
+    ambilJson(`/api/message-library?kategori=${KATEGORI_TEKS}`),
   ])
 
   const map  = petaConfig(jsonConfig)
