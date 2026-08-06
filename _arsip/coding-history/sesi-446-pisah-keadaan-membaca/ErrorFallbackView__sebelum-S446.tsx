@@ -14,8 +14,7 @@
 //   "matikan pelaporan error" — pintu bug-senyap yang §B2 larang, sekelas `catch {}` kosong yang
 //   menyembunyikan BUG-034 dan BUG-038 berbulan-bulan.
 //
-// ⛔ SAAT MASIH MEMBACA: KERANGKA NETRAL — bukan layar kosong, bukan wajah mesin, dan (KOREKSI
-//   S#446, #80) bukan wajah cadangan LENGKAP. Alasan + kutipan §5.0.6: `./error-fallback.memuat`.
+// ⛔ SAAT MASIH MEMBACA, YANG TAMPIL ADALAH WAJAH RAMAH — bukan layar kosong dan bukan wajah mesin.
 //   Bawaan `maintenance_mode` adalah AKTIF (K-436-2); menampilkan wajah mesin lebih dulu lalu
 //   menggantinya berarti pengguna asli sempat melihat persis yang fitur ini ada untuk mencegah.
 //
@@ -27,8 +26,7 @@ import { MaintenanceView }             from '@/components/maintenance/Maintenanc
 import { bacaMaintenanceConfigKlien }   from '@/lib/maintenance-klien'
 // Teks cadangan diambil dari rumahnya sendiri (§5.0.6), BUKAN dari pembaca config — supaya wajah
 // cadangan tidak ikut bergantung pada berkas yang tugasnya justru menyentuh jaringan.
-import { MAINTENANCE_CADANGAN }      from '@/lib/maintenance-cadangan'
-import { ErrorFallbackMemuat, JEDA_MS_MEMUAT } from '@/components/error/error-fallback.memuat'
+import { MAINTENANCE_CADANGAN, TEKS_LAPOR_KOSONG_KLIEN } from '@/lib/maintenance-cadangan'
 import { bacaNamaHalamanKlien }        from '@/lib/nama-halaman-klien'
 import { kirimLaporanGangguan }        from '@/components/maintenance/lapor-gangguan.kirim'
 import type { MaintenanceConfig }      from '@/lib/maintenance'
@@ -50,18 +48,25 @@ export interface ErrorFallbackViewProps {
   routePath: string
 }
 
+/** Wajah ramah saat isi dari panel SA belum/gagal terbaca — §5.0.6, teks cadangan DI DALAM KODE. */
+const CONFIG_CADANGAN: MaintenanceConfig = {
+  on:           true,
+  title:        MAINTENANCE_CADANGAN.title,
+  body:         MAINTENANCE_CADANGAN.body,
+  illustration: MAINTENANCE_CADANGAN.illustration,
+  theme:        MAINTENANCE_CADANGAN.theme,
+  eta:          '',
+  showContact:  false,
+  etaPrefix:    MAINTENANCE_CADANGAN.etaPrefix,
+  teksLapor:    TEKS_LAPOR_KOSONG_KLIEN,
+}
+
 export function ErrorFallbackView({ error, reset, area, routePath }: ErrorFallbackViewProps) {
   const [config, setConfig]           = useState<MaintenanceConfig | null>(null)
   const [teksRetry, setTeksRetry]     = useState<string>(MAINTENANCE_CADANGAN.retryButton)
   const [namaHalaman, setNamaHalaman] = useState<string>(routePath)
   const [menuKey, setMenuKey]         = useState<string | null>(null)
-  const [tampilMemuat, setTampilMemuat] = useState(false)
   const sudahJalan                    = useRef(false)
-
-  useEffect(() => {
-    const jam = setTimeout(() => setTampilMemuat(true), JEDA_MS_MEMUAT)
-    return () => clearTimeout(jam)
-  }, [])
 
   useEffect(() => {
     // React 19 menjalankan efek DUA KALI di mode pengembangan. Tanpa penjaga ini laporan otomatis
@@ -103,16 +108,12 @@ export function ErrorFallbackView({ error, reset, area, routePath }: ErrorFallba
     return () => { hidup = false }
   }, [routePath, area, error])
 
-  // ── SEDANG MEMBACA — bukan GAGAL membaca (§5.0.6; #80). Keadaan GAGAL tetap ────
-  //   berwajah ramah: `bacaMaintenanceConfigKlien()` sudah memulangkan MAINTENANCE_CADANGAN sendiri.
-  if (!config) return tampilMemuat ? <ErrorFallbackMemuat /> : null
-
   // ── WAJAH MESIN — saklar TIDAK AKTIF (K-436-1 baris ketiga) ──────────────────
   // Sengaja telanjang: nol tema, nol ilustrasi, nol tombol lapor, nol tombol Coba Lagi. §5.0.5
   // menyatakan butir 2-4 hanya muncul bersama wajah ramah. Teks di bawah HARDCODE dan itu BENAR:
   // ini bahasa mesin, bukan teks yang SA rapikan dari panel — memindahkannya ke `message_library`
   // justru membuat wajah mesin bergantung pada Supabase yang mungkin sedang jadi penyebab errornya.
-  if (!config.on) {
+  if (config && !config.on) {
     return (
       // ⚠️ `flex-1` — alasan sama persis dengan `MaintenanceView` (K-444-2, S#444); baca di sana.
       //   Wajah mesin memang SENGAJA telanjang, tetapi scrollbar vertikal palsu bukan bagian dari
@@ -129,10 +130,10 @@ export function ErrorFallbackView({ error, reset, area, routePath }: ErrorFallba
     )
   }
 
-  // ── WAJAH RAMAH — saklar AKTIF (bawaan), config SUDAH terbaca ────────────────
+  // ── WAJAH RAMAH — saklar AKTIF (bawaan) DAN selama config masih dibaca ───────
   return (
     <MaintenanceView
-      data={config}
+      data={config ?? CONFIG_CADANGAN}
       area={area}
       namaHalaman={namaHalaman}
       digest={error.digest ?? null}
