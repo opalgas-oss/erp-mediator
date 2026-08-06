@@ -53,19 +53,8 @@ export function MaintenanceView({
 }: MaintenanceViewProps) {
   const themeClass = THEME_CLASS[data.theme] ?? THEME_CLASS.terang
 
-  // ⚠️ TINGGI = `flex-1`, BUKAN `min-h-screen` — K-444-2 (S#444, koreksi Philips sesudah TC-443-a).
-  //   `min-h-screen` (= `min-height:100vh`) BENAR selama komponen ini hanya dipakai halaman PUBLIK.
-  //   Begitu `ErrorFallbackView` memasangnya di dalam Dashboard, wadahnya sudah `100vh − header`
-  //   (`DashboardShell`: `flex h-screen overflow-hidden` → `SCROLL_CLS.main` = `flex-1 overflow-y-auto
-  //   … flex flex-col`, satu-satunya pemilik scroll sejak S#100) ⇒ isinya luber PERSIS setinggi
-  //   header ⇒ scrollbar vertikal palsu. Itu yang Philips lihat di layar TC.
-  //   `flex-1` benar di KEDUA permukaan: di Dashboard ia mengisi tinggi wadah persis; di publik
-  //   induknya `<body class="min-h-full flex flex-col">` di bawah `<html class="h-full">` sehingga
-  //   ia tetap meregang seukuran viewport — hasil visual identik dengan sebelumnya.
-  //   ⛔ NOL prop baru dan NOL percabangan per-permukaan: percabangan itulah yang melahirkan #64
-  //   (`area` di-hardcode `publik`) — satu komponen, dua permukaan, asumsi permukaan tunggal.
   return (
-    <main className={`flex-1 w-full flex flex-col items-center justify-center px-6 py-12 ${themeClass}`}>
+    <main className={`min-h-screen w-full flex flex-col items-center justify-center px-6 py-12 ${themeClass}`}>
       <div className="max-w-md text-center">
         <div className="mb-6 opacity-90">
           <Illustration illustration={data.illustration} />

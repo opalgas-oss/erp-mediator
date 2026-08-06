@@ -115,11 +115,7 @@ export function ErrorFallbackView({ error, reset, area, routePath }: ErrorFallba
   // justru membuat wajah mesin bergantung pada Supabase yang mungkin sedang jadi penyebab errornya.
   if (config && !config.on) {
     return (
-      // ⚠️ `flex-1` — alasan sama persis dengan `MaintenanceView` (K-444-2, S#444); baca di sana.
-      //   Wajah mesin memang SENGAJA telanjang, tetapi scrollbar vertikal palsu bukan bagian dari
-      //   "telanjang" — ia cacat tinggi yang sama, dan Philips memutuskan keduanya diperbaiki
-      //   dalam SATU commit supaya tidak tersisa sapuan setengah jadi.
-      <main className="flex-1 w-full flex flex-col items-center justify-center px-6 py-12 font-mono text-sm">
+      <main className="min-h-screen w-full flex flex-col items-center justify-center px-6 py-12 font-mono text-sm">
         <div className="max-w-lg">
           <p>Application error: a client-side exception has occurred.</p>
           {error.digest && <p className="mt-2 opacity-70">Digest: {error.digest}</p>}
