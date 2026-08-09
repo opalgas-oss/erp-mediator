@@ -16,15 +16,6 @@
 // UPDATE Sesi #060:
 //   - PATCH: tambah invalidateConfigCache(feature_key) — clear module-level Map cache
 //     di config-registry.ts agar login action tidak baca nilai lama setelah config diubah SA
-//
-// TAMBAH Sesi #451 — #75 BUTIR 4: PATCH menulis KEY GERBANG tutup situs di MOMEN YANG SAMA
-//   dengan penghapusan cache. Ini yang menutup jendela GAGAL-SENYAP:
-//     tanpa key gerbang, sesudah SA menekan Simpan cache `config:api:sistem` DIHAPUS ⇒ pembaca
-//     Edge di middleware mengalami miss ⇒ fail-OPEN ⇒ situs TETAP TERBUKA, padahal layar SA
-//     sudah menampilkan "Konfigurasi berhasil disimpan". Layar berbohong, dan tidak ada yang tahu.
-//   Arsip byte-exact sebelum perubahan ini:
-//   `_arsip/coding-history/sesi-451-gerbang-tutup-situs/api-config-feature_key-route.ts`
-//   5.518 B · SHA-256 d3384444eb1f3e0337cb44c79815620746e11b972316af97191ede4c4a5595bc
 
 import { NextRequest, NextResponse }  from 'next/server'
 import { revalidateTag }              from 'next/cache'
@@ -32,9 +23,6 @@ import { requireSuperAdmin }          from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getConfigValue, invalidateConfigCache } from '@/lib/config-registry'
 import { getRedisClient, REDIS_TTL }  from '@/lib/redis'
-// Nama key & policy_key diimpor dari SATU rumah — pembaca (middleware) dan penulis (berkas ini)
-// DILARANG punya salinan string masing-masing (ATURAN 36 + anti-hardcode ATURAN 10).
-import { KEY_GERBANG_TUTUP_SITUS, POLICY_KEY_TUTUP_SITUS } from '@/lib/situs-tertutup-edge'
 
 // ─── Handler GET — PUBLIK, tidak butuh auth ───────────────────────────────────
 
@@ -127,12 +115,7 @@ export async function PATCH(
     }
 
     const db = await createServerSupabaseClient()
-    // `.select()` DITAMBAHKAN S#451 — bukan query kedua, melainkan baris yang sama dipulangkan.
-    // PATCH hanya menerima `id`, jadi tanpa ini ia TIDAK PERNAH TAHU baris mana yang barusan
-    // diubah, dan tidak bisa memutuskan apakah key gerbang perlu ditulis. `policy_key` dipakai
-    // sebagai penanda — BUKAN `label`, karena label bisa diubah SA dari layar (pola sama dengan
-    // `cariNilaiSaklar()` di lib/situs-tertutup-edge.ts).
-    const { data: barisTersimpan, error } = await db
+    const { error } = await db
       .from('config_registry')
       .update({
         nilai:      String(payload.nilai),
@@ -141,7 +124,6 @@ export async function PATCH(
       })
       .eq('id', payload.id)
       .eq('feature_key', feature_key)
-      .select('policy_key, nilai')
 
     if (error) throw error
 
@@ -155,30 +137,10 @@ export async function PATCH(
     revalidateTag('config', 'default')
     revalidateTag('sidebar-data', 'default')
 
-    // 3. Redis L1 cache — DAN key gerbang #75, di MOMEN YANG SAMA (butir 4, S#451)
+    // 3. Redis L1 cache
     const redis    = await getRedisClient()
     const cacheKey = `config:api:${feature_key}`
     if (redis) {
-      const baris = (barisTersimpan ?? [])[0] as { policy_key?: string | null; nilai?: string | null } | undefined
-
-      // 🔴 URUTANNYA MENGIKAT: key gerbang ditulis LEBIH DULU, cache dihapus SESUDAHNYA.
-      //   Dibalik, ada celah beberapa milidetik ketika cache sudah hilang tetapi key gerbang
-      //   belum ada ⇒ pembaca Edge miss ⇒ fail-OPEN ⇒ situs sempat terbuka padahal SA baru saja
-      //   menutupnya. Celah itu persis yang butir 4 ada untuk menutupnya.
-      if (baris?.policy_key === POLICY_KEY_TUTUP_SITUS) {
-        try {
-          // ⛔ SENGAJA TANPA TTL. Key ini adalah POSISI SAKLAR, bukan cache. Kalau ia kedaluwarsa
-          //   sendiri, pembaca Edge miss ⇒ fail-OPEN ⇒ situs MEMBUKA DIRINYA SENDIRI tanpa ada
-          //   yang menyentuh saklarnya. Ia hanya berubah saat SA menekan Simpan lagi.
-          await redis.set(KEY_GERBANG_TUTUP_SITUS, String(baris.nilai ?? payload.nilai))
-        } catch (redisErr) {
-          // console.error, bukan warn: kegagalan di sini berarti saklar TIDAK berlaku walau
-          // layar SA bilang tersimpan. Sumber kebenaran (config_registry) sudah benar; yang
-          // gagal adalah penyalurannya ke gerbang.
-          console.error('[PATCH /api/config] Tulis key gerbang tutup situs GAGAL:', redisErr)
-        }
-      }
-
       try {
         await redis.del(cacheKey)
       } catch (redisErr) {

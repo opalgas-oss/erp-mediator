@@ -32,21 +32,10 @@
 // FIX S#292 — Guard 6: tambah /api/monitoring/ agar requireSuperAdmin() dapat header
 //   x-is-super-admin. Root cause SSE + history API 403: Guard 6 tidak cover /api/monitoring/
 
-// TAMBAH Sesi #451 — GERBANG "Tutup Situs Sementara" (#75 butir 3, T-450-1 + T-450-4):
-//   Gerbang dipasang PALING ATAS, SEBELUM identitas dibaca. Alasannya bukan selera: homepage `/`
-//   keluar lewat PUBLIC_PATHS sebelum JWT pernah disentuh, jadi titik "sesudah JWT" untuk halaman
-//   publik MEMANG TIDAK ADA. Sudah ditelusuri S#450 — jangan dirancang ulang.
-//   Urutan: pengecualian sintaksis (NOL query) → baca posisi saklar → saklar OFF jatuh ke seluruh
-//   alur lama (NOL baris perilaku berubah) → saklar ON BARU baca JWT.
-//   Arsip byte-exact sebelum perubahan ini:
-//   `_arsip/coding-history/sesi-451-gerbang-tutup-situs/middleware.ts`
-//   19.068 B · SHA-256 b92f783bae2bec6e79688f77a42a5d1f8a7ed764fb3e892e04042a1ee09d00b3
-
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse }        from 'next/server'
 import type { NextRequest }    from 'next/server'
 import { ROLES, VENDOR_LOGIN_ALLOWED, ROLE_TO_DASHBOARD } from '@/lib/constants'
-import { bacaPosisiSaklarTutupSitus } from '@/lib/situs-tertutup-edge'
 
 // Konstanta Route Publik
 const PUBLIC_PATHS: string[] = [
@@ -155,114 +144,11 @@ async function decodeJwtFromSession(supabase: ReturnType<typeof createServerClie
   return { isSuperAdmin: false, memberships: [] }
 }
 
-// ─── GERBANG #75 — "Tutup Situs Sementara" (S#451, butir 3) ────────────────────────
-
-const PATH_SITUS_TERTUTUP = '/situs-tertutup'
-
-// Jalur yang WAJIB tetap terbuka saat gerbang menyala — ditelusuri dari kode S#449, bukan ditebak.
-// 🔴 Salah satu ikut ditutup ⇒ SuperAdmin TERKUNCI dan tidak bisa mengembalikan saklarnya.
-//   · `/sa/masuk`             — satu-satunya pintu masuk SA
-//   · `/api/auth/*`          — seluruh jalur login/OTP/sesi (prefix; 15 titik di disk, dibaca S#451)
-//   · `/api/config/*`        — pembaca DAN penulis saklar itu sendiri
-//   · `/api/message-library` — SUMBER TEKS halaman tertutup. Hari ini ia lolos hanya karena jatuh
-//     ke `return NextResponse.next()` di kaki middleware; begitu gerbang dipasang di ATAS, ia WAJIB
-//     disebut eksplisit — kalau tidak, halaman tertutup kehilangan teksnya sendiri.
-//   · `PATH_SITUS_TERTUTUP`  — WAJIB, dan ini syarat MEKANIS bukan kebijakan: gerbang di bawah
-//     mengambil HTML halaman itu lewat satu permintaan internal. Tanpa pengecualian ini,
-//     permintaan internal itu masuk gerbang lagi ⇒ rekursi tak berujung.
-//   · `/api/cron/*`          — DITAMBAHKAN S#451 atas keputusan Philips (K-451-2). Pemanggilnya
-//     QStash dari luar, berbekal tanda tangan `upstash-signature` — BUKAN JWT ⇒ ia tidak pernah
-//     terbaca sebagai SuperAdmin ⇒ tanpa baris ini ia menerima halaman 503 dan BERHENTI.
-//     Yang ikut berhenti: pengumpulan metrik DAN pengosongan antrean WA/Email di `after()`
-//     (lihat `app/api/cron/collect-metrics/route.ts`, catatan `maxDuration` FIX S#359).
-//     🔴 Justru pada pemicu KEDUA halaman ini (gangguan global, K-450-8) mesin notifikasi harus
-//     tetap hidup — dan K-450-4a menghapus tautan lapor JUSTRU karena pelaporan wajib otomatis.
-//     Menutup cron = mematikan satu-satunya jalur pelaporan yang tersisa.
-const LOLOS_GERBANG_TUTUP_SITUS: string[] = [
-  '/sa/masuk',
-  '/api/message-library',
-  PATH_SITUS_TERTUTUP,
-]
-
-/** Pengecualian SINTAKSIS — dijawab dari bentuk path saja. NOL query, NOL Redis, NOL Supabase. */
-function lolosGerbangTanpaQuery(pathname: string): boolean {
-  if (pathname.startsWith('/_next/'))      return true
-  if (pathname.startsWith('/api/auth/'))   return true
-  if (pathname.startsWith('/api/config/')) return true
-  if (pathname.startsWith('/api/cron/'))   return true
-  if (pathname === '/favicon.ico')         return true
-  if (STATIC_EXTENSIONS.test(pathname))    return true
-  return LOLOS_GERBANG_TUTUP_SITUS.includes(pathname)
-}
-
-/**
- * Memulangkan `null` artinya **gerbang tidak mengambil alih** — permintaan jatuh ke seluruh alur
- * middleware yang sudah ada, NOL baris perilaku berubah. Itu keadaan normal (saklar OFF).
- *
- * Ongkos saat saklar OFF = **satu** pembacaan Redis (`bacaPosisiSaklarTutupSitus`), dan itu
- * satu-satunya ongkos yang berkas ini tambahkan ke jalur panas.
- *
- * 🔴 STATUS 503 DISTEMPEL DI SINI, bukan di halaman (T-450-4). `NextResponse.rewrite(url,{status})`
- *   terbukti MENGABAIKAN status (next.js issue #50155), jadi HTML halaman diambil lewat satu
- *   permintaan internal lalu dipulangkan kembali berstatus 503 — wajahnya tetap halaman Next utuh
- *   (layout + font + Tailwind), statusnya tetap 503.
- *
- * ⚠️ `Retry-After` TIDAK dipasang — keputusan sadar, bukan kelalaian (T-451-2, S#451).
- *   `Retry-After` hanya menerima detik atau HTTP-date (RFC 9110 §10.2.3), sedangkan
- *   `site_closed_eta` / `maintenance_eta` adalah teks bebas berbahasa Indonesia yang diketik SA
- *   (mis. "Hari ini, 21.00 WIB") dan hari ini KOSONG. Mengarang angka detik di sini = hardcode
- *   nilai bisnis (ATURAN 10). Tujuan T-449-14 tetap tercapai oleh status 503-nya sendiri: mesin
- *   pencari tidak mengindeks halaman "situs ditutup" sebagai isi situs.
- */
-async function terapkanGerbangTutupSitus(request: NextRequest): Promise<NextResponse | null> {
-  const { pathname } = request.nextUrl
-
-  // 1) pengecualian SINTAKSIS — nol query
-  if (lolosGerbangTanpaQuery(pathname)) return null
-
-  // 2) baca posisi saklar — fail-OPEN di setiap jalur keluarnya (lib/situs-tertutup-edge.ts)
-  const posisi = await bacaPosisiSaklarTutupSitus()
-
-  // 3) saklar OFF ⇒ jatuh ke seluruh alur yang sudah ada
-  if (!posisi.tertutup) return null
-
-  // 4) saklar ON ⇒ BARU identitas dibaca
-  const supabaseGerbang = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-    cookies: { getAll() { return request.cookies.getAll() }, setAll() {} }
-  })
-  const { isSuperAdmin } = await decodeJwtFromSession(supabaseGerbang)
-
-  // SA → lanjut normal (K-449-2: saat situs ditutup, hanya SA yang boleh masuk)
-  if (isSuperAdmin) return null
-
-  // selain SA → halaman tertutup + stempel 503
-  const urlHalaman = new URL(PATH_SITUS_TERTUTUP, request.url)
-  try {
-    const halaman = await fetch(urlHalaman, { headers: { accept: 'text/html' } })
-    const html    = await halaman.text()
-    return new NextResponse(html, {
-      status: 503,
-      headers: {
-        'content-type':  'text/html; charset=utf-8',
-        'cache-control': 'no-store, must-revalidate',
-      },
-    })
-  } catch {
-    // Permintaan internal gagal ⇒ JANGAN dibuka. Gerbang tetap menutup lewat `rewrite`;
-    // yang turun mutunya hanya status HTTP-nya (200, bukan 503) — bukan penutupannya.
-    return NextResponse.rewrite(urlHalaman)
-  }
-}
-
 // ─── Middleware Utama ──────────────────────────────────────────────────────────
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   try {
     const { pathname } = request.nextUrl
-
-    // ─── GERBANG #75 — PALING ATAS, sebelum satu pun guard lama dijalankan ───────────────
-    const gerbangTutupSitus = await terapkanGerbangTutupSitus(request)
-    if (gerbangTutupSitus) return gerbangTutupSitus
 
     if (PUBLIC_PATHS.includes(pathname) && pathname !== '/login'
         && pathname !== '/sa/masuk' && pathname !== '/kelola/masuk') return NextResponse.next()
