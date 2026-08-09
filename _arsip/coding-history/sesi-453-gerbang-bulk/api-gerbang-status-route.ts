@@ -31,12 +31,10 @@
 //
 // 🔒 NOL rahasia dibocorkan: env var hanya dilaporkan ADA / TIDAK ADA (boolean), bukan nilainya.
 //
-// ✅ HUTANG DI ATAS SUDAH DILUNASI S#453 — catatan lamanya diganti supaya kode ini berhenti
-//   menyatakan sesuatu yang tidak lagi benar. Alamat `/api/gerbang-status` kini terdaftar di
-//   `LOLOS_GERBANG_TUTUP_SITUS` (`middleware.ts`), sehingga alat diagnosa ini TETAP memulangkan
-//   JSON saat gerbang menyala — bukan HTML halaman tertutup berstatus 503.
-//   Bunyi catatan lamanya (S#452): *"begitu gerbang terbukti bekerja, alamat ini WAJIB
-//   ditambahkan … Sengaja BELUM dikerjakan di sesi ini supaya perubahan tetap SATU BERKAS."*
+// ⏭️ CATATAN UNTUK SESI BERIKUTNYA: begitu gerbang terbukti bekerja, alamat `/api/gerbang-status`
+//   WAJIB ditambahkan ke daftar pengecualian `lolosGerbangTanpaQuery()` di `middleware.ts` —
+//   kalau tidak, alat diagnosa ini ikut tertutup persis saat ia paling dibutuhkan. Sengaja BELUM
+//   dikerjakan di sesi ini supaya perubahan tetap SATU BERKAS.
 
 import { NextResponse } from 'next/server'
 import { Redis } from '@upstash/redis'

@@ -178,17 +178,9 @@ const PATH_SITUS_TERTUTUP = '/situs-tertutup'
 //     🔴 Justru pada pemicu KEDUA halaman ini (gangguan global, K-450-8) mesin notifikasi harus
 //     tetap hidup — dan K-450-4a menghapus tautan lapor JUSTRU karena pelaporan wajib otomatis.
 //     Menutup cron = mematikan satu-satunya jalur pelaporan yang tersisa.
-//   · `/api/gerbang-status`  — DITAMBAHKAN S#453. Ia ALAT UKUR gerbang ini, bukan fitur produk:
-//     `PROMPT_SESI_453` menetapkan uji kelulusan #75 = alat itu berbunyi `sumber:"gerbang"`
-//     sesudah SA menekan Simpan. Tanpa baris ini, begitu gerbang BEKERJA alat ukurnya ikut
-//     tertutup ⇒ pemanggil non-SA menerima HTML 503, bukan JSON ⇒ alatnya mati persis pada saat
-//     ia paling dibutuhkan, dan #75 tidak bisa dinyatakan lulus dari sisi pengunjung.
-//     Aman dibuka: route itu NOL menulis ke Redis/Supabase dan NOL memulangkan data pribadi —
-//     hanya posisi saklar + panjang env var (dibaca S#453, `app/api/gerbang-status/route.ts`).
 const LOLOS_GERBANG_TUTUP_SITUS: string[] = [
   '/sa/masuk',
   '/api/message-library',
-  '/api/gerbang-status',
   PATH_SITUS_TERTUTUP,
 ]
 
