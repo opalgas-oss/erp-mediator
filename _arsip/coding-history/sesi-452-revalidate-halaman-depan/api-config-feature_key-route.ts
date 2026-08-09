@@ -27,7 +27,7 @@
 //   5.518 B · SHA-256 d3384444eb1f3e0337cb44c79815620746e11b972316af97191ede4c4a5595bc
 
 import { NextRequest, NextResponse }  from 'next/server'
-import { revalidateTag, revalidatePath } from 'next/cache'
+import { revalidateTag }              from 'next/cache'
 import { requireSuperAdmin }          from '@/lib/auth-server'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getConfigValue, invalidateConfigCache } from '@/lib/config-registry'
@@ -185,14 +185,6 @@ export async function PATCH(
         console.warn('[PATCH /api/config] Redis del gagal:', redisErr)
       }
     }
-
-    // 2b. HALAMAN DEPAN `/` — S#452 (T-452-5). `/` adalah halaman STATIS: dibangun sekali saat
-    //     build lalu dilayani dari simpanan jaringan, jadi permintaannya TIDAK PERNAH melewati
-    //     middleware — itu satu-satunya sebab TC-449-4 GAGAL (bukti `Age: 1954`, S#451).
-    // 🔴 LETAKNYA MENGIKAT: HARUS SESUDAH key gerbang di atas ditulis. Dibalik, halaman depan bisa
-    //     dibangun ulang selagi gerbang masih membaca posisi LAMA ⇒ jawaban lama tersimpan kembali.
-    const barisPolicy = (barisTersimpan ?? [])[0] as { policy_key?: string | null } | undefined
-    if (barisPolicy?.policy_key === POLICY_KEY_TUTUP_SITUS) revalidatePath('/')
 
     return NextResponse.json({ success: true, message: 'Konfigurasi berhasil disimpan' })
 
