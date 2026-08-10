@@ -38,8 +38,9 @@ const UbahSchema = z.object({
   email:                 z.string().trim().email('Format email tidak valid').max(255).optional(),
   telepon:               z.string().trim().max(30).nullable().optional(),
   jabatan:               JabatanEnum.optional(),
-  publish_bug_dashboard: z.boolean().optional(),
-  publish_public_page:   z.boolean().optional(),
+  publish_bug_dashboard:          z.boolean().optional(),
+  publish_dashboard_admin_tenant: z.boolean().optional(),
+  publish_public_website:         z.boolean().optional(),
   is_active:             z.boolean().optional(),
 })
 

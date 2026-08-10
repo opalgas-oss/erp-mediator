@@ -47,8 +47,9 @@ const BuatKontakSchema = z.object({
   email:                 z.string().trim().email('Format email tidak valid').max(255),
   telepon:               z.string().trim().max(30).nullable().optional().default(null),
   jabatan:               JabatanEnum,
-  publish_bug_dashboard: z.boolean().optional().default(false),
-  publish_public_page:   z.boolean().optional().default(false),
+  publish_bug_dashboard:          z.boolean().optional().default(false),
+  publish_dashboard_admin_tenant: z.boolean().optional().default(false),
+  publish_public_website:         z.boolean().optional().default(false),
   // Tahap A hanya mengisi scope SA; ketiga nilai tetap diterima karena skema tabelnya
   // memang didesain sekali untuk SA + AT + Vendor (KONSEP_BISNIS Keputusan 2).
   scope:                 ScopeEnum.optional().default('super_admin'),

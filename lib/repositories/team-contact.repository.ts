@@ -48,7 +48,8 @@ const KOLOM = [
   'email',
   'jabatan',
   'publish_bug_dashboard',
-  'publish_public_page',
+  'publish_dashboard_admin_tenant',
+  'publish_public_website',
   'is_active',
   'sort_order',
   'created_at',
@@ -59,8 +60,24 @@ const KOLOM = [
   'deleted_by',
 ].join(', ')
 
-/** Target publikasi — menentukan kolom penanda mana yang difilter. */
-export type TargetPublikasi = 'public_page' | 'bug_dashboard'
+/**
+ * Target publikasi — menentukan kolom penanda mana yang difilter.
+ * TIGA kanal sejak S#454 (K-454-4):
+ *   'bug_dashboard'        — KANAL 1, INTERNAL: halaman error Dashboard SA + AT
+ *   'dashboard_admin_tenant' — KANAL 2, INTERNAL: halaman maintenance Dashboard AT (wajib login AT)
+ *   'public_website'       — KANAL 3, PUBLIK: halaman Website yang bisa dibuka siapa saja
+ * ⛔ 'public_page' (nama lama) DICABUT S#454 — ia menamai ruang lingkup yang salah (K-450-6:
+ *   kata "publik" dilarang berdiri sendiri). Kolom lamanya masih ada di Supabase tetapi
+ *   sudah tidak dibaca kode ini (pola expand-migrate-contract); DROP di sesi berikutnya.
+ */
+export type TargetPublikasi = 'bug_dashboard' | 'dashboard_admin_tenant' | 'public_website'
+
+/** Peta target → kolom penanda di Supabase. Satu-satunya tempat pemetaan ini hidup. */
+const KOLOM_TARGET: Record<TargetPublikasi, string> = {
+  bug_dashboard:          'publish_bug_dashboard',
+  dashboard_admin_tenant: 'publish_dashboard_admin_tenant',
+  public_website:         'publish_public_website',
+}
 
 // ─── FUNGSI 1: TeamContactRepo_findAll ────────────────────────────────────────
 /**
@@ -173,8 +190,9 @@ export async function TeamContactRepo_insert(
       telepon:               payload.telepon,
       email:                 payload.email,
       jabatan:               payload.jabatan,
-      publish_bug_dashboard: payload.publish_bug_dashboard,
-      publish_public_page:   payload.publish_public_page,
+      publish_bug_dashboard:          payload.publish_bug_dashboard,
+      publish_dashboard_admin_tenant: payload.publish_dashboard_admin_tenant,
+      publish_public_website:         payload.publish_public_website,
       is_active:             true,
       sort_order:            sortOrder,
       created_by:            olehUid,
@@ -211,7 +229,8 @@ export async function TeamContactRepo_update(
   if (payload.email                 !== undefined) patch.email                 = payload.email
   if (payload.jabatan               !== undefined) patch.jabatan               = payload.jabatan
   if (payload.publish_bug_dashboard !== undefined) patch.publish_bug_dashboard = payload.publish_bug_dashboard
-  if (payload.publish_public_page   !== undefined) patch.publish_public_page   = payload.publish_public_page
+  if (payload.publish_dashboard_admin_tenant !== undefined) patch.publish_dashboard_admin_tenant = payload.publish_dashboard_admin_tenant
+  if (payload.publish_public_website         !== undefined) patch.publish_public_website         = payload.publish_public_website
   if (payload.is_active             !== undefined) patch.is_active             = payload.is_active
 
   const { data, error } = await db
@@ -304,7 +323,7 @@ export async function TeamContactRepo_findPublished(
   tenantId: string | null    = null
 ): Promise<TeamContactRow[]> {
   const db = createServerSupabaseClient()
-  const kolomTarget = target === 'public_page' ? 'publish_public_page' : 'publish_bug_dashboard'
+  const kolomTarget = KOLOM_TARGET[target]
 
   let q = db
     .from('team_contacts')

@@ -89,13 +89,14 @@ interface FormKontak {
   telepon:               string
   email:                 string
   jabatan:               JabatanKontak | ''
-  publish_bug_dashboard: boolean
-  publish_public_page:   boolean
+  publish_bug_dashboard:          boolean
+  publish_dashboard_admin_tenant: boolean
+  publish_public_website:         boolean
 }
 
 const FORM_KOSONG: FormKontak = {
   id: null, nama: '', telepon: '', email: '', jabatan: '',
-  publish_bug_dashboard: false, publish_public_page: false,
+  publish_bug_dashboard: false, publish_dashboard_admin_tenant: false, publish_public_website: false,
 }
 
 // ─── Komponen utama ───────────────────────────────────────────────────────────
@@ -118,7 +119,7 @@ export function TeamContactsClient({ initialData }: { initialData: KontakTimBari
   const jumlahAktif = initialData.filter((k) => k.isActive).length
   // §6.3 — sistem hanya punya alamat tujuan kalau ada baris AKTIF yang dicentang.
   const adaPublikasi = initialData.some(
-    (k) => k.isActive && (k.publishBugDashboard || k.publishPublicPage)
+    (k) => k.isActive && (k.publishBugDashboard || k.publishDashboardAdminTenant || k.publishPublicWebsite)
   )
 
   const terfilter = useMemo(() => {
@@ -162,8 +163,9 @@ export function TeamContactsClient({ initialData }: { initialData: KontakTimBari
     setForm({
       id: k.id, nama: k.nama, telepon: k.telepon ?? '', email: k.email,
       jabatan: k.jabatan,
-      publish_bug_dashboard: k.publishBugDashboard,
-      publish_public_page:   k.publishPublicPage,
+      publish_bug_dashboard:          k.publishBugDashboard,
+      publish_dashboard_admin_tenant: k.publishDashboardAdminTenant,
+      publish_public_website:         k.publishPublicWebsite,
     })
     setDialogBuka(true)
   }
@@ -179,8 +181,9 @@ export function TeamContactsClient({ initialData }: { initialData: KontakTimBari
       email:                 form.email.trim(),
       telepon:               form.telepon.trim() || null,
       jabatan:               form.jabatan,
-      publish_bug_dashboard: form.publish_bug_dashboard,
-      publish_public_page:   form.publish_public_page,
+      publish_bug_dashboard:          form.publish_bug_dashboard,
+      publish_dashboard_admin_tenant: form.publish_dashboard_admin_tenant,
+      publish_public_website:         form.publish_public_website,
     }
     const ok = form.id
       ? await kirim(`/api/superadmin/team-contacts/${form.id}`, 'PATCH', { aksi: 'ubah', ...isi })
@@ -336,8 +339,11 @@ export function TeamContactsClient({ initialData }: { initialData: KontakTimBari
                           <Badge gaya={k.publishBugDashboard ? 'info' : 'off'} ikon={k.publishBugDashboard ? 'ti-bug' : 'ti-bug-off'}>
                             Bug Dashboard
                           </Badge>
-                          <Badge gaya={k.publishPublicPage ? 'success' : 'off'} ikon={k.publishPublicPage ? 'ti-world' : 'ti-world-off'}>
-                            Halaman Publik
+                          <Badge gaya={k.publishDashboardAdminTenant ? 'info' : 'off'} ikon={k.publishDashboardAdminTenant ? 'ti-lock' : 'ti-lock-off'}>
+                            Dashboard AT
+                          </Badge>
+                          <Badge gaya={k.publishPublicWebsite ? 'success' : 'off'} ikon={k.publishPublicWebsite ? 'ti-world' : 'ti-world-off'}>
+                            Publik Website
                           </Badge>
                         </div>
                       </TableCell>
@@ -470,7 +476,7 @@ export function TeamContactsClient({ initialData }: { initialData: KontakTimBari
             <fieldset className="sm:col-span-2 rounded-lg border-[0.5px] border-black/[0.12] p-3.5 mt-1">
               <legend className="px-1 text-[12px] font-medium text-[#374151]">Publikasi kontak ini</legend>
               <p className="text-[11px] text-[#6b7280] mb-2">
-                Satu kontak boleh dicentang untuk keduanya sekaligus. Tanpa centang, kontak
+                Satu kontak boleh dicentang untuk ketiganya sekaligus. Tanpa centang, kontak
                 tersimpan tapi tidak pernah dipakai sistem.
               </p>
 
@@ -494,17 +500,35 @@ export function TeamContactsClient({ initialData }: { initialData: KontakTimBari
               <label className="mt-2 flex gap-2.5 rounded-md border-[0.5px] border-black/[0.12] p-2.5 cursor-pointer hover:bg-[#f9f9f8]">
                 <input type="checkbox" className="mt-0.5 h-[15px] w-[15px] shrink-0"
                   style={{ accentColor: '#185FA5' }}
-                  checked={form.publish_public_page}
-                  onChange={(e) => setForm({ ...form, publish_public_page: e.target.checked })} />
+                  checked={form.publish_dashboard_admin_tenant}
+                  onChange={(e) => setForm({ ...form, publish_dashboard_admin_tenant: e.target.checked })} />
+                <span>
+                  <span className="block text-[13px] text-[#1a1a1a]">
+                    <i className="ti ti-lock mr-1 text-[13px]" style={{ color: '#185FA5' }} aria-hidden="true" />
+                    Tampil di halaman Dashboard AT
+                  </span>
+                  <span className="block text-[11px] text-[#6b7280] mt-0.5">
+                    Dipakai halaman maintenance yang bisa dibuka oleh Team AT yang memiliki akses
+                    Login Dashboard AT. Gunakan <strong>alamat umum tim</strong>, bukan email
+                    pribadi — supaya kontak tidak ikut hilang saat anggota tim berganti.
+                  </span>
+                </span>
+              </label>
+
+              <label className="mt-2 flex gap-2.5 rounded-md border-[0.5px] border-black/[0.12] p-2.5 cursor-pointer hover:bg-[#f9f9f8]">
+                <input type="checkbox" className="mt-0.5 h-[15px] w-[15px] shrink-0"
+                  style={{ accentColor: '#185FA5' }}
+                  checked={form.publish_public_website}
+                  onChange={(e) => setForm({ ...form, publish_public_website: e.target.checked })} />
                 <span>
                   <span className="block text-[13px] text-[#1a1a1a]">
                     <i className="ti ti-world mr-1 text-[13px]" style={{ color: '#3B6D11' }} aria-hidden="true" />
-                    Tampil di halaman publik website
+                    Tampil di halaman publik Website
                   </span>
                   <span className="block text-[11px] text-[#6b7280] mt-0.5">
-                    Dipakai halaman maintenance yang bisa dibuka siapa saja. Gunakan{' '}
-                    <strong>alamat umum tim</strong>, bukan email pribadi — halaman publik dipanen
-                    robot spam.
+                    Dipakai halaman yang bisa dibuka siapa saja, termasuk Customer yang sudah punya
+                    akses Login Dashboard. Gunakan <strong>alamat umum tim</strong>, bukan email
+                    pribadi — halaman publik dipanen robot spam.
                   </span>
                 </span>
               </label>

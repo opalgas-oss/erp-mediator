@@ -39,8 +39,9 @@ export interface TeamContactRow {
   telepon:               string | null
   email:                 string
   jabatan:               JabatanKontak
-  publish_bug_dashboard: boolean         // tampil di halaman error Dashboard SA/AT
-  publish_public_page:   boolean         // tampil di halaman maintenance publik
+  publish_bug_dashboard:          boolean // KANAL 1 INTERNAL — halaman error Dashboard SA/AT
+  publish_dashboard_admin_tenant: boolean // KANAL 2 INTERNAL — halaman maintenance Dashboard AT (S#454)
+  publish_public_website:         boolean // KANAL 3 PUBLIK — halaman Website siapa saja (S#454)
   is_active:             boolean         // is_active — BUKAN is_aktif (BUG-039)
   sort_order:            number          // DEFAULT 0 di DB; jenjang 10/20/30 dihitung service (max+10)
   created_at:            string
@@ -63,8 +64,9 @@ export interface BuatKontakTimPayload {
   telepon:               string | null
   email:                 string
   jabatan:               JabatanKontak
-  publish_bug_dashboard: boolean
-  publish_public_page:   boolean
+  publish_bug_dashboard:          boolean
+  publish_dashboard_admin_tenant: boolean
+  publish_public_website:         boolean
 }
 
 // ─── Payload: Ubah Kontak (semua field opsional — partial update) ─────────────
@@ -74,8 +76,9 @@ export interface UbahKontakTimPayload {
   telepon?:               string | null
   email?:                 string
   jabatan?:               JabatanKontak
-  publish_bug_dashboard?: boolean
-  publish_public_page?:   boolean
+  publish_bug_dashboard?:          boolean
+  publish_dashboard_admin_tenant?: boolean
+  publish_public_website?:         boolean
   is_active?:             boolean
 }
 
@@ -101,8 +104,9 @@ export interface KontakTimBaris {
   telepon:             string | null
   email:               string
   jabatan:             JabatanKontak
-  publishBugDashboard: boolean
-  publishPublicPage:   boolean
+  publishBugDashboard:         boolean
+  publishDashboardAdminTenant: boolean
+  publishPublicWebsite:        boolean
   isActive:            boolean
   /** true bila baris ini paling atas — tombol panah naik dinonaktifkan */
   isPertama:           boolean

@@ -159,8 +159,9 @@ function keBarisTabel(rows: TeamContactRow[]): KontakTimBaris[] {
     telepon:             r.telepon,
     email:               r.email,
     jabatan:             r.jabatan,
-    publishBugDashboard: r.publish_bug_dashboard,
-    publishPublicPage:   r.publish_public_page,
+    publishBugDashboard:         r.publish_bug_dashboard,
+    publishDashboardAdminTenant: r.publish_dashboard_admin_tenant,
+    publishPublicWebsite:        r.publish_public_website,
     isActive:            r.is_active,
     isPertama:           i === 0,
     isTerakhir:          i === total - 1,
@@ -333,7 +334,10 @@ export async function TeamContactService_geser(
  * lahir kembali. Dua keadaan menghasilkan `null`: daftar kontak kosong, ATAU ada kontak
  * tetapi nol yang dicentang untuk target itu.
  *
- * @param target - 'public_page' (halaman maintenance publik) | 'bug_dashboard' (halaman error)
+ * @param target - TIGA kanal sejak S#454 (K-454-4):
+ *                 'bug_dashboard'          (halaman error Dashboard SA + AT — INTERNAL)
+ *               | 'dashboard_admin_tenant' (halaman maintenance Dashboard AT — INTERNAL, wajib login)
+ *               | 'public_website'         (halaman publik Website — siapa saja)
  */
 export async function TeamContactService_getKontakTujuan(
   target:   TargetPublikasi,
