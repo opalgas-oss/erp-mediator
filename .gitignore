@@ -70,3 +70,7 @@ _arsip/*claude_desktop*.json
 backup-storage.mjs
 backup-*.mjs
 backup-*.js
+
+# Tambah Sesi #456 (R0): folder sementara Google Drive Desktop — 1.165 berkas / 1.783.738 B,
+# bukan bagian source project. Tanpa baris ini, `git add -A` berikutnya menyapunya masuk.
+.tmp.driveupload/

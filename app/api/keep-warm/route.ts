@@ -32,6 +32,19 @@
 //   loginUnifiedAction, ping dari fan-out ini, Server Action bundle ter-warm via GET.
 //
 // Dilindungi CRON_SECRET via header Authorization: Bearer <secret>.
+//
+// 🔴 FIX Sesi #456 (R3 · A3) — ENDPOINT INI DULU BERBOHONG. Sekarang melapor apa adanya.
+//   Yang salah sebelumnya: `warmed:[...]` adalah ARRAY LITERAL STATIS berisi 8 nama, dicetak
+//   sama persis pada SETIAP panggilan — termasuk saat seluruh fan-out gagal, dan termasuk saat
+//   `baseUrl` tidak ketemu sehingga fan-out TIDAK PERNAH DIJALANKAN SAMA SEKALI. Hasil
+//   `Promise.allSettled` dibuang, dan `.catch(() => {})` menelan tiap kegagalan tanpa jejak.
+//   Akibatnya jawaban `{"status":"warm","warmed":[8 target]}` tidak membuktikan apa pun.
+//   Sekarang: `warmed` DIUKUR dari hasil tiap fetch (terjangkau / http / error), ada `ringkasan`,
+//   ada `base_url`, dan `status` bisa berbunyi `warm` · `partial` · `skipped`.
+//
+//   ⚠️ YANG SENGAJA TIDAK DIUBAH: kode HTTP tetap **200** walau ada target gagal. Menaikkannya
+//   jadi non-200 akan membuat langkah "Ping Preview URL" di keep-warm.yml gagal (exit 1) dan
+//   mengubah perilaku alarm — itu keputusan tersendiri, di luar scope R3, dan BELUM diusulkan.
 
 import { NextResponse } from 'next/server'
 
@@ -59,43 +72,60 @@ export async function GET(request: Request) {
       ? `https://${request.headers.get('x-forwarded-host')}`
       : null)
 
-  if (baseUrl) {
-    const targets = [
-      // Login flow — server action + API lambdas
-      `${baseUrl}/login`,
-      `${baseUrl}/api/auth/warmup-login-action`, // ← BARU S#188 fix BUG-021
-      `${baseUrl}/api/auth/warmup`,
-      `${baseUrl}/api/auth/send-otp`,
-      `${baseUrl}/api/auth/verify-otp`,
-      `${baseUrl}/api/auth/check-session`,
-      // Dashboard RSC lambdas
-      `${baseUrl}/dashboard/superadmin`,
-      `${baseUrl}/dashboard/vendor`,
-    ]
+  const TARGETS: ReadonlyArray<{ nama: string; path: string }> = [
+    // Login flow — server action + API lambdas
+    { nama: 'login-page',           path: '/login' },
+    { nama: 'warmup-login-action',  path: '/api/auth/warmup-login-action' }, // S#188 fix BUG-021
+    { nama: 'auth-bundle',          path: '/api/auth/warmup' },
+    { nama: 'send-otp',             path: '/api/auth/send-otp' },
+    { nama: 'verify-otp',           path: '/api/auth/verify-otp' },
+    { nama: 'check-session',        path: '/api/auth/check-session' },
+    // Dashboard RSC lambdas
+    { nama: 'dashboard-sa',         path: '/dashboard/superadmin' },
+    { nama: 'dashboard-vendor',     path: '/dashboard/vendor' },
+  ]
 
-    await Promise.allSettled(
-      targets.map(url =>
-        fetch(url, { method: 'GET', redirect: 'manual' })
-          .catch(() => { /* abaikan — fan-out bersifat best-effort */ })
-      )
-    )
+  type HasilWarm = {
+    target:     string
+    terjangkau: boolean
+    http:       number | null
+    error:      string | null
   }
+
+  let hasil: HasilWarm[] = []
+
+  if (baseUrl) {
+    const settled = await Promise.allSettled(
+      TARGETS.map(t => fetch(`${baseUrl}${t.path}`, { method: 'GET', redirect: 'manual' }))
+    )
+
+    hasil = settled.map((s, i): HasilWarm => {
+      const nama = TARGETS[i].nama
+      // Status HTTP apa pun (200 / 302 / 401) berarti lambda-nya TER-INISIALISASI = tujuan warm
+      // tercapai. Yang menandakan GAGAL hanyalah fetch yang menolak (DNS/TLS/timeout/jaringan).
+      return s.status === 'fulfilled'
+        ? { target: nama, terjangkau: true,  http: s.value.status, error: null }
+        : { target: nama, terjangkau: false, http: null,
+            error: s.reason instanceof Error ? s.reason.message : String(s.reason) }
+    })
+  }
+
+  const gagal  = hasil.filter(h => !h.terjangkau).length
+  const status = !baseUrl ? 'skipped' : gagal === 0 ? 'warm' : 'partial'
 
   return NextResponse.json(
     {
-      status:    'warm',
+      status,
       timestamp: new Date().toISOString(),
       service:   'ERP Mediator Hyperlocal',
-      warmed: [
-        'login-page',
-        'warmup-login-action',
-        'auth-bundle',
-        'send-otp',
-        'verify-otp',
-        'check-session',
-        'dashboard-sa',
-        'dashboard-vendor',
-      ],
+      base_url:  baseUrl ?? null,
+      ringkasan: {
+        total:      hasil.length,
+        terjangkau: hasil.length - gagal,
+        gagal,
+      },
+      // DIUKUR dari hasil fetch — bukan daftar literal (R3, S#456).
+      warmed: hasil,
     },
     {
       status: 200,

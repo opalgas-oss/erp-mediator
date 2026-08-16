@@ -5,23 +5,7 @@
 #   Menjaga Vercel serverless functions tetap warm sebagai lapis kedua
 #   di samping cron-job.org (lapis pertama).
 #   Cek config_registry (keep_warm_enabled) sebelum ping — jika SuperAdmin
-#   menonaktifkan keep-warm via dashboard, PING BISNIS berhenti otomatis.
-#
-# 🔴 DUA GERBANG YANG BERBEDA — DIPISAH DI S#456 (R2 · T-454-4). JANGAN DISATUKAN LAGI.
-#   1) GERBANG BISNIS  — `keep_warm_enabled` di config_registry (saklar milik SuperAdmin).
-#      Mengendalikan: "Ping Preview URL". Kalau Philips mematikan keep-warm, ping ini memang berhenti.
-#   2) GERBANG PEMANTAUAN — TIDAK ADA. Heartbeat Cronping berjalan `if: always()`.
-#      Yang dibuktikan heartbeat adalah "PENJADWAL INI MASIH HIDUP", bukan "situs sedang di-warm".
-#
-#   Kenapa dipisah: sampai S#455 kedua langkah memakai kondisi yang SAMA
-#   (`steps.config_check.outputs.enabled == 'true'`, baris 55 dan 72 versi lama). Akibatnya dua
-#   kejadian yang berbeda menghasilkan gejala yang IDENTIK — heartbeat berhenti:
-#     (a) Philips mematikan saklar keep-warm di layar SA  → normal, disengaja
-#     (b) GitHub Actions/repo benar-benar mati            → gawat
-#   Alat pemantau di luar (Cronping) tidak bisa membedakan keduanya ⇒ mematikan satu saklar bisnis
-#   memicu alarm palsu "penjadwal mati", dan sebaliknya kematian nyata bisa dikira "sengaja".
-#   Selain itu, kegagalan ping bisnis (exit 1) dulu MEMBATALKAN langkah heartbeat sesudahnya —
-#   penjadwal yang sehat terbaca mati. `if: always()` menutup keduanya.
+#   menonaktifkan keep-warm via dashboard, workflow ini berhenti otomatis.
 #
 # GitHub Secrets yang dibutuhkan (Settings → Secrets and variables → Actions):
 #   CRON_SECRET        : Nilai yang sama dengan di Vercel
@@ -67,7 +51,6 @@ jobs:
             echo "enabled=false" >> $GITHUB_OUTPUT
           fi
 
-      # GERBANG BISNIS — tunduk pada saklar keep_warm_enabled milik SuperAdmin.
       - name: Ping Preview URL (branch dev)
         if: steps.config_check.outputs.enabled == 'true'
         run: |
@@ -85,14 +68,10 @@ jobs:
 
           echo "OK: Endpoint warm, status 200"
 
-      # 🔴 GERBANG PEMANTAUAN — SENGAJA TANPA SYARAT (R2, S#456).
-      # `if: always()` = tetap berdenyut walau (a) keep_warm_enabled = false, DAN
-      # (b) langkah ping bisnis di atas gagal/exit 1. Heartbeat membuktikan PENJADWAL hidup —
-      # bukan membuktikan situs sedang di-warm. ⛔ JANGAN tambahkan kondisi bisnis ke langkah ini.
       - name: Ping Cronping heartbeat
-        if: always()
+        if: steps.config_check.outputs.enabled == 'true'
         run: |
-          echo "Pinging Cronping heartbeat (tanpa syarat — gerbang pemantauan)..."
+          echo "Pinging Cronping heartbeat..."
           curl -s -o /dev/null \
             "https://ping.cronping.com/AbkmZkGdxjXVFh6joxb0lY_G"
           echo "Cronping heartbeat terkirim"
