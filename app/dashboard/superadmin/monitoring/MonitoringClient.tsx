@@ -5,6 +5,10 @@
 //
 // Dibuat: Sesi #153 — PL-S09 Step 3.6
 // Update S#164 — T-032: pecah ke subcomponents + tambah MonitoringConfigPanel
+// PERUBAHAN S#460 (butir R5-b — berkas 4 dari 5): meneruskan status denyut M7 ke SystemBadgeGrid.
+//   Berkas inilah PEMUTUS rantai yang sebenarnya: spanduk "pemantauan tidak berdenyut" sudah ada
+//   di SystemBadgeGrid sejak S#331, tetapi baris <SystemBadgeGrid ...> di bawah tidak pernah
+//   mengirim propnya => spanduk mustahil tampil. Diukur S#460 (sapuan 122 berkas / 793.137 B).
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ICON_ACTION, ICON_STATUS }                  from '@/lib/constants/icons.constant'
@@ -29,6 +33,19 @@ import type { ConfigItemData } from '@/components/ConfigItem'
 
 interface ConfigGroup { title: string; feature_key: string; items: ConfigItemData[] }
 
+// M7 lapis 2 (S#460) — bentuk kembalian getHeartbeatStatus() di
+// lib/services/alert-heartbeat.service.ts. Diekspor supaya page.tsx (RSC) memakai tipe yang SAMA,
+// bukan menyalin bentuknya (ATURAN 36 — satu sumber kebenaran).
+// ⚠️ Rumah jangka panjangnya seharusnya lib/types/monitoring.types.ts. TIDAK dipindah ke sana di
+// S#460 karena itu berkas ke-6 di luar 5 berkas yang disepakati => pelebaran scope (ATURAN 7).
+export interface HeartbeatStatus {
+  lastRunAt:    string | null
+  minutesAgo:   number | null
+  hoursAgo:     number | null
+  isStale:      boolean
+  graceMinutes: number
+}
+
 interface Props {
   initialSystems:          ProviderSnapshot[]
   initialAlertCount:       number
@@ -36,17 +53,20 @@ interface Props {
   initialAlertRules:       AlertRuleWithProvider[]
   initialUpdatedAt:        string
   initialMonitoringConfig: ConfigGroup[]
+  initialHeartbeat?:       HeartbeatStatus | null   // M7 S#460 — null = status denyut gagal dibaca
 }
 
 export function MonitoringClient({
   initialSystems, initialAlertCount, initialAlertLogs,
   initialAlertRules, initialUpdatedAt, initialMonitoringConfig,
+  initialHeartbeat,
 }: Props) {
   const [systems,    setSystems]    = useState<ProviderSnapshot[]>(initialSystems)
   const [alertCount, setAlertCount] = useState(initialAlertCount)
   const [alertLogs,  setAlertLogs]  = useState<AlertLogWithImpact[]>(initialAlertLogs)
   const [alertRules, setAlertRules] = useState<AlertRuleWithProvider[]>(initialAlertRules)
   const [updatedAt,  setUpdatedAt]  = useState(initialUpdatedAt)
+  const [heartbeat,  setHeartbeat]  = useState<HeartbeatStatus | null>(initialHeartbeat ?? null)
   const [sseStatus,  setSseStatus]  = useState<'connecting' | 'connected' | 'error'>('connecting')
   const [showRules,  setShowRules]  = useState(false)
   const [showConfig, setShowConfig] = useState(false)
@@ -61,6 +81,8 @@ export function MonitoringClient({
     es.onmessage = (ev) => {
       try {
         const event = JSON.parse(ev.data) as MetricSSEEvent
+        // ⚠️ JANGAN TERTUKAR (S#460): 'heartbeat' di sini adalah keep-alive SSE dari
+        // app/api/monitoring/stream/route.ts — NOL hubungan dengan denyut cron M7 di bawah.
         if (event.type === 'heartbeat') return
         // Server kirim 'close' sebelum Vercel timeout — reconnect segera tanpa error
         if (event.type === 'close') { es.close(); setTimeout(connectSSE, 1_000); return }
@@ -85,7 +107,13 @@ export function MonitoringClient({
     try {
       const res = await fetch('/api/monitoring/metrics')
       const data = await res.json()
-      if (data.success) { setSystems(data.systems); setAlertCount(data.alertCount); setAlertLogs(data.alertLogs); setUpdatedAt(data.updatedAt) }
+      if (data.success) {
+        setSystems(data.systems); setAlertCount(data.alertCount)
+        setAlertLogs(data.alertLogs); setUpdatedAt(data.updatedAt)
+        // M7 S#460 — field baru dari /api/monitoring/metrics. `?? null` supaya jawaban lama
+        // (tanpa field ini) tidak melempar undefined ke komponen.
+        setHeartbeat(data.heartbeat ?? null)
+      }
     } catch { /* silent */ } finally { setIsRefreshing(false) }
   }
 
@@ -135,9 +163,17 @@ export function MonitoringClient({
       {/* L1 */}
       <section>
         <SectionLabel>L1 — Status Sistem (Ping Health)</SectionLabel>
+        {/* M7 S#460 — inilah sambungan yang dulu tidak pernah dipasang.
+            heartbeat === null berarti status denyut GAGAL DIBACA, bukan berarti sehat:
+            service sudah memulangkan isStale=true untuk Redis mati, jadi null di sini hanya
+            terjadi kalau pembacaannya sendiri melempar. Tidak dipaksa jadi spanduk supaya
+            tidak melahirkan alarm palsu; kejadiannya tercatat di console server. */}
         <SystemBadgeGrid
           systems={systems}
           lastCheckedAt={updatedAt}
+          isStale={heartbeat?.isStale}
+          minutesAgo={heartbeat?.minutesAgo}
+          hoursAgo={heartbeat?.hoursAgo}
         />
       </section>
 

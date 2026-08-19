@@ -16,6 +16,13 @@
 //   - Hapus import createServerSupabaseClient (tidak dipakai lagi)
 //   - getConfigPageItems sudah ber-cache (unstable_cache TTL 300s tag 'config') + tidak
 //     filter is_active (SA lihat semua, pola S#110) — konsisten dgn 3 settings pages
+// PERUBAHAN S#461 (butir R5-b — berkas 5 dari 5, AKAR): + status denyut M7 untuk tampilan PERTAMA.
+//   Berkas ini yang terakhir disentuh karena urutannya DAUN → AKAR (T-460-12): penerima prop
+//   disiapkan lebih dulu, pengirimnya belakangan, supaya repo tetap kompilabel di tiap langkah.
+//   Tanpa baris ini, spanduk "pemantauan tidak berdenyut" baru muncul SESUDAH SA menekan Refresh
+//   (jalur /api/monitoring/metrics, dipasang S#460) — padahal keadaan yang ingin ditangkap M7
+//   justru paling sering terlihat pada detik pertama layar dibuka.
+//   Nol field lama diubah/dihapus; nol fungsi baru dibuat; nol ikon & nol kelas warna baru.
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +30,7 @@ import { getMonitoringSnapshot } from '@/lib/services/monitoring.service'
 import { getRecentAlertLogsWithImpact } from '@/lib/services/monitoring.service'
 import { getAlertRules }         from '@/lib/services/monitoring.service'
 import { getConfigPageItems }    from '@/lib/config-registry'
+import { getHeartbeatStatus }   from '@/lib/services/alert-heartbeat.service'
 import { mapTipe, mapValue }     from '@/lib/utils/config-page.utils'
 import { MonitoringClient }      from './MonitoringClient'
 import type { ConfigItemData }   from '@/components/ConfigItem'
@@ -39,12 +47,20 @@ interface ConfigGroup {
 
 export default async function MonitoringPage() {
   try {
-    const [snapshot, alertLogs, alertRules, configRows] = await Promise.all([
+    const [snapshot, alertLogs, alertRules, configRows, heartbeat] = await Promise.all([
       getMonitoringSnapshot(),
       getRecentAlertLogsWithImpact(20),   // B3 S#349 — dengan business_impact + provider_nama
       getAlertRules(),
       // T-032 (fix S#258 T-S258-02): fetch 10 config monitoring via repository layer
       getConfigPageItems('monitoring'),
+      // M7 lapis 2 (S#461) — status denyut cron untuk render pertama (RSC).
+      // .catch() SENDIRI, sama polanya dengan app/api/monitoring/metrics/route.ts (S#460):
+      // gagal membaca denyut TIDAK BOLEH menjatuhkan seluruh halaman ke blok catch di bawah,
+      // yang akan menampilkan "Gagal memuat data monitoring" padahal 4 sumber lain sehat.
+      getHeartbeatStatus().catch((err) => {
+        console.warn('[MonitoringPage] getHeartbeatStatus gagal:', err)
+        return null
+      }),
     ])
 
     // Format config_registry rows → ConfigGroup[] untuk ConfigPageClient
@@ -75,6 +91,7 @@ export default async function MonitoringPage() {
         initialAlertRules={alertRules}
         initialUpdatedAt={snapshot.updatedAt}
         initialMonitoringConfig={initialMonitoringConfig}
+        initialHeartbeat={heartbeat}
       />
     )
   } catch {

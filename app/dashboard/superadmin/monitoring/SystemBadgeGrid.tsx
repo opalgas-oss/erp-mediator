@@ -7,6 +7,16 @@
 //              + C4 (bahasa manusia) + C5 (empty state menenangkan)
 //              + B1 (tombol kirim alert uji coba)
 // Update S#349: B3 — tampilkan business_impact di badge DOWN/DEGRADED
+// PERUBAHAN S#460 (butir R5-b — berkas 3 dari 5) — spanduk M7 lapis 2 diperbaiki, BUKAN dibuat baru.
+//   Spanduk ini sudah ada sejak S#331 tetapi TIDAK PERNAH bisa tampil: pemanggilnya
+//   (MonitoringClient.tsx) tidak pernah mengirim prop isStale/hoursAgo. Dua cacat diperbaiki:
+//   (a) T-460-10 — gerbang tampil dulu berbunyi `isStale && hoursAgo !== null`. Saat cron BELUM
+//       PERNAH berdenyut atau Redis mati, service memulangkan isStale=true DENGAN angka null
+//       => justru dua keadaan TERBURUK yang paling senyap. Gerbang kini bertumpu pada isStale saja.
+//   (b) T-460-8  — teksnya berbunyi "N jam lalu", padahal ambang basi kini 30 MENIT (S#459),
+//       sehingga spanduk bisa menyala saat hoursAgo masih 0 => "tidak aktif sejak 0 jam lalu".
+//       Satuan kini MENIT, dan naik ke jam+menit hanya kalau sudah >= 60 menit.
+//   Teks spanduk juga tidak lagi ditulis dua kali (dulu disalin di dua jalur render).
 //
 // C3 — Aksesibilitas: WAJIB kombinasi warna + ikon + label teks (tidak cukup warna saja)
 // ~8% pria buta warna — semua elemen visual pakai triple indicator.
@@ -17,8 +27,29 @@ import type { ProviderSnapshot } from '@/lib/types/monitoring.types'
 interface Props {
   systems:       ProviderSnapshot[]
   lastCheckedAt: string | null   // C5: untuk empty state "terakhir dicek"
-  isStale?:      boolean         // M7: banner cron mati
-  hoursAgo?:     number | null   // M7: berapa jam cron mati
+  isStale?:      boolean         // M7: spanduk cron mati — SATU-SATUNYA gerbang tampil (S#460)
+  minutesAgo?:   number | null   // M7 (S#460): menit sejak denyut terakhir; null = belum pernah
+  hoursAgo?:     number | null   // M7: DIPERTAHANKAN demi pemanggil lama; dipakai hanya kalau
+                                 //     minutesAgo tidak dikirim. Bukan lagi gerbang tampil.
+}
+
+// M7 (S#460) — selang waktu → kalimat bahasa manusia (C4).
+// Dipisah jadi fungsi supaya teks spanduk hidup di SATU tempat, bukan disalin di dua jalur render.
+function teksDenyut(minutesAgo?: number | null, hoursAgo?: number | null): string {
+  const menit = minutesAgo ?? (hoursAgo != null ? hoursAgo * 60 : null)
+
+  // Keadaan TERBURUK: belum pernah berdenyut / status tidak terbaca. Wajib berbunyi paling keras.
+  if (menit == null) {
+    return '⚠ Pemantauan belum pernah berdenyut. Harap periksa cron job.'
+  }
+  if (menit < 60) {
+    return `⚠ Pemantauan tidak berdenyut sejak ${menit} menit lalu. Harap periksa cron job.`
+  }
+  const jam  = Math.floor(menit / 60)
+  const sisa = menit % 60
+  return sisa === 0
+    ? `⚠ Pemantauan tidak berdenyut sejak ${jam} jam lalu. Harap periksa cron job.`
+    : `⚠ Pemantauan tidak berdenyut sejak ${jam} jam ${sisa} menit lalu. Harap periksa cron job.`
 }
 
 // C3 + C4: status → { warna, ikon SVG, label bahasa manusia }
@@ -59,7 +90,7 @@ function statusConfig(status: string) {
   }
 }
 
-export function SystemBadgeGrid({ systems, lastCheckedAt, isStale, hoursAgo }: Props) {
+export function SystemBadgeGrid({ systems, lastCheckedAt, isStale, minutesAgo, hoursAgo }: Props) {
   const [testLoading, setTestLoading] = useState(false)
   const [testResult,  setTestResult]  = useState<string | null>(null)
 
@@ -78,8 +109,18 @@ export function SystemBadgeGrid({ systems, lastCheckedAt, isStale, hoursAgo }: P
     }
   }
 
-  // M7 — Banner cron mati
-  const showStale = isStale && hoursAgo !== null && hoursAgo !== undefined
+  // M7 — Spanduk cron mati.
+  // 🔴 S#460 (T-460-10): gerbangnya HANYA isStale. DILARANG menambahkan syarat "angkanya ada" —
+  // itu persis cacat lama yang membuat keadaan terburuk (belum pernah berdenyut / Redis mati)
+  // menjadi keadaan yang paling senyap.
+  const showStale = isStale === true
+
+  // Satu elemen, dipakai di kedua jalur render di bawah (dulu teksnya disalin dua kali).
+  const spandukDenyut = showStale ? (
+    <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert">
+      {teksDenyut(minutesAgo, hoursAgo)}
+    </div>
+  ) : null
 
   // C5 — Empty state menenangkan (bukan layar kosong)
   if (systems.length === 0) {
@@ -89,11 +130,7 @@ export function SystemBadgeGrid({ systems, lastCheckedAt, isStale, hoursAgo }: P
 
     return (
       <div className="space-y-3">
-        {showStale && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert">
-            ⚠ Sistem monitoring tidak aktif sejak {hoursAgo} jam lalu. Harap periksa cron job.
-          </div>
-        )}
+        {spandukDenyut}
         <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
           <span className="font-medium">✓ Semua sistem sehat</span>
           {lastCheckedStr && (
@@ -111,12 +148,8 @@ export function SystemBadgeGrid({ systems, lastCheckedAt, isStale, hoursAgo }: P
 
   return (
     <div className="space-y-4">
-      {/* M7 — Banner cron mati */}
-      {showStale && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert">
-          ⚠ Sistem monitoring tidak aktif sejak {hoursAgo} jam lalu. Harap periksa cron job.
-        </div>
-      )}
+      {/* M7 — Spanduk cron mati (teksnya di teksDenyut(), satu tempat) */}
+      {spandukDenyut}
 
       {/* C5 — Summary baris atas */}
       <div className="text-sm text-muted-foreground">

@@ -1,7 +1,11 @@
 // lib/services/alert-heartbeat.service.ts
 // Service: dead-man's switch heartbeat (M7) — cron monitoring anti-mati-diam-diam
-// Dipakai oleh: metrics-collector.service.ts (dipanggil di akhir collectL1Metrics)
-//               app/api/monitoring/metrics/route.ts (baca last_run_at untuk banner)
+// Dipakai oleh: metrics-collector.service.ts (dipanggil di akhir collectL1Metrics) — pingHeartbeat()
+// KOREKSI S#460 (T-460-9): baris di bawah ini SEBELUMNYA berbunyi
+//   "app/api/monitoring/metrics/route.ts (baca last_run_at untuk banner)".
+//   Itu TIDAK BENAR — route tersebut tidak pernah memanggil getHeartbeatStatus().
+//   Diukur S#460: sapuan 122 berkas / 793.137 B ⇒ getHeartbeatStatus() = NOL pemanggil.
+//   Baris itu dikoreksi, bukan dihapus, supaya jejak klaim palsunya tidak ikut hilang.
 // Dibuat: Sesi #331 — FASE 1 Alert Monitoring
 // PERUBAHAN S#337 — FIX-healthchecks-config:
 //   pingHeartbeat(): baca ping URL dari config_registry key alert.healthchecks_ping_url
@@ -18,7 +22,12 @@
 //                        Kalau ping tidak datang dalam grace time → Healthchecks.io kirim alert.
 //                        URL dari config_registry key alert.healthchecks_ping_url (bukan hardcode/env).
 //   Lapis 2 (internal):  simpan last_run_at ke Redis (key: monitoring:heartbeat:last_run_at).
-//                        API /monitoring/metrics membaca ini → banner merah di UI kalau terlalu lama.
+//                        RANCANGAN: API /monitoring/metrics membaca ini → spanduk peringatan di UI.
+//   ⚠️ KEADAAN NYATA S#460: rancangan lapis 2 BELUM tersambung. Spanduknya SUDAH ADA di
+//      app/dashboard/superadmin/monitoring/SystemBadgeGrid.tsx (baris 20-21 prop, 82 gerbang,
+//      92-96 dan 115-119 dua jalur render), tetapi (a) route API tidak memanggil fungsi ini dan
+//      (b) MonitoringClient.tsx baris 138-141 tidak meneruskan propnya ⇒ spanduk mustahil tampil.
+//      Butir R5-b (S#460) menyambung ketiga sambungan itu. Berkas ini = langkah 1 dari 5.
 //
 // Grace time dari config_registry: feature_key='alert' policy_key='heartbeat_grace_minutes' (default 180 menit = 3 jam).
 // SA bisa ubah kedua nilai ini dari Dashboard → Konfigurasi → Monitoring → section Alert.
@@ -84,18 +93,32 @@ export async function pingHeartbeat(): Promise<void> {
 // ─── getHeartbeatStatus (M7 — dibaca API untuk banner internal) ──────────────
 
 /**
- * Baca last_run_at dari Redis + hitung jam yang sudah lewat.
- * Dipakai oleh /api/monitoring/metrics untuk menampilkan banner peringatan ke SA.
+ * Baca last_run_at dari Redis + hitung selang waktu yang sudah lewat.
+ * DIRANCANG dipakai /api/monitoring/metrics untuk spanduk peringatan ke SA.
+ * ⚠️ Sampai R5-b (S#460) selesai, fungsi ini NOL pemanggil — lihat koreksi di kepala berkas.
+ *
+ * TAMBAHAN S#460 (T-460-8): field `minutesAgo`.
+ *   Sebabnya terukur, bukan selera: `isStale` dihitung dari MENIT (`minutesRaw > graceMinutes`),
+ *   sedangkan satu-satunya field selang waktu yang tersedia dulu adalah `hoursAgo` yang
+ *   di-`Math.floor` ke JAM. Sejak S#459 nilai config `alert.heartbeat_grace_minutes` = 30 menit,
+ *   jadi `isStale` bisa true pada menit ke-31 sementara `hoursAgo` bernilai 0 ⇒ UI yang memakai
+ *   `hoursAgo` akan menulis "tidak aktif sejak 0 jam lalu". Benar secara kode, tidak berguna
+ *   di mata SA. `minutesAgo` menutup celah itu tanpa mengubah `hoursAgo` maupun `isStale`.
  *
  * @returns {
  *   lastRunAt:    ISO string atau null jika belum pernah
- *   hoursAgo:     jam sejak last run (0 jika < 1 jam, null jika belum pernah)
+ *   minutesAgo:   menit sejak last run, dibulatkan ke bawah (null jika belum pernah)
+ *   hoursAgo:     jam sejak last run (0 jika < 1 jam, null jika belum pernah) — DIPERTAHANKAN
  *   isStale:      true jika lewat ambang grace time
  *   graceMinutes: nilai dari config_registry
  * }
+ * ⚠️ Perhatian pemakai UI: saat cron BELUM PERNAH berdenyut, `isStale` = true tetapi
+ *    `minutesAgo` DAN `hoursAgo` keduanya null. Gerbang tampil WAJIB bertumpu pada `isStale`,
+ *    bukan pada ada-tidaknya angka — kalau tidak, justru keadaan TERBURUK yang paling senyap.
  */
 export async function getHeartbeatStatus(): Promise<{
   lastRunAt:    string | null
+  minutesAgo:   number | null
   hoursAgo:     number | null
   isStale:      boolean
   graceMinutes: number
@@ -124,16 +147,17 @@ export async function getHeartbeatStatus(): Promise<{
     }
   } catch {
     // Redis tidak tersedia — kembalikan status unknown
-    return { lastRunAt: null, hoursAgo: null, isStale: true, graceMinutes }
+    return { lastRunAt: null, minutesAgo: null, hoursAgo: null, isStale: true, graceMinutes }
   }
 
   if (!lastRunAt) {
-    return { lastRunAt: null, hoursAgo: null, isStale: true, graceMinutes }
+    return { lastRunAt: null, minutesAgo: null, hoursAgo: null, isStale: true, graceMinutes }
   }
 
-  const minutesAgo = (Date.now() - new Date(lastRunAt).getTime()) / 60_000
-  const hoursAgo   = Math.floor(minutesAgo / 60)
-  const isStale    = minutesAgo > graceMinutes
+  const minutesRaw = (Date.now() - new Date(lastRunAt).getTime()) / 60_000
+  const minutesAgo = Math.floor(minutesRaw)
+  const hoursAgo   = Math.floor(minutesRaw / 60)
+  const isStale    = minutesRaw > graceMinutes
 
-  return { lastRunAt, hoursAgo, isStale, graceMinutes }
+  return { lastRunAt, minutesAgo, hoursAgo, isStale, graceMinutes }
 }
