@@ -22,6 +22,8 @@ import {
 } from '@/lib/repositories/provider-metrics.repository'
 import { getConfigItemsByKategori } from '@/lib/config-registry'
 import type { ProviderSnapshot } from '@/lib/types/monitoring.types'
+import { getHeartbeatStatus }  from '@/lib/services/alert-heartbeat.service'
+import { HeartbeatBanner }     from '../HeartbeatBanner'
 
 // ─── Tipe kapasitas ────────────────────────────────────────────────────────────
 
@@ -330,10 +332,18 @@ async function loadCapacityConfig(): Promise<CapacityConfig> {
 
 export default async function MonitoringDeepPage() {
   try {
-    const [systems, l3Data, cap] = await Promise.all([
+    const [systems, l3Data, cap, heartbeat] = await Promise.all([
       findLatestMetricsPerProvider(),
       findLatestL3MetricsPerProvider(),
       loadCapacityConfig(),
+      // M7 (S#462, butir 2 K-462-1) — status denyut cron untuk halaman ini.
+      // .catch() SENDIRI, pola identik dengan monitoring/status/page.tsx (S#461): gagal membaca
+      // denyut TIDAK BOLEH menjatuhkan seluruh halaman ke blok catch di bawah, padahal sumber
+      // data lain sehat. null = status denyut gagal dibaca ⇒ spanduk tidak dirender.
+      getHeartbeatStatus().catch((err) => {
+        console.warn('[MonitoringDeepPage] getHeartbeatStatus gagal:', err)
+        return null
+      }),
     ])
 
     const knownL3 = ['supabase', 'vercel', 'upstash', 'redis', 'cloudinary', 'github']
@@ -350,6 +360,15 @@ export default async function MonitoringDeepPage() {
             Kapasitas dapat diubah di Konfigurasi → Monitoring.
           </p>
         </div>
+
+        {/* M7 (S#462) — spanduk "pemantauan tidak berdenyut". Rumahnya SATU komponen bersama
+            (../HeartbeatBanner), dipakai juga oleh Status & Health. Angka di halaman ini diisi
+            cron YANG SAMA, jadi tanpa penanda ini SA membaca angka basi tanpa tahu. */}
+        <HeartbeatBanner
+          isStale={heartbeat?.isStale}
+          minutesAgo={heartbeat?.minutesAgo}
+          hoursAgo={heartbeat?.hoursAgo}
+        />
 
         {l3Systems.length === 0 ? (
           <div className="rounded-md border border-muted p-6 text-center text-sm text-muted-foreground">

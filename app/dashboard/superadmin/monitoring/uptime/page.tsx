@@ -15,6 +15,8 @@ import {
   findDailyStatusByProvider,
 } from '@/lib/repositories/provider-metrics.repository'
 import type { ProviderSnapshot } from '@/lib/types/monitoring.types'
+import { getHeartbeatStatus }  from '@/lib/services/alert-heartbeat.service'
+import { HeartbeatBanner }     from '../HeartbeatBanner'
 
 // ─── Tipe lokal untuk baris tabel ────────────────────────────────────────────
 
@@ -45,7 +47,17 @@ function dailyDotClass(status: string): string {
 
 export default async function MonitoringUptimePage() {
   try {
-    const systems = await findLatestMetricsPerProvider() as ProviderSnapshot[]
+    const [systems, heartbeat] = await Promise.all([
+      findLatestMetricsPerProvider() as Promise<ProviderSnapshot[]>,
+      // M7 (S#462, butir 2 K-462-1) — status denyut cron untuk halaman ini.
+      // .catch() SENDIRI, pola identik dengan monitoring/status/page.tsx (S#461): gagal membaca
+      // denyut TIDAK BOLEH menjatuhkan seluruh halaman ke blok catch di bawah, padahal sumber
+      // data lain sehat. null = status denyut gagal dibaca ⇒ spanduk tidak dirender.
+      getHeartbeatStatus().catch((err) => {
+        console.warn('[MonitoringUptimePage] getHeartbeatStatus gagal:', err)
+        return null
+      }),
+    ])
 
     // Enrich: uptime 24h, 7d, 30d + daily_7d — semua via repository layer
     const rows: UptimeRow[] = await Promise.all(
@@ -86,6 +98,15 @@ export default async function MonitoringUptimePage() {
             Ringkasan ketersediaan semua sistem yang dimonitor.
           </p>
         </div>
+
+        {/* M7 (S#462) — spanduk "pemantauan tidak berdenyut". Rumahnya SATU komponen bersama
+            (../HeartbeatBanner), dipakai juga oleh Status & Health. Angka di halaman ini diisi
+            cron YANG SAMA, jadi tanpa penanda ini SA membaca angka basi tanpa tahu. */}
+        <HeartbeatBanner
+          isStale={heartbeat?.isStale}
+          minutesAgo={heartbeat?.minutesAgo}
+          hoursAgo={heartbeat?.hoursAgo}
+        />
 
         {/* Health Score Strip */}
         <div className="flex flex-wrap items-center gap-6 rounded-md border bg-muted/30 px-5 py-4">

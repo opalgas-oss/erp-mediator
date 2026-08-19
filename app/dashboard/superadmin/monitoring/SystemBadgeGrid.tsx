@@ -18,11 +18,20 @@
 //       Satuan kini MENIT, dan naik ke jam+menit hanya kalau sudah >= 60 menit.
 //   Teks spanduk juga tidak lagi ditulis dua kali (dulu disalin di dua jalur render).
 //
+// PERUBAHAN S#462 (butir 2 K-462-1) — spanduk denyut DIANGKAT ke komponen bersama, BUKAN dihapus.
+//   Blok spanduk + fungsi teksDenyut() pindah UTUH ke ./HeartbeatBanner.tsx supaya tiga halaman
+//   Monitoring lain (Deep Metrics · Laporan Uptime · Riwayat Alert) bisa memakainya tanpa disalin
+//   4x (ATURAN 19 poin 6). Nol kata, nol kelas warna, nol gerbang tampil diubah — tampilan halaman
+//   ini WAJIB tetap sama persis (ATURAN 55.4: layar ini sudah lulus TC Philips S#461).
+//   Prop isStale/minutesAgo/hoursAgo SENGAJA dipertahankan apa adanya supaya pemanggilnya
+//   (MonitoringClient.tsx) tidak perlu ikut disentuh.
+//
 // C3 — Aksesibilitas: WAJIB kombinasi warna + ikon + label teks (tidak cukup warna saja)
 // ~8% pria buta warna — semua elemen visual pakai triple indicator.
 
 import { useState }           from 'react'
 import type { ProviderSnapshot } from '@/lib/types/monitoring.types'
+import { HeartbeatBanner }    from './HeartbeatBanner'
 
 interface Props {
   systems:       ProviderSnapshot[]
@@ -31,25 +40,6 @@ interface Props {
   minutesAgo?:   number | null   // M7 (S#460): menit sejak denyut terakhir; null = belum pernah
   hoursAgo?:     number | null   // M7: DIPERTAHANKAN demi pemanggil lama; dipakai hanya kalau
                                  //     minutesAgo tidak dikirim. Bukan lagi gerbang tampil.
-}
-
-// M7 (S#460) — selang waktu → kalimat bahasa manusia (C4).
-// Dipisah jadi fungsi supaya teks spanduk hidup di SATU tempat, bukan disalin di dua jalur render.
-function teksDenyut(minutesAgo?: number | null, hoursAgo?: number | null): string {
-  const menit = minutesAgo ?? (hoursAgo != null ? hoursAgo * 60 : null)
-
-  // Keadaan TERBURUK: belum pernah berdenyut / status tidak terbaca. Wajib berbunyi paling keras.
-  if (menit == null) {
-    return '⚠ Pemantauan belum pernah berdenyut. Harap periksa cron job.'
-  }
-  if (menit < 60) {
-    return `⚠ Pemantauan tidak berdenyut sejak ${menit} menit lalu. Harap periksa cron job.`
-  }
-  const jam  = Math.floor(menit / 60)
-  const sisa = menit % 60
-  return sisa === 0
-    ? `⚠ Pemantauan tidak berdenyut sejak ${jam} jam lalu. Harap periksa cron job.`
-    : `⚠ Pemantauan tidak berdenyut sejak ${jam} jam ${sisa} menit lalu. Harap periksa cron job.`
 }
 
 // C3 + C4: status → { warna, ikon SVG, label bahasa manusia }
@@ -109,18 +99,13 @@ export function SystemBadgeGrid({ systems, lastCheckedAt, isStale, minutesAgo, h
     }
   }
 
-  // M7 — Spanduk cron mati.
-  // 🔴 S#460 (T-460-10): gerbangnya HANYA isStale. DILARANG menambahkan syarat "angkanya ada" —
-  // itu persis cacat lama yang membuat keadaan terburuk (belum pernah berdenyut / Redis mati)
-  // menjadi keadaan yang paling senyap.
-  const showStale = isStale === true
-
-  // Satu elemen, dipakai di kedua jalur render di bawah (dulu teksnya disalin dua kali).
-  const spandukDenyut = showStale ? (
-    <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert">
-      {teksDenyut(minutesAgo, hoursAgo)}
-    </div>
-  ) : null
+  // M7 — Spanduk cron mati. S#462: rumahnya kini ./HeartbeatBanner.tsx (dipakai 4 halaman).
+  // 🔴 Gerbang tampil TETAP hanya `isStale === true` — komponen itu memulangkan null kalau bukan.
+  // DILARANG menambahkan syarat "angkanya ada" (T-460-10): saat cron belum pernah berdenyut atau
+  // Redis mati, isStale=true DENGAN angka null — dua keadaan TERBURUK yang paling senyap.
+  const spandukDenyut = (
+    <HeartbeatBanner isStale={isStale} minutesAgo={minutesAgo} hoursAgo={hoursAgo} />
+  )
 
   // C5 — Empty state menenangkan (bukan layar kosong)
   if (systems.length === 0) {
@@ -148,7 +133,7 @@ export function SystemBadgeGrid({ systems, lastCheckedAt, isStale, minutesAgo, h
 
   return (
     <div className="space-y-4">
-      {/* M7 — Spanduk cron mati (teksnya di teksDenyut(), satu tempat) */}
+      {/* M7 — Spanduk cron mati (rumahnya ./HeartbeatBanner.tsx, satu tempat untuk 4 halaman) */}
       {spandukDenyut}
 
       {/* C5 — Summary baris atas */}

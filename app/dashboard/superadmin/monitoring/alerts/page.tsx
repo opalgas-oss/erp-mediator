@@ -19,6 +19,8 @@ export const dynamic = 'force-dynamic'
 import { findRecentAlertLogs } from '@/lib/repositories/alert-log.repository'
 import { getPastISOTimestamp } from '@/lib/utils/date.utils'
 import type { AlertLog }       from '@/lib/types/monitoring.types'
+import { getHeartbeatStatus }  from '@/lib/services/alert-heartbeat.service'
+import { HeartbeatBanner }     from '../HeartbeatBanner'
 
 // ─── Hitung statistik dari logs ───────────────────────────────────────────────
 
@@ -96,7 +98,17 @@ function alertTypeBadge(type: string): string {
 
 export default async function MonitoringAlertsPage() {
   try {
-    const logs  = await findRecentAlertLogs(100)
+    const [logs, heartbeat] = await Promise.all([
+      findRecentAlertLogs(100),
+      // M7 (S#462, butir 2 K-462-1) — status denyut cron untuk halaman ini.
+      // .catch() SENDIRI, pola identik dengan monitoring/status/page.tsx (S#461): gagal membaca
+      // denyut TIDAK BOLEH menjatuhkan seluruh halaman ke blok catch di bawah, padahal sumber
+      // data lain sehat. null = status denyut gagal dibaca ⇒ spanduk tidak dirender.
+      getHeartbeatStatus().catch((err) => {
+        console.warn('[MonitoringAlertsPage] getHeartbeatStatus gagal:', err)
+        return null
+      }),
+    ])
     const stats = computeStats(logs)
 
     return (
@@ -108,6 +120,15 @@ export default async function MonitoringAlertsPage() {
             Log semua notifikasi yang dikirim ke WA dan Email beserta status pengirimannya.
           </p>
         </div>
+
+        {/* M7 (S#462) — spanduk "pemantauan tidak berdenyut". Rumahnya SATU komponen bersama
+            (../HeartbeatBanner), dipakai juga oleh Status & Health. Angka di halaman ini diisi
+            cron YANG SAMA, jadi tanpa penanda ini SA membaca angka basi tanpa tahu. */}
+        <HeartbeatBanner
+          isStale={heartbeat?.isStale}
+          minutesAgo={heartbeat?.minutesAgo}
+          hoursAgo={heartbeat?.hoursAgo}
+        />
 
         {/* Statistik Header — 5 kolom */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
