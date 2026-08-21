@@ -68,10 +68,6 @@ const PAGE_META: Record<string, PageMeta> = {
   '/dashboard/superadmin/monitoring/alerts':          { titleKey: 'nav_menu_monitoring_sistem',    descKey: ''                            },
   '/dashboard/superadmin/monitoring/alert-rules':     { titleKey: 'nav_menu_monitoring_audit',     descKey: ''                            },
 
-  // ⚠️ Halaman KEMBAR bermenu-MATI (`sa.monitoring.monitoring`, is_active=false). Entri ini
-  //    SENGAJA DIPERTAHANKAN sesi ini — pengarsipannya adalah butir tersendiri (butir 3 K-462-1).
-  '/dashboard/superadmin/monitoring':                 { titleKey: 'page_title_monitoring',         descKey: 'page_desc_monitoring'        },
-
   // ── Default ──
   '/dashboard/superadmin':                            { titleKey: 'page_title_dashboard',          descKey: ''                            },
 }

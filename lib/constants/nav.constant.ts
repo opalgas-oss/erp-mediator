@@ -9,6 +9,13 @@
 // Updated: Sesi #137 — tambah refunds ke grup pengguna (M9 Approval Refund SA)
 // Updated: Sesi #153 — tambah grup monitoring (PL-S09 Platform Health)
 // Updated: Sesi #164 — T-029: tambah platform_general ke grup konfigurasi
+// Updated: Sesi #465 — butir 3 K-462-1: grup 'monitoring' pada fallback ini memuat 1 item yang
+//   menunjuk halaman KEMBAR `/dashboard/superadmin/monitoring` — halaman itu DICABUT sesi ini,
+//   sehingga fallback akan mengantar ke 404 saat DB/cache getEffectiveMenu gagal. Diganti dengan
+//   KELIMA halaman Monitoring yang benar-benar hidup; `path` + `labelKey` disalin PERSIS dari
+//   dashboard_menus (role_scope='super_admin', is_active=true), urut sort_order 100..500.
+//   `key` sengaja TIDAK memakai nama menu_key DB (transaksi/vendor/keuangan/sistem/audit) — nama
+//   itu menyesatkan (T-462-14) dan `path` sudah eksplisit, jadi `key` tidak menurunkan href.
 //
 // CARA PAKAI:
 //   import { SA_NAV_GROUPS, navItemToPath } from '@/lib/constants/nav.constant'
@@ -172,9 +179,29 @@ export const SA_NAV_GROUPS: NavGroup[] = [
     iconSize: 15,
     items: [
       {
-        key:      'monitoring',
-        labelKey: 'nav_menu_platform_health',
-        path:     '/dashboard/superadmin/monitoring',
+        key:      'monitoring_status',
+        labelKey: 'nav_menu_monitoring_transaksi',
+        path:     '/dashboard/superadmin/monitoring/status',
+      },
+      {
+        key:      'monitoring_deep',
+        labelKey: 'nav_menu_monitoring_vendor',
+        path:     '/dashboard/superadmin/monitoring/deep',
+      },
+      {
+        key:      'monitoring_uptime',
+        labelKey: 'nav_menu_monitoring_keuangan',
+        path:     '/dashboard/superadmin/monitoring/uptime',
+      },
+      {
+        key:      'monitoring_alerts',
+        labelKey: 'nav_menu_monitoring_sistem',
+        path:     '/dashboard/superadmin/monitoring/alerts',
+      },
+      {
+        key:      'monitoring_alert_rules',
+        labelKey: 'nav_menu_monitoring_audit',
+        path:     '/dashboard/superadmin/monitoring/alert-rules',
       },
     ],
   },
