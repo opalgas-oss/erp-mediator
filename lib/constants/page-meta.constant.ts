@@ -30,6 +30,7 @@ const PAGE_META: Record<string, PageMeta> = {
   '/dashboard/superadmin/settings/multi-role-policy': { titleKey: 'page_title_multi_role_policy', descKey: 'page_desc_multi_role_policy' },
   '/dashboard/superadmin/settings/platform-general':  { titleKey: 'page_title_platform_general',  descKey: 'page_desc_platform_general'  },
   '/dashboard/superadmin/settings/sistem':            { titleKey: 'page_title_sistem',            descKey: 'page_desc_sistem'            },
+  '/dashboard/superadmin/settings/monitoring':        { titleKey: 'nav_menu_pengaturan_monitoring', descKey: ''                              },
   '/dashboard/superadmin/dropdowns':                  { titleKey: 'page_title_pilihan_opsi',      descKey: 'page_desc_pilihan_opsi'      },
 
   // ── Konten ──
