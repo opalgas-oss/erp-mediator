@@ -133,7 +133,6 @@ export function MonitoringClient({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[20px] font-semibold text-[#1a1a1a]">Monitoring Platform</h1>
           <p className="text-[12px] text-[#6b7280] mt-1">
             Update terakhir: {new Date(updatedAt).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}
             {' · '}<span className={sseClass}>● {sseLabel}</span>

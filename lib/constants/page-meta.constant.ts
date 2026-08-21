@@ -51,6 +51,25 @@ const PAGE_META: Record<string, PageMeta> = {
   '/dashboard/superadmin/team-contacts':              { titleKey: 'page_title_tim_kontak',         descKey: 'page_desc_tim_kontak'        },
 
   // ── Monitoring ──
+  // K-462-2 (S#462) + K-463-2 pilihan (a) (S#463): judul header tiap halaman Monitoring
+  // MENGIKUTI NAMA MENUNYA. titleKey menunjuk LANGSUNG ke kunci label menu yang sudah hidup di
+  // message_library (kategori 'sidebar_ui') — BUKAN salinan barunya (ATURAN 36: satu fakta, satu
+  // rumah). Layout SA menarik 'sidebar_ui' + 'page_ui' + 'header_ui' ke SATU objek `messages`
+  // (app/dashboard/superadmin/layout.tsx:59), objek yang sama yang dibaca DashboardHeader:41 —
+  // jadi kunci nav_menu_* benar-benar tersedia untuk header. Diukur S#463, bukan diasumsikan.
+  // Akibatnya: mengganti nama menu di message_library otomatis mengganti judul halamannya.
+  // descKey sengaja KOSONG (K-463-2 pilihan a) — deskripsi hidup di badan tiap halaman, dan
+  // DashboardHeader:101 tidak merender pemisah "—" maupun deskripsi saat descKey kosong.
+  // ⚠️ Nama menu_key MENYESATKAN (T-462-14): transaksi→/status, vendor→/deep, keuangan→/uptime,
+  //    sistem→/alerts, audit→/alert-rules. Yang dipakai di bawah adalah label_key-nya, bukan menu_key.
+  '/dashboard/superadmin/monitoring/status':          { titleKey: 'nav_menu_monitoring_transaksi', descKey: ''                            },
+  '/dashboard/superadmin/monitoring/deep':            { titleKey: 'nav_menu_monitoring_vendor',    descKey: ''                            },
+  '/dashboard/superadmin/monitoring/uptime':          { titleKey: 'nav_menu_monitoring_keuangan',  descKey: ''                            },
+  '/dashboard/superadmin/monitoring/alerts':          { titleKey: 'nav_menu_monitoring_sistem',    descKey: ''                            },
+  '/dashboard/superadmin/monitoring/alert-rules':     { titleKey: 'nav_menu_monitoring_audit',     descKey: ''                            },
+
+  // ⚠️ Halaman KEMBAR bermenu-MATI (`sa.monitoring.monitoring`, is_active=false). Entri ini
+  //    SENGAJA DIPERTAHANKAN sesi ini — pengarsipannya adalah butir tersendiri (butir 3 K-462-1).
   '/dashboard/superadmin/monitoring':                 { titleKey: 'page_title_monitoring',         descKey: 'page_desc_monitoring'        },
 
   // ── Default ──

@@ -93,7 +93,6 @@ export default async function MonitoringUptimePage() {
       <div className="space-y-6 p-6">
         {/* Header */}
         <div>
-          <h1 className="text-[20px] font-semibold text-[#1a1a1a]">Laporan Uptime</h1>
           <p className="mt-1 text-[12px] text-[#6b7280]">
             Ringkasan ketersediaan semua sistem yang dimonitor.
           </p>

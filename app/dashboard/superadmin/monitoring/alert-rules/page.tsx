@@ -19,7 +19,6 @@ export default async function MonitoringAlertRulesPage() {
     return (
       <div className="space-y-6 p-6">
         <div>
-          <h1 className="text-[20px] font-semibold text-[#1a1a1a]">Alert Rules</h1>
           <p className="mt-1 text-[12px] text-[#6b7280]">
             Konfigurasi aturan notifikasi per provider — threshold, berturut, cooldown, channel.
             Nilai default dari Konfigurasi → Pengaturan Monitoring.

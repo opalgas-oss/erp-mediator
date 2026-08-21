@@ -354,7 +354,6 @@ export default async function MonitoringDeepPage() {
     return (
       <div className="space-y-6 p-6">
         <div>
-          <h1 className="text-[20px] font-semibold text-[#1a1a1a]">Deep Metrics</h1>
           <p className="mt-1 text-[12px] text-[#6b7280]">
             Data L3 diambil via Management API setiap 15 menit. Token dikonfigurasi di Integrasi → API Provider.
             Kapasitas dapat diubah di Konfigurasi → Monitoring.
