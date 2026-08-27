@@ -6,6 +6,13 @@
 // Dibuat: Sesi #098 — PL-S08 M2 Message Library
 // Sesi #100 — Sentralisasi UI: TYPOGRAPHY, resolveKategoriColor, resolveChannelColor
 // Sesi #110 — Tambah fitur Delete: tombol Hapus + dialog konfirmasi + handleDelete
+// Sesi #471 — LANGKAH 1 (K-471-1): sel Preview Teks dihidupkan kembali pembungkus barisnya.
+//   `line-clamp-2` pada span adalah KODE MATI sejak lahir — components/ui/table.tsx memasang
+//   `whitespace-nowrap` bawaan pada SETIAP TableCell, dan white-space diwarisi ke span,
+//   sehingga teks tidak pernah turun ke baris kedua dan kolom Preview memaksa tabel melebar.
+//   Perbaikan: `whitespace-normal` di TableCell (menang lewat twMerge atas bawaan komponen),
+//   dan `break-all` -> `break-words` supaya pemenggalan tidak memotong kata di tengah.
+//   Nol perubahan pada components/ui/table.tsx (komponen bersama 8 halaman SA).
 
 import type { JSX }    from 'react'
 import { useState, useMemo, useTransition } from 'react'
@@ -331,8 +338,8 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
                       {msg.channel}
                     </span>
                   </TableCell>
-                  <TableCell className="py-3 px-3.5 max-w-[400px]">
-                    <span className="text-[13px] text-slate-600 line-clamp-2 break-all">
+                  <TableCell className="py-3 px-3.5 max-w-[400px] whitespace-normal">
+                    <span className="text-[13px] text-slate-600 line-clamp-2 break-words">
                       {msg.teks.length > 80 ? msg.teks.slice(0, 80) + '…' : msg.teks}
                     </span>
                     {msg.variabel.length > 0 && (
