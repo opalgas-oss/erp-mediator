@@ -13,6 +13,36 @@
 //   Perbaikan: `whitespace-normal` di TableCell (menang lewat twMerge atas bawaan komponen),
 //   dan `break-all` -> `break-words` supaya pemenggalan tidak memotong kata di tengah.
 //   Nol perubahan pada components/ui/table.tsx (komponen bersama 8 halaman SA).
+// Sesi #472 — LANGKAH 2 (K-472-1): kolom Key MENEMPEL di tepi kiri saat tabel digeser ke kanan.
+//   Penggulir horizontal yang NYATA adalah div di components/ui/table.tsx:9-12
+//   (`relative w-full overflow-x-auto`). DIUKUR di Chromium pada jendela 700 px: pembungkus
+//   halaman di bawah ini ber-overflow 0 px (anaknya `w-full`), penggulir tabel 519 px.
+//   ⇒ `sticky left-0` menempel pada penggulir yang benar.
+//   ⚠️ KOREKSI S#472 giliran penutup (temuan PIC-5): kalimat asli di sini berbunyi "halaman TIDAK
+//   mendefinisikan overflow baru ⇒ aturan DashboardShell.tsx:96-102 tidak dilanggar". Itu BENAR
+//   saat LANGKAH 2 ditulis, dan menjadi SALAH begitu JALAN D di bawah menambahkan
+//   `[&>[data-slot=table-container]]:overflow-auto`. Kalimatnya dicabut supaya komentar ini tidak
+//   berbohong; keadaan sebenarnya dijelaskan di blok JALAN D.
+//   Latar `bg-slate-50` dipilih karena DIUKUR sama persis dengan latar baris yang tampak
+//   sekarang (#f8fafc, berasal dari DashboardShell.tsx:74). `bg-white` DITOLAK: terukur
+//   #ffffff ⇒ pita terang di kolom pertama bahkan saat tabel belum digeser.
+//   ⚠️ Sorotan hover baris (`hover:bg-slate-50/50` di bawah) DIUKUR TIDAK TERLIHAT: slate-50
+//   50% di atas slate-50 = slate-50. Karena itu `group-hover` sengaja TIDAK dipasang — ia
+//   hanya menambah lapis alpha. Kalau kelak hover dibuat terlihat, sel Key ini WAJIB ikut
+//   diberi warna hover yang sama, kalau tidak sorotan patah di kolom pertama.
+//   Nol perubahan pada components/ui/table.tsx.
+// Sesi #472 — JALAN D (K-472-5): nama kolom TIDAK hilang saat tabel digulir ke bawah.
+//   Cara: kotak tabel diberi tinggi = sisa layar, sehingga ia menggulir DI DALAM DIRINYA SENDIRI,
+//   lalu <TableHead> diberi `sticky top-0`. Tinggi diatur lewat flex (`flex-1 min-h-0`), BUKAN
+//   angka `max-h-[...]` — supaya menyesuaikan tinggi jendela apa pun (diuji 620/800/900 px).
+//   ⛔ components/ui/table.tsx TETAP TIDAK DISENTUH: wadahnya disetel dari halaman lewat varian
+//   `[&>[data-slot=table-container]]:h-full` (atribut data-slot dipasang table.tsx:10).
+//   🔴 CATATAN ATURAN: komentar components/DashboardShell.tsx:96-102 menulis bahwa halaman tidak
+//   boleh mendefinisikan scroll sendiri, dan menyebut berkas ini dengan nama. Halaman ini KINI
+//   melakukannya — dengan sengaja, atas keputusan Philips (K-472-5, Jalan D dipilih dari mockup
+//   Mockup_SA_MessagesHeaderMengambang_v1.html). Yang dibuat di sini BUKAN scroll area-konten
+//   (itu tetap milik DashboardShell), melainkan scroll TERBATAS di dalam satu kotak tabel.
+//   ⇒ komentar di DashboardShell WAJIB menyusul dicatat pengecualiannya (utang T-472-24).
 
 import type { JSX }    from 'react'
 import { useState, useMemo, useTransition } from 'react'
@@ -232,7 +262,7 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-4 sm:p-6 space-y-4">
+    <div className="p-4 sm:p-6 space-y-4 flex-1 min-h-0 flex flex-col">
 
       <div className="flex items-center justify-end">
         <Button size="sm" onClick={() => setAdd({ ...EMPTY_ADD, open: true })}>
@@ -291,26 +321,26 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
       </div>
 
       {/* Tabel */}
-      <div className="rounded-md border border-slate-200 overflow-x-auto">
+      <div className="rounded-md border border-slate-200 overflow-x-auto flex-1 min-h-0 [&>[data-slot=table-container]]:h-full [&>[data-slot=table-container]]:overflow-auto">
         <Table className="min-w-[800px]">
           <TableHeader>
             <TableRow className="bg-slate-50">
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-56 cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('key')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-56 cursor-pointer select-none hover:bg-slate-100 sticky left-0 top-0 z-30 bg-slate-50`} onClick={() => handleSort('key')}>
                 Key <span className={sortIconClass('key')}>{sortIcon('key')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-32 cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('kategori')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-32 cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('kategori')}>
                 Kategori <span className={sortIconClass('kategori')}>{sortIcon('kategori')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-24 cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('channel')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-24 cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('channel')}>
                 Channel <span className={sortIconClass('channel')}>{sortIcon('channel')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} max-w-[400px] cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('teks')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} max-w-[400px] cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('teks')}>
                 Preview Teks <span className={sortIconClass('teks')}>{sortIcon('teks')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-28 cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('updated_at')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-28 cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('updated_at')}>
                 Diupdate <span className={sortIconClass('updated_at')}>{sortIcon('updated_at')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-32 text-center`}>Aksi</TableHead>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-32 text-center sticky top-0 z-20 bg-slate-50`}>Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -325,7 +355,7 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
             ) : (
               sorted.map(msg => (
                 <TableRow key={msg.id} className="hover:bg-slate-50/50">
-                  <TableCell className="py-3 px-3.5">
+                  <TableCell className="py-3 px-3.5 sticky left-0 z-10 bg-slate-50">
                     <span className="font-mono text-[13px] text-slate-700 break-all">{msg.key}</span>
                   </TableCell>
                   <TableCell className="py-3 px-3.5">
