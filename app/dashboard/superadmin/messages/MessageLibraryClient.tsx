@@ -325,22 +325,22 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
         <Table className="min-w-[800px]">
           <TableHeader>
             <TableRow className="bg-slate-50">
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-56 cursor-pointer select-none hover:bg-slate-100 sticky left-0 top-0 z-30 bg-slate-50`} onClick={() => handleSort('key')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-56 min-w-(--kolom-key-min) cursor-pointer select-none hover:bg-slate-100 sticky left-0 top-0 z-30 bg-slate-50`} onClick={() => handleSort('key')}>
                 Key <span className={sortIconClass('key')}>{sortIcon('key')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-32 cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('kategori')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-32 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('kategori')}>
                 Kategori <span className={sortIconClass('kategori')}>{sortIcon('kategori')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-24 cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('channel')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-24 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('channel')}>
                 Channel <span className={sortIconClass('channel')}>{sortIcon('channel')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} max-w-[400px] cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('teks')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} max-w-[400px] min-w-(--kolom-teks-min) cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('teks')}>
                 Preview Teks <span className={sortIconClass('teks')}>{sortIcon('teks')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-28 cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('updated_at')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-28 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('updated_at')}>
                 Diupdate <span className={sortIconClass('updated_at')}>{sortIcon('updated_at')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-32 text-center sticky top-0 z-20 bg-slate-50`}>Aksi</TableHead>
+              <TableHead className={`${TYPOGRAPHY.tableHead} w-32 whitespace-nowrap text-center sticky top-0 z-20 bg-slate-50`}>Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -358,12 +358,12 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
                   <TableCell className="py-3 px-3.5 sticky left-0 z-10 bg-slate-50">
                     <span className="font-mono text-[13px] text-slate-700 break-all">{msg.key}</span>
                   </TableCell>
-                  <TableCell className="py-3 px-3.5">
+                  <TableCell className="py-3 px-3.5 whitespace-nowrap">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[13px] font-medium ${resolveKategoriColor(msg.kategori)}`}>
                       {msg.kategori}
                     </span>
                   </TableCell>
-                  <TableCell className="py-3 px-3.5">
+                  <TableCell className="py-3 px-3.5 whitespace-nowrap">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[13px] font-medium ${resolveChannelColor(msg.channel)}`}>
                       {msg.channel}
                     </span>
@@ -382,8 +382,8 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className={`py-3 px-3.5 ${TYPOGRAPHY.caption}`}>{formatDateIdShort(msg.updated_at)}</TableCell>
-                  <TableCell className="py-3 px-3.5 text-center">
+                  <TableCell className={`py-3 px-3.5 whitespace-nowrap ${TYPOGRAPHY.caption}`}>{formatDateIdShort(msg.updated_at)}</TableCell>
+                  <TableCell className="py-3 px-3.5 text-center whitespace-nowrap">
                     <div className="flex items-center justify-center gap-1">
                       <Button
                         variant="ghost"

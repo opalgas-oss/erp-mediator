@@ -97,6 +97,12 @@
   /* Surface */
   --color-surface-hover: #f9f9f8;  /* hover baris tabel */
 
+  /* ─── Tabel: batas daerah gulir. RELATIF LAYAR, bukan angka mati (ATURAN 8 + 30) ─── */
+  --tabel-ruang-atas:   15rem;                                  /* header + toolbar + padding */
+  --tabel-tinggi-maks:  calc(100dvh - var(--tabel-ruang-atas));
+  --kolom-key-min:      24ch;   /* profil data asli: key rata 23,7 karakter (SELECT S#474) */
+  --kolom-teks-min:     28ch;
+
   /* Text hierarchy */
   --color-text-primary:   #1a1a1a;
   --color-text-secondary: #6b7280;  /* minimum untuk teks yang harus dibaca — contrast 4.83:1 */
