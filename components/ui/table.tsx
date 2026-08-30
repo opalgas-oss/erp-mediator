@@ -4,11 +4,23 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+// Sesi #476 — P3 (K-474-3): kolom pertama dan baris nama kolom MENEMPEL disediakan DI SINI,
+//   bukan diketik ulang di tiap halaman. Wadah di bawah adalah satu-satunya penggulir tabel
+//   (P1 S#475 memberinya batas tinggi dari token --tabel-tinggi-maks), jadi `sticky` hanya
+//   bekerja kalau dipasang relatif terhadapnya. Halaman DILARANG mendefinisikan overflow
+//   sendiri (DashboardShell.tsx:100-101).
+//   Latar `bg-slate-50` WAJIB ada pada sel yang menempel — tanpanya isi yang tergulir tembus
+//   di belakangnya. Nilainya DIUKUR, bukan dipilih: latar baris tabel = #f8fafc dari
+//   DashboardShell.tsx:74, dan `bg-white` (#ffffff) DITOLAK terukur S#472 karena menimbulkan
+//   pita terang di kolom pertama bahkan saat tabel belum digeser.
+//   ⚠️ Kalau kelak sorotan hover baris dibuat terlihat, sel yang menempel WAJIB ikut diberi
+//   warna hover yang sama, kalau tidak sorotan patah di kolom pertama.
+
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-auto overscroll-contain max-h-(--tabel-tinggi-maks)"
+      className="relative w-full overflow-auto overscroll-contain max-h-(--tabel-tinggi-maks) [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_thead_th]:bg-slate-50 [&_thead_th:first-child]:left-0 [&_thead_th:first-child]:z-30 [&_tbody_td:first-child]:sticky [&_tbody_td:first-child]:left-0 [&_tbody_td:first-child]:z-10 [&_tbody_td:first-child]:bg-slate-50"
     >
       <table
         data-slot="table"

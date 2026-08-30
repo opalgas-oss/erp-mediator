@@ -43,6 +43,21 @@
 //   Mockup_SA_MessagesHeaderMengambang_v1.html). Yang dibuat di sini BUKAN scroll area-konten
 //   (itu tetap milik DashboardShell), melainkan scroll TERBATAS di dalam satu kotak tabel.
 //   ⇒ komentar di DashboardShell WAJIB menyusul dicatat pengecualiannya (utang T-472-24).
+// Sesi #476 — P3 (K-474-3): SELURUH kelas menempel DICABUT dari halaman ini — kini disediakan
+//   components/ui/table.tsx pada wadah penggulirnya. Ikut dicabut 8 angka piksel mati
+//   (`min-w-[800px]` · `w-56` · `w-32` × 2 · `w-24` · `w-28` · `max-w-[400px]` × 2) dan DUA
+//   deklarasi overflow milik halaman PADA KOTAK TABEL — itulah 2 dari 10 pelanggaran
+//   DashboardShell.tsx:100-101 yang tercatat sebagai hutang #87; 8 sisanya ada di berkas lain.
+//   ⚠️ T-476-4: berkas ini MASIH mendefinisikan satu overflow lagi di luar tabel —
+//   `overflow-x-auto` pada pita chip filter kategori di bawah. Ia TIDAK termasuk dalam
+//   sepuluh yang didaftar hutang #87 dan TIDAK dicabut P3 (di luar spek §5, dan mencabutnya
+//   mengubah perilaku pita filter). ⇒ jangan menulis berkas ini sudah bersih dari pelanggaran.
+//   ⚠️ KOREKSI S#476 (T-476-1) atas dua kalimat di atas yang kini SALAH terhadap kodenya:
+//   (a) baris tentang Sesi #471 menulis table.tsx memasang `whitespace-nowrap` bawaan pada
+//       setiap TableCell — sejak P2 S#475 bawaannya `whitespace-normal`.
+//   (b) baris tentang Sesi #472 menulis wadahnya `relative w-full overflow-x-auto` — sejak
+//       P1 S#475 ia `relative w-full overflow-auto overscroll-contain max-h-(--tabel-tinggi-maks)`.
+//   Keduanya dibiarkan berdiri sebagai catatan sejarah, tetapi TIDAK berlaku lagi hari ini.
 
 import type { JSX }    from 'react'
 import { useState, useMemo, useTransition } from 'react'
@@ -321,26 +336,26 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
       </div>
 
       {/* Tabel */}
-      <div className="rounded-md border border-slate-200 overflow-x-auto flex-1 min-h-0 [&>[data-slot=table-container]]:h-full [&>[data-slot=table-container]]:overflow-auto">
-        <Table className="min-w-[800px]">
+      <div className="rounded-md border border-slate-200 flex-1 min-h-0 [&>[data-slot=table-container]]:h-full">
+        <Table className="min-w-full">
           <TableHeader>
             <TableRow className="bg-slate-50">
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-56 min-w-(--kolom-key-min) cursor-pointer select-none hover:bg-slate-100 sticky left-0 top-0 z-30 bg-slate-50`} onClick={() => handleSort('key')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} min-w-(--kolom-key-min) cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('key')}>
                 Key <span className={sortIconClass('key')}>{sortIcon('key')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-32 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('kategori')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} whitespace-nowrap cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('kategori')}>
                 Kategori <span className={sortIconClass('kategori')}>{sortIcon('kategori')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-24 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('channel')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} whitespace-nowrap cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('channel')}>
                 Channel <span className={sortIconClass('channel')}>{sortIcon('channel')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} max-w-[400px] min-w-(--kolom-teks-min) cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('teks')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} min-w-(--kolom-teks-min) cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('teks')}>
                 Preview Teks <span className={sortIconClass('teks')}>{sortIcon('teks')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-28 whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 sticky top-0 z-20 bg-slate-50`} onClick={() => handleSort('updated_at')}>
+              <TableHead className={`${TYPOGRAPHY.tableHead} whitespace-nowrap cursor-pointer select-none hover:bg-slate-100`} onClick={() => handleSort('updated_at')}>
                 Diupdate <span className={sortIconClass('updated_at')}>{sortIcon('updated_at')}</span>
               </TableHead>
-              <TableHead className={`${TYPOGRAPHY.tableHead} w-32 whitespace-nowrap text-center sticky top-0 z-20 bg-slate-50`}>Aksi</TableHead>
+              <TableHead className={`${TYPOGRAPHY.tableHead} whitespace-nowrap text-center`}>Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -355,7 +370,7 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
             ) : (
               sorted.map(msg => (
                 <TableRow key={msg.id} className="hover:bg-slate-50/50">
-                  <TableCell className="py-3 px-3.5 sticky left-0 z-10 bg-slate-50">
+                  <TableCell className="py-3 px-3.5">
                     <span className="font-mono text-[13px] text-slate-700 break-all">{msg.key}</span>
                   </TableCell>
                   <TableCell className="py-3 px-3.5 whitespace-nowrap">
@@ -368,7 +383,7 @@ export function MessageLibraryClient({ initialData, kategoriList }: Props): JSX.
                       {msg.channel}
                     </span>
                   </TableCell>
-                  <TableCell className="py-3 px-3.5 max-w-[400px] whitespace-normal">
+                  <TableCell className="py-3 px-3.5 whitespace-normal">
                     <span className="text-[13px] text-slate-600 line-clamp-2 break-words">
                       {msg.teks.length > 80 ? msg.teks.slice(0, 80) + '…' : msg.teks}
                     </span>
