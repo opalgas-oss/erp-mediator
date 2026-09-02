@@ -2,15 +2,32 @@
 
 // components/superadmin/FormFieldRegistryClient.tsx
 // Panel KOLOM pada halaman konfigurasi formulir SuperAdmin.
-// Satu baris = satu kolom formulir, dengan empat saklar: Tampil · Wajib · Verifikasi · Aktif.
+// Satu BARIS = satu kolom formulir. Tiap baris punya empat SAKLAR: Tampil · Wajib · Verifikasi · Aktif.
 //
 // Dibuat: Sesi #483 — K-483-4 (Philips). Verbatim: "kamu tampilkan dulu juga tidak masalah,
 //   suatu saat tidak diperlukan cukup disable/tidak di tampilkan, ini semua harus bisa di
 //   maintaince oleh SA, lewat dashboard".
 //
+// Direvisi: Sesi #484 atas perintah Philips — verbatim: "perbaiki kedua nya sekarang".
+//   Kalimat itu membuka DUA hal, dan hanya dua (ATURAN 55.4):
+//   H-484-A  Philips mengklik saklar Tampil di kartu Legalitas lalu melapor: "tidak ada kotak
+//            kuning yang muncul". Kotaknya ada, tetapi hanya berdiri di ujung ATAS panel.
+//            ⇒ (1) kotak yang sama diulang tepat sebelum baris tombol Simpan, (2) penanda ⚠
+//            pada baris yang terkena — di sel pertama, yang menempel kiri sehingga selalu
+//            terlihat. ⛔ Apakah kotak lama benar-benar di luar pandangan TIDAK diukur dari
+//            sini (nol browser, ATURAN 61.3); yang dipakai adalah laporan layar Philips.
+//   H-484-B  Philips mematikan DUA saklar pada SATU baris, layar menulis "1 kolom", ia membaca
+//            itu sebagai salah hitung. Sebabnya kata "kolom" menunjuk dua benda di layar yang
+//            sama: BARIS formulir dan KOLOM saklar. ⇒ tiap teks hitungan kini menyebut
+//            "kolom formulir" untuk baris dan "saklar" untuk saklar, dan tiap butir peringatan
+//            menyebut saklar MANA yang dimatikan.
+//   ⛔ TIDAK disentuh sesi ini (hutang warisan, ATURAN 61.2): kelas warna mentah `amber-*` /
+//      `bg-blue-100` / `text-slate-*` yang seharusnya `var(--color-*)` (S2_WARNA), bentuk banner
+//      yang menyimpang dari S4 §9, dan angka piksel mati `min-w-[220px]` / `w-[110px]` / `w-[96px]`.
+//
 // 🔴 DASAR HUKUM MEMBERI TAHU, TIDAK MENOLAK.
-//   Saat SA mematikan kolom yang punya `dasar_hukum`, peringatan muncul berisi dasar itu —
-//   dan tombol Simpan TETAP bisa ditekan. Mengunci saklar berarti memindahkan keputusan
+//   Saat SA mematikan saklar pada kolom yang punya `dasar_hukum`, peringatan muncul berisi dasar
+//   itu — dan tombol Simpan TETAP bisa ditekan. Mengunci saklar berarti memindahkan keputusan
 //   kebijakan ke dalam kode, dan itu persis yang K-483-4 larang.
 
 import { useMemo, useState } from 'react'
@@ -33,11 +50,57 @@ export interface FormFieldGroupData {
 type SaklarKey = 'is_visible' | 'is_required' | 'butuh_verifikasi_admin' | 'is_active'
 
 const SAKLAR: { key: SaklarKey; judul: string; keterangan: string }[] = [
-  { key: 'is_visible',             judul: 'Tampil',     keterangan: 'Kolom muncul di formulir pendaftaran' },
+  { key: 'is_visible',             judul: 'Tampil',     keterangan: 'Kolom formulir ini muncul di formulir pendaftaran' },
   { key: 'is_required',            judul: 'Wajib',      keterangan: 'Pendaftar tidak bisa lanjut tanpa mengisinya' },
   { key: 'butuh_verifikasi_admin', judul: 'Verifikasi', keterangan: 'Diperiksa manusia; bukan sekadar pernyataan pendaftar' },
-  { key: 'is_active',              judul: 'Aktif',      keterangan: 'Kolom dipakai sama sekali — dimatikan berarti berhenti divalidasi' },
+  { key: 'is_active',              judul: 'Aktif',      keterangan: 'Kolom formulir ini dipakai sama sekali — dimatikan berarti berhenti divalidasi' },
 ]
+
+/** Judul saklar dari kuncinya. Sumber tunggalnya tetap SAKLAR di atas — tidak disalin. */
+function judulSaklar(key: SaklarKey): string {
+  for (const s of SAKLAR) if (s.key === key) return s.judul
+  return key
+}
+
+/** Satu butir peringatan: kolom ber-dasar-hukum + nama saklar yang SEDANG dimatikan padanya. */
+interface PeringatanBaris {
+  field:     FormFieldRow
+  dimatikan: string[]
+}
+
+const LoadingIcon = ICON_STATUS.loading
+const WarningIcon = ICON_STATUS.warning
+
+/**
+ * Kotak peringatan. Dirender DUA KALI dengan isi identik: di ujung atas panel (bentuk lama,
+ * tidak diubah) dan sekali lagi tepat sebelum baris tombol Simpan — H-484-A.
+ * ⚠️ Warna sengaja tetap `amber-*` seperti bentuk yang sudah dilihat Philips (ATURAN 55.2/61.2).
+ */
+function KotakPeringatan({ daftar }: { daftar: PeringatanBaris[] }) {
+  if (daftar.length === 0) return null
+
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
+      <p className="text-sm font-medium text-amber-900">
+        {daftar.length} kolom formulir yang saklarnya Anda matikan punya dasar hukum.
+        Perubahan tetap bisa disimpan.
+      </p>
+      <ul className="mt-2 space-y-1">
+        {daftar.map(p => (
+          <li key={p.field.id} className="text-xs text-amber-800 leading-relaxed">
+            <span className="font-medium">{p.field.label}</span>{' '}
+            <span className="font-mono">({p.field.field_key})</span>
+            {' — saklar '}
+            <span className="font-medium">{p.dimatikan.join(' + ')}</span>
+            {' dimatikan — '}
+            {p.field.dasar_hukum}
+            {p.field.catatan_risiko ? <span className="block text-amber-700">{p.field.catatan_risiko}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 export function FormFieldRegistryClient({
   formKey,
@@ -51,8 +114,6 @@ export function FormFieldRegistryClient({
     () => JSON.parse(JSON.stringify(initialData)) as FormFieldGroupData[]
   )
   const [saving, setSaving]   = useState(false)
-
-  const LoadingIcon = ICON_STATUS.loading
 
   // Peta baris asli, supaya perbandingan tidak bergantung posisi indeks.
   const petaAsli = useMemo(() => {
@@ -76,15 +137,33 @@ export function FormFieldRegistryClient({
   }, [semuaField, petaAsli])
 
   /**
-   * Kolom ber-dasar-hukum yang sedang DIMATIKAN (Tampil/Wajib/Verifikasi/Aktif dari true ke false).
-   * Inilah yang memunculkan peringatan — bukan setiap perubahan.
+   * Kolom ber-dasar-hukum yang sedang DIMATIKAN (Tampil/Wajib/Verifikasi/Aktif dari true ke false),
+   * berikut NAMA saklar yang dimatikan. Inilah yang memunculkan peringatan — bukan setiap perubahan.
+   * Syarat masuknya SAMA PERSIS dengan versi S#483; yang ditambah hanya nama saklarnya.
    */
-  const peringatan = useMemo(() => {
-    return perubahan
-      .filter(({ field, saklar }) =>
-        field.dasar_hukum && saklar.some(k => field[k] === false)
-      )
-      .map(({ field }) => field)
+  const peringatan = useMemo<PeringatanBaris[]>(() => {
+    const hasil: PeringatanBaris[] = []
+    for (const { field, saklar } of perubahan) {
+      if (!field.dasar_hukum) continue
+      const dimatikan: string[] = []
+      for (const k of saklar) if (field[k] === false) dimatikan.push(judulSaklar(k))
+      if (dimatikan.length > 0) hasil.push({ field, dimatikan })
+    }
+    return hasil
+  }, [perubahan])
+
+  /** Id baris yang diberi penanda ⚠ — H-484-A. Sel pertama menempel kiri, jadi selalu terlihat. */
+  const idDitandai = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of peringatan) set.add(p.field.id)
+    return set
+  }, [peringatan])
+
+  /** Jumlah SAKLAR yang berubah — sengaja dipisah dari jumlah KOLOM FORMULIR (H-484-B). */
+  const jumlahSaklarBerubah = useMemo(() => {
+    let n = 0
+    for (const p of perubahan) n += p.saklar.length
+    return n
   }, [perubahan])
 
   const adaPerubahan = perubahan.length > 0
@@ -117,7 +196,7 @@ export function FormFieldRegistryClient({
       const json = await res.json()
       if (!res.ok || !json.success) throw new Error(json.message ?? 'Gagal menyimpan')
 
-      toast.success(`${json.jumlah} kolom disimpan`)
+      toast.success(`${json.jumlah} kolom formulir disimpan`)
       // Muat ulang dari server supaya layar memakai keadaan yang benar-benar tersimpan,
       // bukan tebakan optimistis di sisi klien.
       window.location.reload()
@@ -130,21 +209,7 @@ export function FormFieldRegistryClient({
   return (
     <div className="flex flex-col gap-4">
 
-      {peringatan.length > 0 && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-medium text-amber-900">
-            {peringatan.length} kolom yang Anda matikan punya dasar hukum. Perubahan tetap bisa disimpan.
-          </p>
-          <ul className="mt-2 space-y-1">
-            {peringatan.map(f => (
-              <li key={f.id} className="text-xs text-amber-800 leading-relaxed">
-                <span className="font-medium">{f.label}</span> — {f.dasar_hukum}
-                {f.catatan_risiko ? <span className="block text-amber-700">{f.catatan_risiko}</span> : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <KotakPeringatan daftar={peringatan} />
 
       {groups.map(group => (
         <Card key={group.group_key} className="bg-white/80 backdrop-blur-sm border-slate-200 shadow-sm">
@@ -152,7 +217,7 @@ export function FormFieldRegistryClient({
             <div className="flex items-center justify-between">
               <CardTitle className={TYPOGRAPHY.cardTitle}>{group.group_key}</CardTitle>
               <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 text-xs border-0">
-                {group.fields.length} kolom
+                {group.fields.length} kolom formulir
               </Badge>
             </div>
           </CardHeader>
@@ -160,7 +225,7 @@ export function FormFieldRegistryClient({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[220px]">Kolom</TableHead>
+                  <TableHead className="min-w-[220px]">Kolom Formulir</TableHead>
                   <TableHead className="w-[110px]">Tipe</TableHead>
                   {SAKLAR.map(s => (
                     <TableHead key={s.key} className="w-[96px] text-center" title={s.keterangan}>
@@ -175,7 +240,21 @@ export function FormFieldRegistryClient({
                   <TableRow key={field.id}>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="text-sm text-slate-800">{field.label}</span>
+                        <span className="text-sm text-slate-800 flex items-center gap-1.5">
+                          {field.label}
+                          {idDitandai.has(field.id) ? (
+                            <span
+                              className="inline-flex shrink-0"
+                              title="Kolom formulir ini punya dasar hukum dan saklarnya sedang Anda matikan"
+                            >
+                              <WarningIcon
+                                className="w-4 h-4 text-amber-700"
+                                role="img"
+                                aria-label="Punya dasar hukum dan saklarnya sedang dimatikan"
+                              />
+                            </span>
+                          ) : null}
+                        </span>
                         <span className="text-xs text-slate-400 font-mono">{field.field_key}</span>
                       </div>
                     </TableCell>
@@ -185,7 +264,7 @@ export function FormFieldRegistryClient({
                         <Switch
                           checked={field[s.key]}
                           onCheckedChange={v => geser(field.id, s.key, v)}
-                          aria-label={`${s.judul} — ${field.label}`}
+                          aria-label={`Saklar ${s.judul} — ${field.label}`}
                         />
                       </TableCell>
                     ))}
@@ -200,13 +279,18 @@ export function FormFieldRegistryClient({
         </Card>
       ))}
 
+      {/* H-484-A — peringatan yang sama diulang di sini, sebelum tombol Simpan. */}
+      <KotakPeringatan daftar={peringatan} />
+
       <div className="flex items-center justify-end gap-3 px-1">
         {adaPerubahan && (
-          <span className="text-xs text-slate-500">{perubahan.length} kolom berubah</span>
+          <span className="text-xs text-slate-500">
+            {perubahan.length} kolom formulir · {jumlahSaklarBerubah} saklar berubah
+          </span>
         )}
         <Button onClick={simpan} disabled={!adaPerubahan || saving}>
           {saving ? <LoadingIcon className="w-4 h-4 mr-2 animate-spin" /> : null}
-          Simpan Kolom
+          Simpan Kolom Formulir
         </Button>
       </div>
     </div>
