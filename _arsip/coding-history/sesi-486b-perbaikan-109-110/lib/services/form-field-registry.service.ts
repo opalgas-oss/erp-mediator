@@ -5,7 +5,7 @@
 // Layer Service (3-layer: Route → Service → Repository). Nol query DB langsung di sini.
 
 import 'server-only'
-import { revalidateTag } from 'next/cache'
+import { unstable_cache, revalidateTag } from 'next/cache'
 import {
   FormFieldRegistryRepo_getAllByFormKey,
   FormFieldRegistryRepo_getAktifByFormKey,
@@ -35,18 +35,18 @@ export async function getFormFieldsUntukAdmin(formKey: string): Promise<FormFiel
 
 // ─── Untuk formulir yang dilihat pemakai ──────────────────────────────────────
 /**
- * Hanya kolom yang tampil DAN aktif.
- * 🔴 **TIDAK di-cache — dicabut S#486 (temuan #109).** Versi sebelumnya memakai `unstable_cache`
- *   `revalidate: 300`; diukur di `dev` pada 3 Sep 2026, perubahan saklar yang TIDAK lewat rute
- *   PATCH (migrasi, perbaikan data langsung, admin lain) masih tampil basi **lebih dari 8 menit**
- *   pada 7 permintaan berturut-turut. Formulir pendaftaran adalah tempat terakhir yang boleh
- *   berbohong: satu query ringan per pembukaan halaman jauh lebih murah daripada layar yang
- *   menampilkan susunan kolom yang sudah tidak berlaku.
- * ⇒ `invalidateFormFieldsCache()` tetap dipanggil rute PATCH untuk pembaca lain (mis. cache
- *   opsi), bukan untuk fungsi ini.
+ * Hanya kolom yang tampil DAN aktif. Di-cache karena dibaca setiap kali halaman
+ * pendaftaran dibuka, dan berubah hanya saat SA menggeser saklar.
+ * Cache dihapus lewat `invalidateFormFieldsCache()` di rute PATCH — momen yang sama
+ * dengan penulisannya, supaya layar tidak pernah menampilkan susunan kolom yang basi.
  */
 export async function getFormFieldsUntukFormulir(formKey: string): Promise<FormFieldGroup[]> {
-  return kelompokkan(await FormFieldRegistryRepo_getAktifByFormKey(formKey))
+  const baca = unstable_cache(
+    async () => kelompokkan(await FormFieldRegistryRepo_getAktifByFormKey(formKey)),
+    ['form-fields', formKey],
+    { revalidate: 300, tags: [TAG_FORM_FIELDS, tagFormFields(formKey)] },
+  )
+  return baca()
 }
 
 /** Hapus cache susunan kolom satu formulir. WAJIB dipanggil sesudah SA menyimpan perubahan. */

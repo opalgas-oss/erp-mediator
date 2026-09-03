@@ -26,8 +26,8 @@ interface Props {
 
 const KOTAK = 'rounded-md border border-[#d1d5db] bg-white px-3 py-2 text-[13px] w-full'
 
-function PilihBanyak({ id, kolom, opsi, terpilih, onUbah }: {
-  id: string; kolom: FormFieldRow; opsi: OpsiPilihan[]; terpilih: string[]
+function PilihBanyak({ kolom, opsi, terpilih, onUbah }: {
+  kolom: FormFieldRow; opsi: OpsiPilihan[]; terpilih: string[]
   onUbah: (nilai: string[]) => void
 }) {
   const [cari, setCari] = useState('')
@@ -42,11 +42,7 @@ function PilihBanyak({ id, kolom, opsi, terpilih, onUbah }: {
   return (
     <div className="rounded-md border border-[#d1d5db] bg-white">
       <div className="p-2 border-b border-[#f3f4f6]">
-        {/* 🔴 #110 (S#486): `id` WAJIB dipasang di sini — `Label htmlFor` di bawah menunjuk
-            kunci yang sama. Tanpa ini, mengklik label tidak memindahkan fokus dan pembaca
-            layar kehilangan kaitan label↔kontrol. Cacat itu ditemukan uji S#486 sendiri. */}
         <input
-          id={id}
           type="text"
           value={cari}
           onChange={(e) => setCari(e.target.value)}
@@ -122,7 +118,6 @@ export function KolomFormulir({ kolom, opsi, nilai, galat, onUbah }: Props) {
       case 'multiselect':
         return (
           <PilihBanyak
-            id={id}
             kolom={kolom}
             opsi={opsi}
             terpilih={Array.isArray(nilai) ? nilai : []}

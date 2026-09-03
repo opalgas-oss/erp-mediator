@@ -9,6 +9,7 @@
 // inilah yang mencegah "dropdown kosong yang wajib diisi" seperti kasus `kbli` di S#486.
 
 import 'server-only'
+import { unstable_cache } from 'next/cache'
 import {
   FormFieldOpsiRepo_getKategoriJasa,
   FormFieldOpsiRepo_getKota,
@@ -23,19 +24,24 @@ const SUMBER_BERTABEL: Record<string, () => Promise<OpsiPilihan[]>> = {
   cities:     FormFieldOpsiRepo_getKota,
 }
 
-/**
- * Daftar opsi satu sumber.
- * 🔴 **TIDAK di-cache — sama sebabnya dengan #109.** Kategori dan kota diubah SA dari layar lain
- *   yang tidak membatalkan cache formulir; kalau di-cache, kategori baru bisa tidak muncul di
- *   pendaftaran selama beberapa menit tanpa ada yang tahu sebabnya.
- */
+export const TAG_FORM_OPSI = 'form-opsi'
+
+/** Daftar opsi satu sumber. Di-cache: isinya berubah jarang, dibaca tiap halaman dibuka. */
 export async function getOpsiUntukSumber(sumber: string): Promise<OpsiPilihan[]> {
   const kunci = sumber.trim()
   if (kunci.length === 0) return []
 
-  const bertabel = SUMBER_BERTABEL[kunci]
-  if (bertabel) return bertabel()
-  return FormFieldOpsiRepo_getGrupDropdown(kunci)
+  const baca = unstable_cache(
+    async (): Promise<OpsiPilihan[]> => {
+      const bertabel = SUMBER_BERTABEL[kunci]
+      if (bertabel) return bertabel()
+      return FormFieldOpsiRepo_getGrupDropdown(kunci)
+    },
+    ['form-opsi', kunci],
+    { revalidate: 300, tags: [TAG_FORM_OPSI, `${TAG_FORM_OPSI}:${kunci}`] },
+  )
+
+  return baca()
 }
 
 /**
