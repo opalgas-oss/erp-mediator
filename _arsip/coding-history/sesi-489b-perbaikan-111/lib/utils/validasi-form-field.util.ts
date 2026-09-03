@@ -6,7 +6,7 @@
 //   ⛔ Karena itu ia TIDAK boleh 'server-only' dan TIDAK boleh menyentuh Supabase.
 //   Kalau hanya layar yang memvalidasi, saklar `Wajib` yang SA nyalakan bisa dilewati begitu saja.
 
-import type { FormFieldPublik } from '@/lib/types/form-field-registry.types'
+import type { FormFieldRow } from '@/lib/types/form-field-registry.types'
 import type { NilaiJawaban } from '@/lib/types/vendor-register.types'
 
 /** Bentuk aturan yang dikenali Tahap 1. Kunci lain di JSON sengaja diabaikan, bukan ditolak. */
@@ -20,7 +20,7 @@ interface AturanValidasi {
   harus_sama_dengan?: string
 }
 
-function bacaAturan(row: FormFieldPublik): AturanValidasi {
+function bacaAturan(row: FormFieldRow): AturanValidasi {
   const v = row.validasi
   return (v && typeof v === 'object' ? v : {}) as AturanValidasi
 }
@@ -38,7 +38,7 @@ function kosong(nilai: NilaiJawaban): boolean {
  * ⛔ Kolom yang tidak `is_visible`/`is_active` TIDAK divalidasi di sini — penyaringnya di pemanggil,
  *   supaya kolom yang SA matikan benar-benar berhenti berakibat (K-483-4).
  */
-export function validasiSatuKolom(row: FormFieldPublik, nilai: NilaiJawaban): string | null {
+export function validasiSatuKolom(row: FormFieldRow, nilai: NilaiJawaban): string | null {
   const aturan = bacaAturan(row)
 
   if (kosong(nilai)) {
@@ -93,7 +93,7 @@ export function validasiSatuKolom(row: FormFieldPublik, nilai: NilaiJawaban): st
  * `jawaban` yang field_key-nya tidak ada di `kolom` DIBUANG oleh pemanggil, bukan di sini.
  */
 export function validasiSemuaKolom(
-  kolom:   FormFieldPublik[],
+  kolom:   FormFieldRow[],
   jawaban: Record<string, NilaiJawaban>,
 ): Record<string, string> {
   const galat: Record<string, string> = {}

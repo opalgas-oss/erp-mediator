@@ -10,7 +10,7 @@ import {
   FormFieldRegistryRepo_getAllByFormKey,
   FormFieldRegistryRepo_getAktifByFormKey,
 } from '@/lib/repositories/form-field-registry.repository'
-import type { FormFieldRow, FormFieldPublik } from '@/lib/types/form-field-registry.types'
+import type { FormFieldRow } from '@/lib/types/form-field-registry.types'
 
 /** Nama tag cache — pembaca dan penulis DILARANG punya salinan string masing-masing (ATURAN 36). */
 export const TAG_FORM_FIELDS = 'form-fields'
@@ -47,25 +47,6 @@ export async function getFormFieldsUntukAdmin(formKey: string): Promise<FormFiel
  */
 export async function getFormFieldsUntukFormulir(formKey: string): Promise<FormFieldGroup[]> {
   return kelompokkan(await FormFieldRegistryRepo_getAktifByFormKey(formKey))
-}
-
-/**
- * Ramping satu baris jadi bentuk yang boleh menyeberang ke komponen klien — #111 (S#489).
- * ⛔ Medan yang nol dibaca layar DILARANG ikut: yang menyeberang ke klien ikut terbaca siapa pun
- *   yang membuka sumber halaman. Menambah medan di sini WAJIB disertai pembacanya (ATURAN 34).
- * Dipakai `kelompokkanKolom` (vendor-register.service); generik untuk `form_key` mana pun.
- */
-export function keKolomPublik(row: FormFieldRow): FormFieldPublik {
-  return {
-    field_key:   row.field_key,
-    group_key:   row.group_key,
-    label:       row.label,
-    deskripsi:   row.deskripsi,
-    placeholder: row.placeholder,
-    tipe_input:  row.tipe_input,
-    is_required: row.is_required,
-    validasi:    row.validasi,
-  }
 }
 
 /** Hapus cache susunan kolom satu formulir. WAJIB dipanggil sesudah SA menyimpan perubahan. */

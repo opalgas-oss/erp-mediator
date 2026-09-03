@@ -18,10 +18,10 @@ import { Label }  from '@/components/ui/label'
 import { TYPOGRAPHY } from '@/lib/constants/ui-tokens.constant'
 import { KolomFormulir } from '@/components/register/KolomFormulir'
 import { validasiSemuaKolom } from '@/lib/utils/validasi-form-field.util'
-import type { FormFieldPublik } from '@/lib/types/form-field-registry.types'
+import type { FormFieldRow } from '@/lib/types/form-field-registry.types'
 import type { NilaiJawaban, OpsiPilihan } from '@/lib/types/vendor-register.types'
 
-export interface KelompokKolom { group_key: string; fields: FormFieldPublik[] }
+export interface KelompokKolom { group_key: string; fields: FormFieldRow[] }
 
 export interface RegisterClientProps {
   kelompok:      KelompokKolom[]

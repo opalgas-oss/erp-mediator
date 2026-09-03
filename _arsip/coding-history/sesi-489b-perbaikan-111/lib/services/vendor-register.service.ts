@@ -20,8 +20,7 @@ import {
   VendorRegisterRepo_hapusSubmission,
 } from '@/lib/repositories/vendor-register.repository'
 import type { BarisJawaban } from '@/lib/repositories/vendor-register.repository'
-import type { FormFieldRow, FormFieldPublik } from '@/lib/types/form-field-registry.types'
-import { keKolomPublik } from '@/lib/services/form-field-registry.service'
+import type { FormFieldRow } from '@/lib/types/form-field-registry.types'
 import type {
   HasilPendaftaranVendor,
   NilaiJawaban,
@@ -65,12 +64,11 @@ export async function getSusunanFormulirVendor(): Promise<SusunanFormulir> {
 }
 
 /** Kelompokkan untuk layar, urutan kelompok mengikuti kemunculan pertama (urutan sudah terurut). */
-export function kelompokkanKolom(kolom: FormFieldRow[]): { group_key: string; fields: FormFieldPublik[] }[] {
-  // #111 (S#489): dirampingkan DI SINI, sebelum menyeberang ke komponen klien.
-  const peta = new Map<string, FormFieldPublik[]>()
+export function kelompokkanKolom(kolom: FormFieldRow[]): { group_key: string; fields: FormFieldRow[] }[] {
+  const peta = new Map<string, FormFieldRow[]>()
   for (const k of kolom) {
     if (!peta.has(k.group_key)) peta.set(k.group_key, [])
-    peta.get(k.group_key)!.push(keKolomPublik(k))
+    peta.get(k.group_key)!.push(k)
   }
   return Array.from(peta.entries()).map(([group_key, fields]) => ({ group_key, fields }))
 }

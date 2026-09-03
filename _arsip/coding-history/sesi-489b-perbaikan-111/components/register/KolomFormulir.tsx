@@ -13,11 +13,11 @@ import { Input }    from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label }    from '@/components/ui/label'
 import { TYPOGRAPHY } from '@/lib/constants/ui-tokens.constant'
-import type { FormFieldPublik } from '@/lib/types/form-field-registry.types'
+import type { FormFieldRow } from '@/lib/types/form-field-registry.types'
 import type { NilaiJawaban, OpsiPilihan } from '@/lib/types/vendor-register.types'
 
 interface Props {
-  kolom:    FormFieldPublik
+  kolom:    FormFieldRow
   opsi:     OpsiPilihan[]
   nilai:    NilaiJawaban
   galat?:   string
@@ -27,7 +27,7 @@ interface Props {
 const KOTAK = 'rounded-md border border-[#d1d5db] bg-white px-3 py-2 text-[13px] w-full'
 
 function PilihBanyak({ id, kolom, opsi, terpilih, onUbah }: {
-  id: string; kolom: FormFieldPublik; opsi: OpsiPilihan[]; terpilih: string[]
+  id: string; kolom: FormFieldRow; opsi: OpsiPilihan[]; terpilih: string[]
   onUbah: (nilai: string[]) => void
 }) {
   const [cari, setCari] = useState('')
