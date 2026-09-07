@@ -15,7 +15,6 @@ import { Label }    from '@/components/ui/label'
 import { TYPOGRAPHY } from '@/lib/constants/ui-tokens.constant'
 import type { FormFieldPublik } from '@/lib/types/form-field-registry.types'
 import type { NilaiJawaban, OpsiPilihan } from '@/lib/types/vendor-register.types'
-import { bacaTampilan, samarkanNilai } from '@/lib/utils/tampilan-nilai.util'
 
 interface Props {
   kolom:    FormFieldPublik
@@ -84,32 +83,15 @@ function PilihBanyak({ id, kolom, opsi, terpilih, onUbah }: {
 export function KolomFormulir({ kolom, opsi, nilai, galat, onUbah }: Props) {
   const id = `kolom-${kolom.field_key}`
 
-  // 🔴 Penegak `validasi.tampilan` — S#493, menutup separuh hutang #128.
-  //   MURNI MATA: `onUbah` tetap mengirim `e.target.value` apa adanya, jadi nilai yang tersimpan
-  //   dan yang dikirim ke server TIDAK pernah berubah. Yang berubah hanya yang terlihat, dan hanya
-  //   saat medannya TIDAK sedang disentuh — supaya mengetik dan mengoreksi tetap normal.
-  // ⛔ Penyamaran hanya untuk `text` dan `textarea` (sejalan K-488-T4): karakter samar pada
-  //   `type="number"`/`type="date"` bukan nilai yang sah bagi peramban.
-  const [fokus, setFokus] = useState(false)
-  const bisaSamar   = kolom.tipe_input === 'text' || kolom.tipe_input === 'textarea'
-  const mintaSamar  = bisaSamar && bacaTampilan(kolom.validasi) === 'disamarkan'
-  const teks        = typeof nilai === 'string' ? nilai : ''
-  const terlihat    = mintaSamar && !fokus ? samarkanNilai(teks) : teks
-  // Isian yang SA minta disamarkan tidak boleh ditawarkan isi-otomatis oleh peramban.
-  const propsSamar  = mintaSamar
-    ? { autoComplete: 'off' as const, 'data-samar': '1', onFocus: () => setFokus(true), onBlur: () => setFokus(false) }
-    : {}
-
   const isi = (): React.ReactNode => {
     switch (kolom.tipe_input) {
       case 'textarea':
         return (
           <Textarea
             id={id}
-            value={terlihat}
+            value={typeof nilai === 'string' ? nilai : ''}
             placeholder={kolom.placeholder ?? ''}
             onChange={(e) => onUbah(kolom.field_key, e.target.value)}
-            {...propsSamar}
           />
         )
       case 'boolean':
@@ -154,10 +136,9 @@ export function KolomFormulir({ kolom, opsi, nilai, galat, onUbah }: Props) {
           <Input
             id={id}
             type={kolom.tipe_input === 'number' ? 'number' : kolom.tipe_input === 'date' ? 'date' : 'text'}
-            value={terlihat}
+            value={typeof nilai === 'string' ? nilai : ''}
             placeholder={kolom.placeholder ?? ''}
             onChange={(e) => onUbah(kolom.field_key, e.target.value)}
-            {...propsSamar}
           />
         )
     }

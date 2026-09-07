@@ -126,16 +126,6 @@ function pesanGalatPola(
 }
 
 /**
- * Normalisasi sebelum dua isian dibandingkan (`harus_sama_dengan`).
- * `trim` mengikuti konvensi yang SUDAH berdiri di berkas ini (lihat `validasiSatuKolom`).
- * Dua sisanya keputusan baru S#493, dan alasannya bisnis bukan gaya: kedua sisi adalah NAMA yang
- * diketik manusia dua kali, jadi "Budi  Santoso" dan "budi santoso" adalah orang yang sama.
- */
-function normalBanding(teks: string): string {
-  return teks.trim().replace(/\s+/g, ' ').toLowerCase()
-}
-
-/**
  * Validasi seluruh jawaban terhadap daftar kolom yang benar-benar dirender.
  * `jawaban` yang field_key-nya tidak ada di `kolom` DIBUANG oleh pemanggil, bukan di sini.
  */
@@ -150,32 +140,5 @@ export function validasiSemuaKolom(
     const pesan = validasiSatuKolom(row, jawaban[row.field_key] ?? null, katalogPola, tanggal)
     if (pesan) galat[row.field_key] = pesan
   }
-
-  // 🔴 Penegak `harus_sama_dengan` — S#493, menutup separuh hutang #128.
-  //   Rumahnya WAJIB di sini, ⛔ bukan di `validasiSatuKolom`: ia aturan LINTAS kolom, dan hanya
-  //   fungsi ini yang memegang seluruh jawaban sekaligus.
-  for (const row of kolom) {
-    if (galat[row.field_key]) continue
-    const target = bacaAturan(row).harus_sama_dengan
-    if (typeof target !== 'string' || target.length === 0) continue
-
-    // ⚠️ Kolom rujukan tidak ikut dirender ⇒ aturannya DILEWATI, ⛔ bukan menggagalkan pendaftar.
-    //   Ini bukan kelonggaran: `nama_pemilik_rekening` hari ini menunjuk `ktp` yang bertipe `image`
-    //   dan tidak pernah lolos `TIPE_DIDUKUNG_TAHAP_1`, jadi menegakkannya apa adanya akan membuat
-    //   SELURUH `/register` buntu. Kesalahan DATA tidak boleh menghukum pendaftar — pola S#426,
-    //   sama seperti tiga keadaan "SAH" di `ujiPolaIsian`, dan sejalan dengan K-483-4 yang sudah
-    //   mengeluarkan kolom non-tampil dari validasi.
-    const lawan = kolom.find((k) => k.field_key === target)
-    if (!lawan) continue
-
-    const kiri  = jawaban[row.field_key]
-    const kanan = jawaban[target]
-    if (typeof kiri !== 'string' || typeof kanan !== 'string') continue
-    if (kosong(kiri) || kosong(kanan)) continue
-    if (normalBanding(kiri) !== normalBanding(kanan)) {
-      galat[row.field_key] = `${row.label} harus sama dengan ${lawan.label}`
-    }
-  }
-
   return galat
 }
