@@ -6,7 +6,7 @@
 // Pengelompokan + caching ada di Service (form-field-registry.service.ts).
 
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import type { FormFieldRow, FormFieldSaklarPatch } from '@/lib/types/form-field-registry.types'
+import type { FormFieldRow, FormFieldPatch } from '@/lib/types/form-field-registry.types'
 
 const KOLOM_TERPILIH =
   'id, form_key, field_key, group_key, label, deskripsi, placeholder, tipe_input, sumber_opsi, ' +
@@ -59,15 +59,20 @@ export async function FormFieldRegistryRepo_getAktifByFormKey(
   return (data ?? []) as unknown as FormFieldRow[]
 }
 
-// ─── Ubah saklar satu baris ───────────────────────────────────────────────────
+// ─── Ubah satu baris ──────────────────────────────────────────────────────────
 /**
  * Ubah satu baris. Hanya field yang benar-benar dikirim yang ikut ditulis —
  * `undefined` TIDAK menimpa nilai yang ada.
  * `formKey` ikut jadi syarat WHERE supaya satu formulir tidak bisa menyunting baris formulir lain.
+ *
+ * 🔴 NAMA LAMA `..._updateSaklar` DICABUT S#492, ⛔ nol alias ditinggalkan: sejak `label`
+ *   dan `validasi` ikut ditulis, ia bukan lagi "update saklar".
+ * ⚠️ Baris `is_system = true` TETAP boleh disunting labelnya — `is_system` adalah PENANDA,
+ *   ⛔ bukan kunci (K-483-4). Karena itu ia tidak muncul sebagai syarat WHERE di sini.
  */
-export async function FormFieldRegistryRepo_updateSaklar(
+export async function FormFieldRegistryRepo_updateBaris(
   formKey: string,
-  patch:   FormFieldSaklarPatch,
+  patch:   FormFieldPatch,
   uid:     string,
 ): Promise<void> {
   const perubahan: Record<string, unknown> = {
@@ -79,6 +84,8 @@ export async function FormFieldRegistryRepo_updateSaklar(
   if (patch.is_active              !== undefined) perubahan.is_active              = patch.is_active
   if (patch.butuh_verifikasi_admin !== undefined) perubahan.butuh_verifikasi_admin = patch.butuh_verifikasi_admin
   if (patch.urutan                 !== undefined) perubahan.urutan                 = patch.urutan
+  if (patch.label                  !== undefined) perubahan.label                  = patch.label
+  if (patch.validasi               !== undefined) perubahan.validasi               = patch.validasi
 
   const supabase = await createServerSupabaseClient()
   const { error } = await supabase
@@ -88,5 +95,5 @@ export async function FormFieldRegistryRepo_updateSaklar(
     .eq('form_key', formKey)
     .is('deleted_at', null)
 
-  if (error) throw new Error(`FormFieldRegistryRepo_updateSaklar(${formKey}/${patch.id}): ${error.message}`)
+  if (error) throw new Error(`FormFieldRegistryRepo_updateBaris(${formKey}/${patch.id}): ${error.message}`)
 }

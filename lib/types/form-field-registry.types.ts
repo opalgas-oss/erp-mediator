@@ -61,12 +61,24 @@ export interface FormFieldPublik {
   validasi:    Record<string, unknown>
 }
 
-/** Empat saklar yang boleh diubah SA dari dashboard, plus urutan. */
-export interface FormFieldSaklarPatch {
+/**
+ * Yang boleh diubah SA dari dashboard: empat saklar, urutan, dan — sejak S#492 —
+ * label serta aturan pengisian (SPEK_UI_SA_PANEL_KOLOM §1 pilihan A1 + B1, Philips).
+ *
+ * 🔴 NAMA LAMA `FormFieldSaklarPatch` DICABUT, ⛔ nol alias ditinggalkan.
+ *   Begitu `label` dan `validasi` masuk, nama itu berbohong: ia bukan lagi "patch saklar".
+ *   Nama yang tidak jujur adalah kelas kesalahan yang `CODING_RULES_DATABASE_v1` BAB 1.1
+ *   larang untuk kolom, dan alasannya sama untuk tipe.
+ */
+export interface FormFieldPatch {
   id:                      string
   is_visible?:             boolean
   is_required?:            boolean
   is_active?:              boolean
   butuh_verifikasi_admin?: boolean
   urutan?:                 number
+  /** Nama kolom yang dilihat pendaftar. ⛔ `deskripsi` dan `placeholder` TIDAK ikut (A1). */
+  label?:                  string
+  /** Aturan pengisian utuh — gabungan, bukan tambalan sebagian. */
+  validasi?:               Record<string, unknown>
 }

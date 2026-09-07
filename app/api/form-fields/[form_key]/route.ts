@@ -1,6 +1,7 @@
 // app/api/form-fields/[form_key]/route.ts
 // GET   — susunan kolom satu formulir (untuk layar SA: termasuk yang sedang dimatikan).
-// PATCH — SuperAdmin menggeser saklar Tampil / Wajib / Aktif / Verifikasi, atau mengubah urutan.
+// PATCH — SuperAdmin menggeser saklar Tampil / Wajib / Aktif / Verifikasi, mengubah urutan,
+//         atau — sejak S#492 — menyunting `label` dan `validasi` (SPEK §1 A1 + B1).
 //
 // Dibuat: Sesi #483 — K-483-4 (Philips). Kolom formulir dikelola SA dari dashboard,
 //   bukan dari kode ⇒ perubahan aturan pemerintah = geser saklar, nol deploy.
@@ -13,12 +14,9 @@
 import { NextRequest, NextResponse }  from 'next/server'
 import { requireSuperAdmin }          from '@/lib/auth-server'
 import { getFormFieldsUntukAdmin, invalidateFormFieldsCache } from '@/lib/services/form-field-registry.service'
-import { FormFieldRegistryRepo_updateSaklar } from '@/lib/repositories/form-field-registry.repository'
-import type { FormFieldSaklarPatch } from '@/lib/types/form-field-registry.types'
-
-const SAKLAR_YANG_BOLEH_DIUBAH = [
-  'is_visible', 'is_required', 'is_active', 'butuh_verifikasi_admin', 'urutan',
-] as const
+import { getPolaKeyAktif } from '@/lib/services/form-field-pola.service'
+import { FormFieldRegistryRepo_updateBaris } from '@/lib/repositories/form-field-registry.repository'
+import { saringPerubahan } from '@/lib/utils/form-field-patch.util'
 
 // ─── GET ──────────────────────────────────────────────────────────────────────
 
@@ -41,9 +39,10 @@ export async function GET(
 
 // ─── PATCH ────────────────────────────────────────────────────────────────────
 /**
- * Body: { perubahan: FormFieldSaklarPatch[] }
+ * Body: { perubahan: FormFieldPatch[] }
  * Ditulis satu per satu, bukan sekaligus — jumlah baris satu formulir kecil (puluhan),
  * dan menulis per baris membuat pesan galat menyebut baris mana yang gagal.
+ * Penjagaan bentuknya tinggal di `lib/utils/form-field-patch.util.ts` (SPEK §4).
  */
 export async function PATCH(
   request: NextRequest,
@@ -56,59 +55,19 @@ export async function PATCH(
 
     const { form_key } = await params
     const payload = await request.json()
-    const perubahan: unknown = payload?.perubahan
 
-    if (!Array.isArray(perubahan) || perubahan.length === 0) {
-      return NextResponse.json(
-        { success: false, message: 'Body wajib memuat array "perubahan" yang tidak kosong' },
-        { status: 400 },
-      )
-    }
+    // Katalog pola dibaca LEBIH DULU: penjagaan butir 2 SPEK §4 menolak `nama` pola
+    // yang tidak ada di katalog, dan itu tidak bisa diputuskan tanpa katalognya.
+    const polaKeyAktif = await getPolaKeyAktif()
 
-    // Saring: hanya id + saklar yang diizinkan yang lolos. Field lain dibuang, tidak diam-diam ditulis.
-    const bersih: FormFieldSaklarPatch[] = []
-    for (const item of perubahan as Record<string, unknown>[]) {
-      if (typeof item?.id !== 'string' || item.id.length === 0) {
-        return NextResponse.json(
-          { success: false, message: 'Setiap perubahan wajib punya "id" bertipe string' },
-          { status: 400 },
-        )
-      }
-      const patch: FormFieldSaklarPatch = { id: item.id }
-      let adaIsi = false
-      for (const kunci of SAKLAR_YANG_BOLEH_DIUBAH) {
-        if (item[kunci] === undefined) continue
-        if (kunci === 'urutan') {
-          if (!Number.isInteger(item[kunci])) {
-            return NextResponse.json(
-              { success: false, message: `"urutan" pada ${item.id} harus bilangan bulat` },
-              { status: 400 },
-            )
-          }
-          patch.urutan = item[kunci] as number
-        } else {
-          if (typeof item[kunci] !== 'boolean') {
-            return NextResponse.json(
-              { success: false, message: `"${kunci}" pada ${item.id} harus boolean` },
-              { status: 400 },
-            )
-          }
-          patch[kunci] = item[kunci] as boolean
-        }
-        adaIsi = true
-      }
-      if (adaIsi) bersih.push(patch)
+    const hasil = saringPerubahan(payload?.perubahan, polaKeyAktif)
+    if (!hasil.ok) {
+      return NextResponse.json({ success: false, message: hasil.pesan }, { status: 400 })
     }
-
-    if (bersih.length === 0) {
-      return NextResponse.json(
-        { success: false, message: 'Nol saklar yang bisa diubah pada payload ini' },
-        { status: 400 },
-      )
-    }
+    const bersih = hasil.patches
 
     for (const patch of bersih) {
-      await FormFieldRegistryRepo_updateSaklar(form_key, patch, uid)
+      await FormFieldRegistryRepo_updateBaris(form_key, patch, uid)
     }
 
     // Cache susunan kolom dihapus di MOMEN YANG SAMA dengan penulisannya (pola S#451):

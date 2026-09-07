@@ -8,6 +8,8 @@
 
 import type { FormFieldPublik } from '@/lib/types/form-field-registry.types'
 import type { NilaiJawaban } from '@/lib/types/vendor-register.types'
+import type { FormFieldPolaPublik, PolaTerpakai } from '@/lib/types/form-field-pola.types'
+import { bangunEkspresi, polaBerlaku, tanggalHariIni, ujiPolaIsian } from '@/lib/utils/pola-isian.util'
 
 /** Bentuk aturan yang dikenali Tahap 1. Kunci lain di JSON sengaja diabaikan, bukan ditolak. */
 interface AturanValidasi {
@@ -18,6 +20,8 @@ interface AturanValidasi {
   max_items?:         number
   harus_true?:        boolean
   harus_sama_dengan?: string
+  /** Pola BERLAPIS — K-488-T2. Berlapis adalah bentuk NORMAL; tunggal adalah kasus khusus. */
+  pola?:              PolaTerpakai[]
 }
 
 function bacaAturan(row: FormFieldPublik): AturanValidasi {
@@ -38,7 +42,12 @@ function kosong(nilai: NilaiJawaban): boolean {
  * ⛔ Kolom yang tidak `is_visible`/`is_active` TIDAK divalidasi di sini — penyaringnya di pemanggil,
  *   supaya kolom yang SA matikan benar-benar berhenti berakibat (K-483-4).
  */
-export function validasiSatuKolom(row: FormFieldPublik, nilai: NilaiJawaban): string | null {
+export function validasiSatuKolom(
+  row:         FormFieldPublik,
+  nilai:       NilaiJawaban,
+  katalogPola: FormFieldPolaPublik[] = [],
+  tanggal:     string = tanggalHariIni(),
+): string | null {
   const aturan = bacaAturan(row)
 
   if (kosong(nilai)) {
@@ -83,9 +92,37 @@ export function validasiSatuKolom(row: FormFieldPublik, nilai: NilaiJawaban): st
       }
       if (!cocok) return `Format ${row.label} tidak sesuai`
     }
+    // Pola berlapis (K-488-T2/T3) — dijalankan SESUDAH `regex` lama supaya kolom yang
+    // masih memakai bentuk lama tidak berubah perilakunya.
+    if (Array.isArray(aturan.pola) && aturan.pola.length > 0) {
+      if (!ujiPolaIsian(teks, aturan.pola, katalogPola, tanggal)) {
+        return pesanGalatPola(row, aturan.pola, katalogPola, tanggal)
+      }
+    }
   }
 
   return null
+}
+
+/**
+ * Pesan galat untuk pola berlapis. Yang dipakai adalah pesan pola PERTAMA yang berlaku
+ * pada tanggal itu — pendaftar tidak dibebani daftar semua bentuk yang pernah sah.
+ * `{label}` dan nama parameter di dalam pesan diisi dari kolom dan dari pola itu sendiri.
+ */
+function pesanGalatPola(
+  row:         FormFieldPublik,
+  dipakai:     PolaTerpakai[],
+  katalogPola: FormFieldPolaPublik[],
+  tanggal:     string,
+): string {
+  for (const p of dipakai) {
+    if (!polaBerlaku(p, tanggal)) continue
+    for (const jenis of katalogPola) {
+      if (jenis.pola_key !== p.nama) continue
+      return bangunEkspresi(jenis.pesan_galat.replace(/\{label\}/g, row.label), p)
+    }
+  }
+  return `Format ${row.label} tidak sesuai`
 }
 
 /**
@@ -93,12 +130,14 @@ export function validasiSatuKolom(row: FormFieldPublik, nilai: NilaiJawaban): st
  * `jawaban` yang field_key-nya tidak ada di `kolom` DIBUANG oleh pemanggil, bukan di sini.
  */
 export function validasiSemuaKolom(
-  kolom:   FormFieldPublik[],
-  jawaban: Record<string, NilaiJawaban>,
+  kolom:       FormFieldPublik[],
+  jawaban:     Record<string, NilaiJawaban>,
+  katalogPola: FormFieldPolaPublik[] = [],
+  tanggal:     string = tanggalHariIni(),
 ): Record<string, string> {
   const galat: Record<string, string> = {}
   for (const row of kolom) {
-    const pesan = validasiSatuKolom(row, jawaban[row.field_key] ?? null)
+    const pesan = validasiSatuKolom(row, jawaban[row.field_key] ?? null, katalogPola, tanggal)
     if (pesan) galat[row.field_key] = pesan
   }
   return galat
