@@ -25,30 +25,6 @@ export interface BarisBerubah {
   field:         FormFieldRow
   saklar:        SaklarKey[]
   urutanBerubah: boolean
-  /** S#493 — label disunting dari dialog (butir 1b). */
-  labelBerubah:  boolean
-  /** S#493 — aturan pengisian disunting dari dialog (butir 1b). */
-  aturanBerubah: boolean
-}
-
-/**
- * Apakah dua objek `validasi` berbeda. Dibandingkan lewat JSON dengan KUNCI TERURUT —
- * `JSON.stringify` biasa memulangkan beda hanya karena urutan kunci berubah, dan dialog
- * memang menyusun ulang objeknya setiap kali Terapkan ditekan.
- */
-export function validasiBerbeda(a: unknown, b: unknown): boolean {
-  return baku(a) !== baku(b)
-}
-
-function baku(nilai: unknown): string {
-  if (Array.isArray(nilai)) return `[${nilai.map(baku).join(',')}]`
-  if (nilai !== null && typeof nilai === 'object') {
-    return `{${Object.entries(nilai as Record<string, unknown>)
-      .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))
-      .map(([k, v]) => `${JSON.stringify(k)}:${baku(v)}`)
-      .join(',')}}`
-  }
-  return JSON.stringify(nilai) ?? 'null'
 }
 
 /** Peta baris asli, supaya perbandingan tidak bergantung posisi indeks. */
@@ -79,11 +55,7 @@ export function hitungPerubahan(
     if (!awal) continue
     const berubah = SAKLAR.map(s => s.key).filter(k => field[k] !== awal[k])
     const urutanBerubah = field.urutan !== awal.urutan
-    const labelBerubah  = field.label !== awal.label
-    const aturanBerubah = validasiBerbeda(field.validasi, awal.validasi)
-    if (berubah.length > 0 || urutanBerubah || labelBerubah || aturanBerubah) {
-      hasil.push({ field, saklar: berubah, urutanBerubah, labelBerubah, aturanBerubah })
-    }
+    if (berubah.length > 0 || urutanBerubah) hasil.push({ field, saklar: berubah, urutanBerubah })
   }
   return hasil
 }
@@ -127,26 +99,10 @@ export function hitungJumlahUrutanBerubah(perubahan: BarisBerubah[]): number {
   return perubahan.filter(p => p.urutanBerubah).length
 }
 
-/**
- * Jumlah baris yang LABEL atau ATURAN-nya disunting — ruas hitungan ke-4 (K-487-T8).
- * Sebabnya sama dengan H-484-B: satu angka gabungan dibaca Philips sebagai salah hitung.
- */
-export function hitungJumlahLabelAturanBerubah(perubahan: BarisBerubah[]): number {
-  return perubahan.filter(p => p.labelBerubah || p.aturanBerubah).length
-}
-
-/**
- * Muatan `PATCH` satu baris: id + saklar yang berubah + urutan bila bergeser + label dan
- * aturan bila disunting (SPEK §4 — tujuh kunci yang diizinkan).
- * ⛔ Yang TIDAK berubah tidak ikut dikirim: rute menulis apa yang ia terima.
- */
-export function muatanPatch(
-  { field, saklar, urutanBerubah, labelBerubah, aturanBerubah }: BarisBerubah,
-): Record<string, unknown> {
+/** Muatan `PATCH` satu baris: id + saklar yang berubah + urutan bila bergeser (SPEK §4). */
+export function muatanPatch({ field, saklar, urutanBerubah }: BarisBerubah): Record<string, unknown> {
   const patch: Record<string, unknown> = { id: field.id }
   for (const k of saklar) patch[k] = field[k]
   if (urutanBerubah) patch.urutan = field.urutan
-  if (labelBerubah)  patch.label = field.label
-  if (aturanBerubah) patch.validasi = field.validasi
   return patch
 }

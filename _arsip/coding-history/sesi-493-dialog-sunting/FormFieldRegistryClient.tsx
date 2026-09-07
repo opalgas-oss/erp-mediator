@@ -48,8 +48,6 @@ import { ICON_STATUS }       from '@/lib/constants/icons.constant'
 import { useFormFieldRegistry }         from './FormFieldRegistryClient.hook'
 import { KotakPeringatan }             from './FormFieldRegistryClient.subcomponents'
 import { TabelKolom }                  from './FormFieldRegistryClient.tabel'
-import { DialogSunting }                from './FormFieldRegistryClient.dialog'
-import type { FormFieldPolaPublik }     from '@/lib/types/form-field-pola.types'
 import type { FormFieldGroupData }      from './FormFieldRegistryClient.kontrak'
 
 const LoadingIcon = ICON_STATUS.loading
@@ -57,12 +55,9 @@ const LoadingIcon = ICON_STATUS.loading
 export function FormFieldRegistryClient({
   formKey,
   initialData,
-  katalogPola,
 }: {
   formKey:     string
   initialData: FormFieldGroupData[]
-  /** Katalog JENIS pola isian — isi pilihan "Pola" di dialog Sunting (S#493). */
-  katalogPola: FormFieldPolaPublik[]
 }) {
   const {
     groups,
@@ -73,22 +68,13 @@ export function FormFieldRegistryClient({
     urutanAsli,
     jumlahSaklarBerubah,
     jumlahUrutanBerubah,
-    jumlahLabelAturanBerubah,
-    idDisunting,
-    barisDisunting,
-    draft,
-    setDraft,
-    bukaSunting,
-    tutupSunting,
-    terapkanSunting,
-    semuaField,
     adaPerubahan,
     geser,
     naikkanBaris,
     turunkanBaris,
     seretBaris,
     simpan,
-  } = useFormFieldRegistry({ formKey, initialData, katalogPola })
+  } = useFormFieldRegistry({ formKey, initialData })
 
   return (
     <div className="flex flex-col gap-4">
@@ -114,8 +100,6 @@ export function FormFieldRegistryClient({
               naikkanBaris={naikkanBaris}
               turunkanBaris={turunkanBaris}
               seretBaris={seretBaris}
-              idDisunting={idDisunting}
-              bukaSunting={bukaSunting}
             />
           </CardContent>
         </Card>
@@ -129,8 +113,6 @@ export function FormFieldRegistryClient({
           <span className="text-xs text-slate-500">
             {perubahan.length} kolom formulir · {jumlahSaklarBerubah} saklar berubah
             {jumlahUrutanBerubah > 0 ? ` · ${jumlahUrutanBerubah} urutan berubah` : ''}
-            {/* Ruas ke-4 (K-487-T8) — muncul hanya bila ada suntingan label/aturan. */}
-            {jumlahLabelAturanBerubah > 0 ? ` · ${jumlahLabelAturanBerubah} label/aturan berubah` : ''}
           </span>
         )}
         <Button onClick={simpan} disabled={!adaPerubahan || saving}>
@@ -138,16 +120,6 @@ export function FormFieldRegistryClient({
           Simpan Kolom Formulir
         </Button>
       </div>
-
-      <DialogSunting
-        baris={barisDisunting}
-        draft={draft}
-        semuaBaris={semuaField}
-        katalogPola={katalogPola}
-        setDraft={setDraft}
-        tutup={tutupSunting}
-        terapkan={terapkanSunting}
-      />
     </div>
   )
 }

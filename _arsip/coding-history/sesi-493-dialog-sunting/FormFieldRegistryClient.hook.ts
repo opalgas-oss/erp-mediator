@@ -26,12 +26,10 @@
 
 import { useMemo, useState } from 'react'
 import { toast }             from 'sonner'
-import type { FormFieldPolaPublik } from '@/lib/types/form-field-pola.types'
 import type { FormFieldRow } from '@/lib/types/form-field-registry.types'
 import { naikkan, pindahkanBaris, turunkan } from './FormFieldRegistryClient.urutan'
 import {
   hitungIdDitandai,
-  hitungJumlahLabelAturanBerubah,
   hitungJumlahSaklarBerubah,
   hitungJumlahUrutanBerubah,
   hitungPerubahan,
@@ -40,26 +38,20 @@ import {
   petaBarisAsli,
   petaUrutanAsli,
 } from './FormFieldRegistryClient.perubahan'
-import { bacaDraft, susunValidasi } from './FormFieldRegistryClient.sunting'
-import type { DraftSunting, FormFieldGroupData, SaklarKey } from './FormFieldRegistryClient.kontrak'
+import type { FormFieldGroupData, SaklarKey } from './FormFieldRegistryClient.kontrak'
 
 export function useFormFieldRegistry({
   formKey,
   initialData,
-  katalogPola,
 }: {
   formKey:     string
   initialData: FormFieldGroupData[]
-  katalogPola: FormFieldPolaPublik[]
 }) {
   const [groups, setGroups]   = useState<FormFieldGroupData[]>(initialData)
   const [asli]                = useState<FormFieldGroupData[]>(
     () => JSON.parse(JSON.stringify(initialData)) as FormFieldGroupData[]
   )
   const [saving, setSaving]   = useState(false)
-  /** Baris yang dialognya sedang terbuka — `null` berarti dialog tertutup (S#493). */
-  const [suntingId, setSuntingId] = useState<string | null>(null)
-  const [draft, setDraft]         = useState<DraftSunting | null>(null)
 
   const petaAsli   = useMemo(() => petaBarisAsli(asli), [asli])
   const semuaField = useMemo(() => groups.flatMap(g => g.fields), [groups])
@@ -71,20 +63,6 @@ export function useFormFieldRegistry({
 
   const jumlahSaklarBerubah = useMemo(() => hitungJumlahSaklarBerubah(perubahan), [perubahan])
   const jumlahUrutanBerubah = useMemo(() => hitungJumlahUrutanBerubah(perubahan), [perubahan])
-  const jumlahLabelAturanBerubah = useMemo(
-    () => hitungJumlahLabelAturanBerubah(perubahan), [perubahan],
-  )
-
-  /** Baris yang label atau aturannya sudah disunting — penanda titik pada tombol Sunting. */
-  const idDisunting = useMemo(() => {
-    const set = new Set<string>()
-    for (const p of perubahan) if (p.labelBerubah || p.aturanBerubah) set.add(p.field.id)
-    return set
-  }, [perubahan])
-
-  const barisDisunting = useMemo(
-    () => semuaField.find(f => f.id === suntingId) ?? null, [semuaField, suntingId],
-  )
 
   const adaPerubahan = perubahan.length > 0
 
@@ -112,33 +90,6 @@ export function useFormFieldRegistry({
         fields: g.fields.map(f => (f.id === fieldId ? { ...f, [key]: nilai } : f)),
       }))
     )
-  }
-
-  const bukaSunting = (field: FormFieldRow): void => {
-    setSuntingId(field.id)
-    setDraft(bacaDraft(field))
-  }
-
-  const tutupSunting = (): void => {
-    setSuntingId(null)
-    setDraft(null)
-  }
-
-  /**
-   * K-487-T7 — Terapkan mengubah keadaan DI LAYAR saja. Yang menulis ke Supabase tetap
-   * `Simpan Kolom Formulir` di kaki panel; hutang #105 tidak ditambah menjadi tiga tombol.
-   */
-  const terapkanSunting = (): void => {
-    if (!draft) return
-    const label    = draft.label.trim()
-    const validasi = susunValidasi(draft, katalogPola)
-    setGroups(prev =>
-      prev.map(g => ({
-        ...g,
-        fields: g.fields.map(f => (f.id === draft.id ? { ...f, label, validasi } : f)),
-      }))
-    )
-    tutupSunting()
   }
 
   const simpan = async (): Promise<void> => {
@@ -173,15 +124,6 @@ export function useFormFieldRegistry({
     urutanAsli,
     jumlahSaklarBerubah,
     jumlahUrutanBerubah,
-    jumlahLabelAturanBerubah,
-    idDisunting,
-    barisDisunting,
-    draft,
-    setDraft,
-    bukaSunting,
-    tutupSunting,
-    terapkanSunting,
-    semuaField,
     adaPerubahan,
     geser,
     naikkanBaris,

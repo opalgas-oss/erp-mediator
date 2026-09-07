@@ -16,12 +16,10 @@
 
 import type React from 'react'
 import { Switch } from '@/components/ui/switch'
-import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ICON_STATUS } from '@/lib/constants/icons.constant'
 import { SAKLAR }      from './FormFieldRegistryClient.kontrak'
 import { SelUrutan } from './FormFieldRegistryClient.selurutan'
-import type { FormFieldRow } from '@/lib/types/form-field-registry.types'
 import type { FormFieldGroupData, SaklarKey } from './FormFieldRegistryClient.kontrak'
 
 const WarningIcon = ICON_STATUS.warning
@@ -35,8 +33,6 @@ function TabelKolom({
   naikkanBaris,
   turunkanBaris,
   seretBaris,
-  idDisunting,
-  bukaSunting,
 }: {
   group:         FormFieldGroupData
   idDitandai:    Set<string>
@@ -46,9 +42,6 @@ function TabelKolom({
   naikkanBaris:  (groupKey: string, indeks: number) => void
   turunkanBaris: (groupKey: string, indeks: number) => void
   seretBaris:    (groupKey: string, dari: number, ke: number) => void
-  /** Baris yang label/aturannya sudah disunting — diberi titik pada tombolnya (S#493). */
-  idDisunting:   Set<string>
-  bukaSunting:   (field: FormFieldRow) => void
 }) {
   const mulaiSeret = (e: React.DragEvent, indeks: number): void => {
     e.dataTransfer.setData('text/plain', String(indeks))
@@ -80,14 +73,6 @@ function TabelKolom({
                     </TableHead>
                   ))}
                   <TableHead className="min-w-[220px]">Dasar hukum</TableHead>
-                  {/* BARU S#493 — lebar `ch` dan rata KANAN (S4 §10), persis mockup v3. */}
-                  <TableHead
-                    className="text-right"
-                    style={{ width: '10ch' }}
-                    title="Ubah nama kolom formulir dan aturan pengisiannya"
-                  >
-                    Aksi
-                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -141,23 +126,6 @@ function TabelKolom({
                     ))}
                     <TableCell className="text-xs text-slate-500 leading-relaxed">
                       {field.dasar_hukum || <span className="text-slate-300">—</span>}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => bukaSunting(field)}
-                        aria-label={`Sunting ${field.label}`}
-                      >
-                        Sunting
-                        {idDisunting.has(field.id) ? (
-                          <span
-                            aria-hidden="true"
-                            className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full"
-                            style={{ background: 'var(--color-warning-border)' }}
-                          />
-                        ) : null}
-                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

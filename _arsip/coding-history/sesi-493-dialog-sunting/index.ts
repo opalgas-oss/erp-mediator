@@ -15,11 +15,6 @@
 // | FormFieldRegistryClient.tabel.tsx        | tabel satu kartu (S#492)                |
 // | FormFieldRegistryClient.selurutan.tsx    | sel kolom Urutan: nomor + tombol ▲▼     |
 // | FormFieldRegistryClient.urutan.ts        | perhitungan urutan di dalam satu kartu  |
-// | FormFieldRegistryClient.sunting.ts       | terjemahan `validasi` <-> keadaan dialog|
-// | FormFieldRegistryClient.dialog.tsx       | dialog Sunting: kerangka + nama kolom   |
-// | FormFieldRegistryClient.dialogaturan.tsx | aturan pengisian per tipe di dialog     |
-// | FormFieldRegistryClient.dialogpola.tsx   | daftar pola berlapis di dalam dialog    |
-// | FormFieldRegistryClient.dialogmedan.tsx  | medan dasar dialog (label+kontrol)      |
 
 export { FormFieldRegistryClient } from './FormFieldRegistryClient'
 export type { FormFieldGroupData } from './FormFieldRegistryClient.kontrak'

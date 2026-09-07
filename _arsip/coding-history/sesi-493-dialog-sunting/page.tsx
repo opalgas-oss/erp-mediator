@@ -20,20 +20,16 @@ import { ConfigPageClient }    from '../security-login/ConfigPageClient'
 import { mapTipe, mapValue }   from '@/lib/utils/config-page.utils'
 import type { ConfigItemData } from '@/components/ConfigItem'
 import { getFormFieldsUntukAdmin } from '@/lib/services/form-field-registry.service'
-import { getKatalogPolaPublik }    from '@/lib/services/form-field-pola.service'
 import { FormFieldRegistryClient } from '@/components/superadmin/FormFieldRegistryClient'
 
 const FORM_KEY    = 'register_vendor'
 const FEATURE_KEY = 'register_vendor'
 
 export default async function RegisterVendorSettingsPage() {
-  // Ketiganya dibaca berbarengan — tidak saling bergantung.
-  // `katalogPola` mengisi pilihan "Pola" di dialog Sunting (S#493). Ia dibaca DI SINI, bukan
-  // di klien: layar SA dan validator wajib memakai katalog yang sama persis (pola S#492).
-  const [fieldGroups, configRows, katalogPola] = await Promise.all([
+  // Kedua panel dibaca berbarengan — keduanya tidak saling bergantung.
+  const [fieldGroups, configRows] = await Promise.all([
     getFormFieldsUntukAdmin(FORM_KEY),
     getConfigPageItems(FEATURE_KEY),
-    getKatalogPolaPublik(),
   ])
 
   // ── Panel ATURAN: kelompokkan per kategori → ConfigGroup[] ──────────────────
@@ -71,7 +67,7 @@ export default async function RegisterVendorSettingsPage() {
   return (
     <div className="flex flex-col min-h-full">
       <div className="px-8 pt-4">
-        <FormFieldRegistryClient formKey={FORM_KEY} initialData={fieldGroups} katalogPola={katalogPola} />
+        <FormFieldRegistryClient formKey={FORM_KEY} initialData={fieldGroups} />
       </div>
       <ConfigPageClient initialData={Array.from(groupMap.values())} />
     </div>

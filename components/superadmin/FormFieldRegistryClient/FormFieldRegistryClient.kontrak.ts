@@ -43,3 +43,76 @@ interface PeringatanBaris {
 // Baris di atas TIDAK disentuh (uji balik byte-identik).
 export type { SaklarKey, PeringatanBaris }
 export { SAKLAR, judulSaklar }
+
+// ─── Dialog sunting label/aturan — S#493, butir 1b ────────────────────────────
+
+/** Satu baris pola pada dialog. Semua medan teks: dialog tidak menghitung, ia mengumpulkan. */
+export interface PolaBaris {
+  nama:           string
+  parameter:      Record<string, string>
+  berlaku_sejak:  string
+  berlaku_sampai: string
+  sumber:         string
+}
+
+/** Keadaan dialog untuk SATU baris kolom formulir. */
+export interface DraftSunting {
+  id:                string
+  label:             string
+  pola:              PolaBaris[]
+  min_len:           string
+  max_len:           string
+  min_items:         string
+  max_items:         string
+  tampilan:          'apa_adanya' | 'disamarkan'
+  harus_sama_dengan: string
+  harus_true:        boolean
+  /** Kunci `validasi` yang dialog TIDAK render — dibawa utuh, ⛔ tidak dibuang. */
+  lain:              Record<string, unknown>
+}
+
+/** Kunci `validasi` yang benar-benar dirender dialog. Sisanya masuk `lain`. */
+export const KUNCI_DIRENDER = new Set([
+  'pola', 'min_len', 'max_len', 'min_items', 'max_items',
+  'tampilan', 'harus_sama_dengan', 'harus_true',
+])
+
+/** Bagian dialog yang menyala untuk sebuah `tipe_input`. */
+export interface MedanDialog {
+  pola:         boolean
+  panjang:      boolean
+  tampilan:     boolean
+  samaDengan:   boolean
+  pilihan:      boolean
+  wajibCentang: boolean
+}
+
+/**
+ * 🔴 K-492-T8 — DIALOG DILARANG MENAWARKAN MEDAN YANG BELUM PUNYA PENEGAK.
+ *   Yang menyala di bawah HANYA aturan yang benar-benar dijalankan hari ini:
+ *   `pola[]` · `min_len`/`max_len` · `min_items`/`max_items` · `harus_true`
+ *   (`validasi-form-field.util.ts`), `tampilan` dan `harus_sama_dengan` (penegaknya
+ *   lahir S#493, commit sebelum ini).
+ * ⛔ `number` · `date` · `file` · `image` sengaja NOL medan — batas nilai, batas tanggal,
+ *   `maks_mb`, `tipe`, dan `kamera_langsung` belum punya penegak (hutang #128), dan kolom
+ *   bertipe berkas belum dirender sama sekali di Tahap 1. Menawarkannya = dashboard
+ *   berbohong kepada SA (ATURAN 34). Mockup v3 Keadaan 4 menggambarnya; ia dirancang
+ *   sebelum T-492-1 mengukur bahwa penegaknya nol.
+ */
+export function medanUntukTipe(tipe: string): MedanDialog {
+  const mati: MedanDialog = {
+    pola: false, panjang: false, tampilan: false,
+    samaDengan: false, pilihan: false, wajibCentang: false,
+  }
+  if (tipe === 'text' || tipe === 'textarea') {
+    return { ...mati, pola: true, panjang: true, tampilan: true, samaDengan: true }
+  }
+  if (tipe === 'select' || tipe === 'multiselect') return { ...mati, pilihan: true }
+  if (tipe === 'boolean') return { ...mati, wajibCentang: true }
+  return mati
+}
+
+/** Apakah ada satu pun medan aturan yang bisa disunting untuk tipe ini. */
+export function adaMedanAturan(m: MedanDialog): boolean {
+  return m.pola || m.panjang || m.tampilan || m.samaDengan || m.pilihan || m.wajibCentang
+}
