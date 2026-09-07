@@ -12,33 +12,13 @@
 //   R1: baris 112-207 dipindah sebagai SATU blok - urutan pemanggilan hook React
 //   tidak boleh berubah. R2: `geser` dan `simpan` sengaja TIDAK dimemoisasi, persis
 //   seperti asalnya - menambah useCallback di sini adalah perubahan perilaku.
-//
-// ---------------------------------------------------------------------------
-// PEMECAHAN KEDUA — Sesi #493. Seluruh PERHITUNGAN MURNI "apa yang berbeda dari
-//   keadaan awal" pindah ke `FormFieldRegistryClient.perubahan.ts`; berkas ini tinggal
-//   memegang keadaan React dan penyimpanan ke server. Sebabnya diukur sebelum satu
-//   baris fitur ditambahkan: 7.226 B = 70,6% + dialog sunting ±1.500 B ⇒ ±85%, DI ATAS
-//   ambang tindakan 8.192 B (ATURAN 53.1 + 50.2). NOL perubahan perilaku; uji baliknya
-//   DOM panel sebelum vs sesudah IDENTIK.
-//   ⚠️ R1 TETAP BERLAKU: yang pindah hanya ISI tiap `useMemo`, bukan `useMemo`-nya —
-//   urutan pemanggilan hook React di bawah sama persis dengan sebelum pemecahan.
-// ---------------------------------------------------------------------------
 
 import { useMemo, useState } from 'react'
 import { toast }             from 'sonner'
 import type { FormFieldRow } from '@/lib/types/form-field-registry.types'
+import { SAKLAR, judulSaklar } from './FormFieldRegistryClient.kontrak'
 import { naikkan, pindahkanBaris, turunkan } from './FormFieldRegistryClient.urutan'
-import {
-  hitungIdDitandai,
-  hitungJumlahSaklarBerubah,
-  hitungJumlahUrutanBerubah,
-  hitungPerubahan,
-  hitungPeringatan,
-  muatanPatch,
-  petaBarisAsli,
-  petaUrutanAsli,
-} from './FormFieldRegistryClient.perubahan'
-import type { FormFieldGroupData, SaklarKey } from './FormFieldRegistryClient.kontrak'
+import type { FormFieldGroupData, SaklarKey, PeringatanBaris } from './FormFieldRegistryClient.kontrak'
 
 export function useFormFieldRegistry({
   formKey,
@@ -53,16 +33,77 @@ export function useFormFieldRegistry({
   )
   const [saving, setSaving]   = useState(false)
 
-  const petaAsli   = useMemo(() => petaBarisAsli(asli), [asli])
+  // Peta baris asli, supaya perbandingan tidak bergantung posisi indeks.
+  const petaAsli = useMemo(() => {
+    const peta = new Map<string, FormFieldRow>()
+    for (const g of asli) for (const f of g.fields) peta.set(f.id, f)
+    return peta
+  }, [asli])
+
   const semuaField = useMemo(() => groups.flatMap(g => g.fields), [groups])
-  const urutanAsli = useMemo(() => petaUrutanAsli(asli), [asli])
 
-  const perubahan  = useMemo(() => hitungPerubahan(semuaField, petaAsli), [semuaField, petaAsli])
-  const peringatan = useMemo(() => hitungPeringatan(perubahan), [perubahan])
-  const idDitandai = useMemo(() => hitungIdDitandai(peringatan), [peringatan])
+  /** Nilai `urutan` sebelum disentuh — dipakai tabel untuk menandai nomor yang berubah. */
+  const urutanAsli = useMemo(() => {
+    const peta = new Map<string, number>()
+    for (const g of asli) for (const f of g.fields) peta.set(f.id, f.urutan)
+    return peta
+  }, [asli])
 
-  const jumlahSaklarBerubah = useMemo(() => hitungJumlahSaklarBerubah(perubahan), [perubahan])
-  const jumlahUrutanBerubah = useMemo(() => hitungJumlahUrutanBerubah(perubahan), [perubahan])
+  /**
+   * Baris yang berubah, beserta saklar mana saja yang berubah dan apakah urutannya bergeser.
+   * S#492: `urutanBerubah` ditambahkan — sebelumnya hanya saklar yang dibandingkan.
+   */
+  const perubahan = useMemo(() => {
+    const hasil: { field: FormFieldRow; saklar: SaklarKey[]; urutanBerubah: boolean }[] = []
+    for (const field of semuaField) {
+      const awal = petaAsli.get(field.id)
+      if (!awal) continue
+      const berubah = SAKLAR.map(s => s.key).filter(k => field[k] !== awal[k])
+      const urutanBerubah = field.urutan !== awal.urutan
+      if (berubah.length > 0 || urutanBerubah) hasil.push({ field, saklar: berubah, urutanBerubah })
+    }
+    return hasil
+  }, [semuaField, petaAsli])
+
+  /**
+   * Kolom ber-dasar-hukum yang sedang DIMATIKAN (Tampil/Wajib/Verifikasi/Aktif dari true ke false),
+   * berikut NAMA saklar yang dimatikan. Inilah yang memunculkan peringatan — bukan setiap perubahan.
+   * Syarat masuknya SAMA PERSIS dengan versi S#483; yang ditambah hanya nama saklarnya.
+   */
+  const peringatan = useMemo<PeringatanBaris[]>(() => {
+    const hasil: PeringatanBaris[] = []
+    for (const { field, saklar } of perubahan) {
+      if (!field.dasar_hukum) continue
+      const dimatikan: string[] = []
+      for (const k of saklar) if (field[k] === false) dimatikan.push(judulSaklar(k))
+      if (dimatikan.length > 0) hasil.push({ field, dimatikan })
+    }
+    return hasil
+  }, [perubahan])
+
+  /** Id baris yang diberi penanda ⚠ — H-484-A. Sel pertama menempel kiri, jadi selalu terlihat. */
+  const idDitandai = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of peringatan) set.add(p.field.id)
+    return set
+  }, [peringatan])
+
+  /** Jumlah SAKLAR yang berubah — sengaja dipisah dari jumlah KOLOM FORMULIR (H-484-B). */
+  const jumlahSaklarBerubah = useMemo(() => {
+    let n = 0
+    for (const p of perubahan) n += p.saklar.length
+    return n
+  }, [perubahan])
+
+  /**
+   * Jumlah baris yang URUTANNYA bergeser — ruas hitungan tersendiri (K-487-T8).
+   * Sebabnya sama dengan H-484-B: satu angka gabungan dibaca Philips sebagai salah hitung.
+   * Hal berbeda ⇒ angka berbeda.
+   */
+  const jumlahUrutanBerubah = useMemo(
+    () => perubahan.filter(p => p.urutanBerubah).length,
+    [perubahan],
+  )
 
   const adaPerubahan = perubahan.length > 0
 
@@ -96,7 +137,14 @@ export function useFormFieldRegistry({
     if (!adaPerubahan || saving) return
     setSaving(true)
     try {
-      const body = { perubahan: perubahan.map(muatanPatch) }
+      const body = {
+        perubahan: perubahan.map(({ field, saklar, urutanBerubah }) => {
+          const patch: Record<string, unknown> = { id: field.id }
+          for (const k of saklar) patch[k] = field[k]
+          if (urutanBerubah) patch.urutan = field.urutan
+          return patch
+        }),
+      }
       const res  = await fetch(`/api/form-fields/${formKey}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },

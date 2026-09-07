@@ -9,8 +9,7 @@
 // |------------------------------------------|-----------------------------------------|
 // | FormFieldRegistryClient.tsx              | induk: kerangka + kartu + tombol Simpan |
 // | FormFieldRegistryClient.kontrak.ts       | bentuk data + keempat saklar            |
-// | FormFieldRegistryClient.hook.ts          | keadaan React + simpan ke server        |
-// | FormFieldRegistryClient.perubahan.ts     | perhitungan murni "apa yang berubah"    |
+// | FormFieldRegistryClient.hook.ts          | SELURUH keadaan panel                   |
 // | FormFieldRegistryClient.subcomponents.tsx| kotak peringatan                        |
 // | FormFieldRegistryClient.tabel.tsx        | tabel satu kartu (S#492)                |
 // | FormFieldRegistryClient.selurutan.tsx    | sel kolom Urutan: nomor + tombol ▲▼     |
