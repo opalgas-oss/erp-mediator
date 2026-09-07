@@ -46,8 +46,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TYPOGRAPHY }        from '@/lib/constants/ui-tokens.constant'
 import { ICON_STATUS }       from '@/lib/constants/icons.constant'
 import { useFormFieldRegistry }         from './FormFieldRegistryClient.hook'
-import { KotakPeringatan }             from './FormFieldRegistryClient.subcomponents'
-import { TabelKolom }                  from './FormFieldRegistryClient.tabel'
+import { KotakPeringatan, TabelKolom }  from './FormFieldRegistryClient.subcomponents'
 import type { FormFieldGroupData }      from './FormFieldRegistryClient.kontrak'
 
 const LoadingIcon = ICON_STATUS.loading
@@ -65,14 +64,9 @@ export function FormFieldRegistryClient({
     perubahan,
     peringatan,
     idDitandai,
-    urutanAsli,
     jumlahSaklarBerubah,
-    jumlahUrutanBerubah,
     adaPerubahan,
     geser,
-    naikkanBaris,
-    turunkanBaris,
-    seretBaris,
     simpan,
   } = useFormFieldRegistry({ formKey, initialData })
 
@@ -92,15 +86,7 @@ export function FormFieldRegistryClient({
             </div>
           </CardHeader>
           <CardContent className="pt-1 pb-2 px-0">
-            <TabelKolom
-              group={group}
-              idDitandai={idDitandai}
-              geser={geser}
-              urutanAsli={urutanAsli}
-              naikkanBaris={naikkanBaris}
-              turunkanBaris={turunkanBaris}
-              seretBaris={seretBaris}
-            />
+            <TabelKolom group={group} idDitandai={idDitandai} geser={geser} />
           </CardContent>
         </Card>
       ))}
@@ -112,7 +98,6 @@ export function FormFieldRegistryClient({
         {adaPerubahan && (
           <span className="text-xs text-slate-500">
             {perubahan.length} kolom formulir · {jumlahSaklarBerubah} saklar berubah
-            {jumlahUrutanBerubah > 0 ? ` · ${jumlahUrutanBerubah} urutan berubah` : ''}
           </span>
         )}
         <Button onClick={simpan} disabled={!adaPerubahan || saving}>

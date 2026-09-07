@@ -15,13 +15,7 @@
 //   Prop `group` (bukan `fields`): baris 239 asal berbunyi `group.fields.map(...)`,
 //   dan mengubahnya berarti menyentuh isi terpindah. Koreksi atas rencana S#488.
 
-import { Switch } from '@/components/ui/switch'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { ICON_STATUS }       from '@/lib/constants/icons.constant'
-import { SAKLAR }            from './FormFieldRegistryClient.kontrak'
-import type { FormFieldGroupData, SaklarKey, PeringatanBaris } from './FormFieldRegistryClient.kontrak'
-
-const WarningIcon = ICON_STATUS.warning
+import type { PeringatanBaris } from './FormFieldRegistryClient.kontrak'
 
 /**
  * Kotak peringatan. Dirender DUA KALI dengan isi identik: di ujung atas panel (bentuk lama,
@@ -54,73 +48,8 @@ function KotakPeringatan({ daftar }: { daftar: PeringatanBaris[] }) {
   )
 }
 
-/** Tabel satu kartu. Isinya baris 225-277 berkas asal, byte-exact. */
-function TabelKolom({
-  group,
-  idDitandai,
-  geser,
-}: {
-  group:      FormFieldGroupData
-  idDitandai: Set<string>
-  geser:      (fieldId: string, key: SaklarKey, nilai: boolean) => void
-}) {
-  return (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="min-w-[220px]">Kolom Formulir</TableHead>
-                  <TableHead className="w-[110px]">Tipe</TableHead>
-                  {SAKLAR.map(s => (
-                    <TableHead key={s.key} className="w-[96px] text-center" title={s.keterangan}>
-                      {s.judul}
-                    </TableHead>
-                  ))}
-                  <TableHead className="min-w-[220px]">Dasar hukum</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {group.fields.map(field => (
-                  <TableRow key={field.id}>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="text-sm text-slate-800 flex items-center gap-1.5">
-                          {field.label}
-                          {idDitandai.has(field.id) ? (
-                            <span
-                              className="inline-flex shrink-0"
-                              title="Kolom formulir ini punya dasar hukum dan saklarnya sedang Anda matikan"
-                            >
-                              <WarningIcon
-                                className="w-4 h-4 text-amber-700"
-                                role="img"
-                                aria-label="Punya dasar hukum dan saklarnya sedang dimatikan"
-                              />
-                            </span>
-                          ) : null}
-                        </span>
-                        <span className="text-xs text-slate-400 font-mono">{field.field_key}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs text-slate-500">{field.tipe_input}</TableCell>
-                    {SAKLAR.map(s => (
-                      <TableCell key={s.key} className="text-center">
-                        <Switch
-                          checked={field[s.key]}
-                          onCheckedChange={v => geser(field.id, s.key, v)}
-                          aria-label={`Saklar ${s.judul} — ${field.label}`}
-                        />
-                      </TableCell>
-                    ))}
-                    <TableCell className="text-xs text-slate-500 leading-relaxed">
-                      {field.dasar_hukum || <span className="text-slate-300">—</span>}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-  )
-}
-
 // Ekspor ditambahkan S#489 supaya induk bisa memakainya.
 // Baris terpindah di atas TIDAK disentuh (uji balik byte-identik).
-export { KotakPeringatan, TabelKolom }
+// S#492: `TabelKolom` DIPINDAH ke `FormFieldRegistryClient.tabel.tsx` — sebabnya di kepala
+//   berkas itu. Yang tinggal di sini hanya kotak peringatan.
+export { KotakPeringatan }

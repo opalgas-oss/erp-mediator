@@ -17,7 +17,6 @@ import { useMemo, useState } from 'react'
 import { toast }             from 'sonner'
 import type { FormFieldRow } from '@/lib/types/form-field-registry.types'
 import { SAKLAR, judulSaklar } from './FormFieldRegistryClient.kontrak'
-import { naikkan, pindahkanBaris, turunkan } from './FormFieldRegistryClient.urutan'
 import type { FormFieldGroupData, SaklarKey, PeringatanBaris } from './FormFieldRegistryClient.kontrak'
 
 export function useFormFieldRegistry({
@@ -42,25 +41,14 @@ export function useFormFieldRegistry({
 
   const semuaField = useMemo(() => groups.flatMap(g => g.fields), [groups])
 
-  /** Nilai `urutan` sebelum disentuh — dipakai tabel untuk menandai nomor yang berubah. */
-  const urutanAsli = useMemo(() => {
-    const peta = new Map<string, number>()
-    for (const g of asli) for (const f of g.fields) peta.set(f.id, f.urutan)
-    return peta
-  }, [asli])
-
-  /**
-   * Baris yang berubah, beserta saklar mana saja yang berubah dan apakah urutannya bergeser.
-   * S#492: `urutanBerubah` ditambahkan — sebelumnya hanya saklar yang dibandingkan.
-   */
+  /** Baris yang berubah, beserta saklar mana saja yang berubah. */
   const perubahan = useMemo(() => {
-    const hasil: { field: FormFieldRow; saklar: SaklarKey[]; urutanBerubah: boolean }[] = []
+    const hasil: { field: FormFieldRow; saklar: SaklarKey[] }[] = []
     for (const field of semuaField) {
       const awal = petaAsli.get(field.id)
       if (!awal) continue
       const berubah = SAKLAR.map(s => s.key).filter(k => field[k] !== awal[k])
-      const urutanBerubah = field.urutan !== awal.urutan
-      if (berubah.length > 0 || urutanBerubah) hasil.push({ field, saklar: berubah, urutanBerubah })
+      if (berubah.length > 0) hasil.push({ field, saklar: berubah })
     }
     return hasil
   }, [semuaField, petaAsli])
@@ -95,34 +83,7 @@ export function useFormFieldRegistry({
     return n
   }, [perubahan])
 
-  /**
-   * Jumlah baris yang URUTANNYA bergeser — ruas hitungan tersendiri (K-487-T8).
-   * Sebabnya sama dengan H-484-B: satu angka gabungan dibaca Philips sebagai salah hitung.
-   * Hal berbeda ⇒ angka berbeda.
-   */
-  const jumlahUrutanBerubah = useMemo(
-    () => perubahan.filter(p => p.urutanBerubah).length,
-    [perubahan],
-  )
-
   const adaPerubahan = perubahan.length > 0
-
-  /** Ganti isi SATU kartu, kartu lain tidak disentuh sama sekali (K-487-T4). */
-  const gantiKartu = (
-    groupKey: string,
-    ubah: (fields: FormFieldRow[]) => FormFieldRow[],
-  ): void => {
-    setGroups(prev =>
-      prev.map(g => (g.group_key === groupKey ? { ...g, fields: ubah(g.fields) } : g))
-    )
-  }
-
-  const naikkanBaris  = (groupKey: string, indeks: number): void =>
-    gantiKartu(groupKey, fields => naikkan(fields, indeks))
-  const turunkanBaris = (groupKey: string, indeks: number): void =>
-    gantiKartu(groupKey, fields => turunkan(fields, indeks))
-  const seretBaris    = (groupKey: string, dari: number, ke: number): void =>
-    gantiKartu(groupKey, fields => pindahkanBaris(fields, dari, ke))
 
   const geser = (fieldId: string, key: SaklarKey, nilai: boolean): void => {
     setGroups(prev =>
@@ -138,10 +99,9 @@ export function useFormFieldRegistry({
     setSaving(true)
     try {
       const body = {
-        perubahan: perubahan.map(({ field, saklar, urutanBerubah }) => {
+        perubahan: perubahan.map(({ field, saklar }) => {
           const patch: Record<string, unknown> = { id: field.id }
           for (const k of saklar) patch[k] = field[k]
-          if (urutanBerubah) patch.urutan = field.urutan
           return patch
         }),
       }
@@ -169,14 +129,9 @@ export function useFormFieldRegistry({
     perubahan,
     peringatan,
     idDitandai,
-    urutanAsli,
     jumlahSaklarBerubah,
-    jumlahUrutanBerubah,
     adaPerubahan,
     geser,
-    naikkanBaris,
-    turunkanBaris,
-    seretBaris,
     simpan,
   }
 }

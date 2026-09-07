@@ -10,10 +10,7 @@
 // | FormFieldRegistryClient.tsx              | induk: kerangka + kartu + tombol Simpan |
 // | FormFieldRegistryClient.kontrak.ts       | bentuk data + keempat saklar            |
 // | FormFieldRegistryClient.hook.ts          | SELURUH keadaan panel                   |
-// | FormFieldRegistryClient.subcomponents.tsx| kotak peringatan                        |
-// | FormFieldRegistryClient.tabel.tsx        | tabel satu kartu (S#492)                |
-// | FormFieldRegistryClient.selurutan.tsx    | sel kolom Urutan: nomor + tombol ▲▼     |
-// | FormFieldRegistryClient.urutan.ts        | perhitungan urutan di dalam satu kartu  |
+// | FormFieldRegistryClient.subcomponents.tsx| kotak peringatan + tabel satu kartu     |
 
 export { FormFieldRegistryClient } from './FormFieldRegistryClient'
 export type { FormFieldGroupData } from './FormFieldRegistryClient.kontrak'
