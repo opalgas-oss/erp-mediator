@@ -11,7 +11,6 @@
 // ---------------------------------------------------------------------------
 
 import type { FormFieldPublik } from '@/lib/types/form-field-registry.types'
-import type { FormFieldPolaPublik } from '@/lib/types/form-field-pola.types'
 import type { OpsiPilihan } from '@/lib/types/vendor-register.types'
 
 export interface KelompokKolom { group_key: string; fields: FormFieldPublik[] }
@@ -19,11 +18,6 @@ export interface KelompokKolom { group_key: string; fields: FormFieldPublik[] }
 export interface RegisterClientProps {
   kelompok:      KelompokKolom[]
   opsi:          Record<string, OpsiPilihan[]>
-  /**
-   * Katalog JENIS pola yang aktif — S#492. DIOPER dari server, ⛔ bukan dibaca ulang di klien:
-   * layar dan server wajib memakai katalog yang sama persis.
-   */
-  katalogPola:   FormFieldPolaPublik[]
   teksPersetujuan: string
   labelCentang:  { snk: string; data: string; pasal33: string }
 }

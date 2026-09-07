@@ -85,7 +85,6 @@ export const SA_NAV_GROUPS: NavGroup[] = [
       { key: 'platform_general',  labelKey: 'nav_menu_platform_general'  },
       { key: 'register_user',     labelKey: 'nav_menu_register_user'     },
       { key: 'register_vendor',   labelKey: 'nav_menu_register_vendor'   },
-      { key: 'pola_isian',        labelKey: 'nav_menu_pola_isian'        },
       { key: 'order_form',        labelKey: 'nav_menu_order_form'        },
       { key: 'bidding_vendor',    labelKey: 'nav_menu_bidding_vendor'    },
       { key: 'payment',           labelKey: 'nav_menu_payment'           },

@@ -28,7 +28,6 @@ const PAGE_META: Record<string, PageMeta> = {
   // ── Konfigurasi ──
   '/dashboard/superadmin/settings/security-login':    { titleKey: 'page_title_security_login',    descKey: 'page_desc_security_login'    },
   '/dashboard/superadmin/settings/multi-role-policy': { titleKey: 'page_title_multi_role_policy', descKey: 'page_desc_multi_role_policy' },
-  '/dashboard/superadmin/settings/pola-isian':       { titleKey: 'page_title_pola_isian',       descKey: 'page_desc_pola_isian'       },
   '/dashboard/superadmin/settings/platform-general':  { titleKey: 'page_title_platform_general',  descKey: 'page_desc_platform_general'  },
   '/dashboard/superadmin/settings/sistem':            { titleKey: 'page_title_sistem',            descKey: 'page_desc_sistem'            },
   '/dashboard/superadmin/settings/monitoring':        { titleKey: 'nav_menu_pengaturan_monitoring', descKey: ''                              },

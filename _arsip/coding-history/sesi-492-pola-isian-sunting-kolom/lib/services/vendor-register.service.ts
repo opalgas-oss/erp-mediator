@@ -27,7 +27,7 @@ import {
   FORM_KEY_VENDOR,
   getSusunanFormulirVendor,
 } from '@/lib/services/vendor-register.susunan'
-import { buatSnapshotAturan, keBarisJawaban } from '@/lib/services/vendor-register.rekaman'
+import { keBarisJawaban } from '@/lib/services/vendor-register.rekaman'
 
 // ---------------------------------------------------------------------------
 // Pemecahan S#492 (ATURAN 53.1): berkas ini terukur 8.564 B = 83,63% plafon kode
@@ -58,7 +58,7 @@ export async function daftarVendor(
   payload: VendorRegisterPayload,
   tenantIdDariDomain?: string | null,
 ): Promise<HasilPendaftaranVendor> {
-  const { kolom, katalogPola } = await getSusunanFormulirVendor()
+  const { kolom } = await getSusunanFormulirVendor()
 
   // 1) Jawaban disaring ke kolom yang benar-benar berlaku — sisanya dibuang tanpa dicatat.
   const jawaban: Record<string, NilaiJawaban> = {}
@@ -68,7 +68,7 @@ export async function daftarVendor(
   }
 
   // 2) Validasi ulang di server — layar boleh dilewati, ini tidak.
-  const galatKolom = validasiSemuaKolom(kolom, jawaban, katalogPola)
+  const galatKolom = validasiSemuaKolom(kolom, jawaban)
   if (Object.keys(galatKolom).length > 0) {
     const gagal: GagalPendaftaran = { pesan: 'Ada isian yang belum benar', galatKolom }
     throw Object.assign(new Error(gagal.pesan), gagal)
@@ -86,11 +86,10 @@ export async function daftarVendor(
   if (sudahAda) throw new Error('Email sudah terdaftar. Gunakan email lain atau masuk.')
 
   // 5) Nilai kebijakan dari Config Registry — ⛔ bukan dari kode.
-  const [statusAwal, versiTeks, tenantConfig, versiAturan] = await Promise.all([
+  const [statusAwal, versiTeks, tenantConfig] = await Promise.all([
     getConfigValue(FEATURE_KEY_VENDOR, 'status_awal_pendaftar', 'pending'),
     getConfigValue(FEATURE_KEY_VENDOR, 'versi_teks_persetujuan'),
     getConfigValue(FEATURE_KEY_VENDOR, 'tenant_id_pendaftar_publik'),
-    getConfigValue(FEATURE_KEY_VENDOR, 'versi_aturan_formulir'),
   ])
   const tenantId = tenantIdDariDomain ?? tenantConfig
   if (!tenantId) {
@@ -130,8 +129,6 @@ export async function daftarVendor(
       form_key:               FORM_KEY_VENDOR,
       status:                 statusAwal ?? 'pending',
       versi_teks_persetujuan: versiTeks,
-      versi_aturan_formulir:  versiAturan,
-      snapshot_aturan:        buatSnapshotAturan(kolom, katalogPola),
       kanal:                  'web',
       persetujuan:            payload.persetujuan,
     })

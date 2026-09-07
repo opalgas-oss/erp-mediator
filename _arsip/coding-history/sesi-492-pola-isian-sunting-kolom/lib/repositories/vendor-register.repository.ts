@@ -16,10 +16,6 @@ export interface BuatSubmissionPayload {
   form_key:               string
   status:                 string
   versi_teks_persetujuan: string | null
-  /** Label versi aturan formulir saat dikirim — sebaris dengan versi teks persetujuan (S#492). */
-  versi_aturan_formulir:  string | null
-  /** Salinan aturan yang benar-benar berlaku saat dikirim — KEPUTUSAN FINAL S#488 (S#492). */
-  snapshot_aturan:        Record<string, unknown>
   kanal:                  string
   persetujuan:            PersetujuanVendor
 }
@@ -44,8 +40,6 @@ export async function VendorRegisterRepo_buatSubmission(
       form_key:               payload.form_key,
       status:                 payload.status,
       versi_teks_persetujuan: payload.versi_teks_persetujuan,
-      versi_aturan_formulir:  payload.versi_aturan_formulir,
-      snapshot_aturan:        payload.snapshot_aturan,
       waktu_setuju:           new Date().toISOString(),
       kanal:                  payload.kanal,
       setuju_snk:             payload.persetujuan.snk,

@@ -15,16 +15,9 @@
 import { useMemo, useState } from 'react'
 import { validasiSemuaKolom } from '@/lib/utils/validasi-form-field.util'
 import type { NilaiJawaban } from '@/lib/types/vendor-register.types'
-import type { FormFieldPolaPublik } from '@/lib/types/form-field-pola.types'
 import type { KelompokKolom } from './RegisterClient.kontrak'
 
-export function useRegisterForm({
-  kelompok,
-  katalogPola,
-}: {
-  kelompok:    KelompokKolom[]
-  katalogPola: FormFieldPolaPublik[]
-}) {
+export function useRegisterForm({ kelompok }: { kelompok: KelompokKolom[] }) {
   const [akun, setAkun]         = useState({ nama: '', email: '', nomor_wa: '', password: '', ulangi: '' })
   const [jawaban, setJawaban]   = useState<Record<string, NilaiJawaban>>({})
   const [setuju, setSetuju]     = useState({ snk: false, data_pribadi: false, pasal_3_3: false })
@@ -52,9 +45,7 @@ export function useRegisterForm({
     if (akun.password.length < 8)               galatAkun.password = 'Password minimal 8 karakter'
     if (akun.ulangi !== akun.password)          galatAkun.ulangi   = 'Password tidak cocok'
 
-    // Katalog pola ikut dioper — S#492. Tanpa ini layar dan server bisa berbeda pendapat
-    // tentang sah atau tidaknya satu isian, dan pendaftar melihat galat yang berubah-ubah.
-    const galatKolom = validasiSemuaKolom(semuaKolom, jawaban, katalogPola)
+    const galatKolom = validasiSemuaKolom(semuaKolom, jawaban)
     const gabung = { ...galatAkun, ...galatKolom }
 
     if (!setuju.snk || !setuju.data_pribadi || !setuju.pasal_3_3) {

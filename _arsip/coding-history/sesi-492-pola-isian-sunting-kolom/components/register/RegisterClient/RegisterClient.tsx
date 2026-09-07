@@ -34,7 +34,7 @@ import type { RegisterClientProps } from './RegisterClient.kontrak'
 const KOTAK_TEKS = 'max-h-56 overflow-y-auto rounded-md border border-[#d1d5db] bg-[#fafafa] p-3 whitespace-pre-wrap text-[12px] leading-relaxed'
 
 export default function RegisterClient({
-  kelompok, opsi, katalogPola, teksPersetujuan, labelCentang,
+  kelompok, opsi, teksPersetujuan, labelCentang,
 }: RegisterClientProps) {
   const {
     akun, setAkun,
@@ -47,7 +47,7 @@ export default function RegisterClient({
     selesai,
     ubah,
     kirim,
-  } = useRegisterForm({ kelompok, katalogPola })
+  } = useRegisterForm({ kelompok })
 
   if (selesai) {
     return (

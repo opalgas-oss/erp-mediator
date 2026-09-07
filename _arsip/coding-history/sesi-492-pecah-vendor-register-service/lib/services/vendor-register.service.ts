@@ -10,6 +10,8 @@
 import 'server-only'
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import { getConfigValue }             from '@/lib/config-registry'
+import { getFormFieldsUntukFormulir } from '@/lib/services/form-field-registry.service'
+import { getOpsiUntukKolom, saringKolomYangBisaDirender } from '@/lib/services/form-field-opsi.service'
 import { validasiSemuaKolom }         from '@/lib/utils/validasi-form-field.util'
 import { findByEmail }                from '@/lib/repositories/user.repository'
 import {
@@ -17,34 +19,82 @@ import {
   VendorRegisterRepo_simpanJawaban,
   VendorRegisterRepo_hapusSubmission,
 } from '@/lib/repositories/vendor-register.repository'
+import type { BarisJawaban } from '@/lib/repositories/vendor-register.repository'
+import type { FormFieldRow, FormFieldPublik } from '@/lib/types/form-field-registry.types'
+import { keKolomPublik } from '@/lib/services/form-field-registry.service'
 import type {
   HasilPendaftaranVendor,
   NilaiJawaban,
+  OpsiPilihan,
   VendorRegisterPayload,
 } from '@/lib/types/vendor-register.types'
-import {
-  FEATURE_KEY_VENDOR,
-  FORM_KEY_VENDOR,
-  getSusunanFormulirVendor,
-} from '@/lib/services/vendor-register.susunan'
-import { buatSnapshotAturan, keBarisJawaban } from '@/lib/services/vendor-register.rekaman'
 
-// ---------------------------------------------------------------------------
-// Pemecahan S#492 (ATURAN 53.1): berkas ini terukur 8.564 B = 83,63% plafon kode
-//   10.240 B — di atas ambang tindakan 8.192 B (hutang #120), SEBELUM sesi ini
-//   menambah apa pun. Sumbu = ALASAN BERUBAH: apa yang DIRENDER -> `.susunan.ts`,
-//   apa yang DIREKAM -> `.rekaman.ts`, alur pendaftaran tetap di sini.
-//   NOL perubahan perilaku: yang pindah dipindah apa adanya oleh program.
-// Jalur impor lama tetap sah — pemanggil yang sudah ada NOL disentuh (ATURAN 5).
-// ---------------------------------------------------------------------------
-export {
-  FEATURE_KEY_VENDOR,
-  FORM_KEY_VENDOR,
-  getSusunanFormulirVendor,
-  kelompokkanKolom,
-} from '@/lib/services/vendor-register.susunan'
-export type { SusunanFormulir } from '@/lib/services/vendor-register.susunan'
-export { keBarisJawaban } from '@/lib/services/vendor-register.rekaman'
+export const FORM_KEY_VENDOR = 'register_vendor'
+export const FEATURE_KEY_VENDOR = 'register_vendor'
+
+/**
+ * Tipe kolom yang Tahap 1 sanggup render. `file` dan `image` sengaja BELUM didukung —
+ * belum ada tempat penyimpanan berkas (SPEK §1). Kalau SA menyalakannya, kolomnya dilewati
+ * dengan catatan log, ⛔ bukan membuat formulir buntu.
+ */
+const TIPE_DIDUKUNG_TAHAP_1 = ['text', 'textarea', 'number', 'boolean', 'select', 'multiselect', 'date']
+
+export interface SusunanFormulir {
+  kolom: FormFieldRow[]
+  opsi:  Record<string, OpsiPilihan[]>
+}
+
+/**
+ * Susunan kolom yang benar-benar berlaku: aktif + tampil (dari Field Registry), tipenya didukung,
+ * dan — untuk kolom pilihan — sumber opsinya benar-benar berisi.
+ * ⇒ Layar dan server memakai fungsi yang SAMA, jadi keduanya tidak mungkin berbeda pendapat.
+ */
+export async function getSusunanFormulirVendor(): Promise<SusunanFormulir> {
+  const grup   = await getFormFieldsUntukFormulir(FORM_KEY_VENDOR)
+  const semua  = grup.flatMap((g) => g.fields)
+
+  const didukung = semua.filter((k) => {
+    if (TIPE_DIDUKUNG_TAHAP_1.includes(k.tipe_input)) return true
+    console.warn(`[vendor-register] tipe "${k.tipe_input}" belum didukung ⇒ kolom "${k.field_key}" dilewati`)
+    return false
+  })
+
+  const opsi  = await getOpsiUntukKolom(didukung)
+  const kolom = saringKolomYangBisaDirender(didukung, opsi)
+  return { kolom, opsi }
+}
+
+/** Kelompokkan untuk layar, urutan kelompok mengikuti kemunculan pertama (urutan sudah terurut). */
+export function kelompokkanKolom(kolom: FormFieldRow[]): { group_key: string; fields: FormFieldPublik[] }[] {
+  // #111 (S#489): dirampingkan DI SINI, sebelum menyeberang ke komponen klien.
+  const peta = new Map<string, FormFieldPublik[]>()
+  for (const k of kolom) {
+    if (!peta.has(k.group_key)) peta.set(k.group_key, [])
+    peta.get(k.group_key)!.push(keKolomPublik(k))
+  }
+  return Array.from(peta.entries()).map(([group_key, fields]) => ({ group_key, fields }))
+}
+
+function keBarisJawaban(kolom: FormFieldRow[], jawaban: Record<string, NilaiJawaban>): BarisJawaban[] {
+  const baris: BarisJawaban[] = []
+  for (const k of kolom) {
+    const nilai = jawaban[k.field_key]
+    if (nilai === undefined || nilai === null) continue
+    if (Array.isArray(nilai)) {
+      if (nilai.length === 0) continue
+      baris.push({ field_key: k.field_key, nilai: null, nilai_json: nilai })
+      continue
+    }
+    if (typeof nilai === 'boolean') {
+      baris.push({ field_key: k.field_key, nilai: nilai ? 'true' : 'false', nilai_json: null })
+      continue
+    }
+    const teks = String(nilai).trim()
+    if (teks.length === 0) continue
+    baris.push({ field_key: k.field_key, nilai: teks, nilai_json: null })
+  }
+  return baris
+}
 
 export interface GagalPendaftaran { pesan: string; galatKolom?: Record<string, string> }
 
@@ -58,7 +108,7 @@ export async function daftarVendor(
   payload: VendorRegisterPayload,
   tenantIdDariDomain?: string | null,
 ): Promise<HasilPendaftaranVendor> {
-  const { kolom, katalogPola } = await getSusunanFormulirVendor()
+  const { kolom } = await getSusunanFormulirVendor()
 
   // 1) Jawaban disaring ke kolom yang benar-benar berlaku — sisanya dibuang tanpa dicatat.
   const jawaban: Record<string, NilaiJawaban> = {}
@@ -68,7 +118,7 @@ export async function daftarVendor(
   }
 
   // 2) Validasi ulang di server — layar boleh dilewati, ini tidak.
-  const galatKolom = validasiSemuaKolom(kolom, jawaban, katalogPola)
+  const galatKolom = validasiSemuaKolom(kolom, jawaban)
   if (Object.keys(galatKolom).length > 0) {
     const gagal: GagalPendaftaran = { pesan: 'Ada isian yang belum benar', galatKolom }
     throw Object.assign(new Error(gagal.pesan), gagal)
@@ -86,11 +136,10 @@ export async function daftarVendor(
   if (sudahAda) throw new Error('Email sudah terdaftar. Gunakan email lain atau masuk.')
 
   // 5) Nilai kebijakan dari Config Registry — ⛔ bukan dari kode.
-  const [statusAwal, versiTeks, tenantConfig, versiAturan] = await Promise.all([
+  const [statusAwal, versiTeks, tenantConfig] = await Promise.all([
     getConfigValue(FEATURE_KEY_VENDOR, 'status_awal_pendaftar', 'pending'),
     getConfigValue(FEATURE_KEY_VENDOR, 'versi_teks_persetujuan'),
     getConfigValue(FEATURE_KEY_VENDOR, 'tenant_id_pendaftar_publik'),
-    getConfigValue(FEATURE_KEY_VENDOR, 'versi_aturan_formulir'),
   ])
   const tenantId = tenantIdDariDomain ?? tenantConfig
   if (!tenantId) {
@@ -130,8 +179,6 @@ export async function daftarVendor(
       form_key:               FORM_KEY_VENDOR,
       status:                 statusAwal ?? 'pending',
       versi_teks_persetujuan: versiTeks,
-      versi_aturan_formulir:  versiAturan,
-      snapshot_aturan:        buatSnapshotAturan(kolom, katalogPola),
       kanal:                  'web',
       persetujuan:            payload.persetujuan,
     })

@@ -26,7 +26,7 @@ const KUNCI_DATA    = 'persetujuan_vendor_v1_centang_data'
 const KUNCI_PASAL33 = 'persetujuan_vendor_v1_centang_pasal33'
 
 export default async function RegisterPage() {
-  const [{ kolom, opsi, katalogPola }, namaBadanHukum, teks, snk, data, pasal33] = await Promise.all([
+  const [{ kolom, opsi }, namaBadanHukum, teks, snk, data, pasal33] = await Promise.all([
     getSusunanFormulirVendor(),
     getConfigValue(FEATURE_KEY_VENDOR, 'nama_badan_hukum_platform', 'Platform'),
     getMessage(KUNCI_TEKS, ''),
@@ -43,7 +43,6 @@ export default async function RegisterPage() {
     <RegisterClient
       kelompok={kelompokkanKolom(kolom)}
       opsi={opsi}
-      katalogPola={katalogPola}
       teksPersetujuan={teksTerisi}
       labelCentang={{ snk, data, pasal33 }}
     />
