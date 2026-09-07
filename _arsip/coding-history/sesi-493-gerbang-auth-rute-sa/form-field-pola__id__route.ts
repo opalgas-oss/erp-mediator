@@ -6,24 +6,8 @@
 //
 // Dibuat: Sesi #492 — K-488-T1b.
 
-//
-// 🔴 GERBANG AUTH — `requireSuperAdminCookie()`, ⛔ BUKAN `requireSuperAdmin()`. S#493.
-//   Sebabnya DIUKUR di `dev` online, bukan ditaksir:
-//   1. `requireSuperAdmin()` memercayai header `x-is-super-admin` yang disuntikkan middleware
-//      Guard 6, dan Guard 6 hanya menyuntik untuk EMPAT prefiks: `/api/superadmin/` ·
-//      `/api/admintenant/` · `/api/config/` · `/api/monitoring/`. Rute ini tidak termasuk.
-//   2. Akibat pertama: SuperAdmin sungguhan yang menekan Simpan dari layar selalu ditolak
-//      403 "Akses ditolak" — dijatuhkan layar Philips S#493.
-//   3. Akibat kedua, lebih berat: karena Guard 6 juga yang MENGHAPUS header kiriman klien,
-//      rute di luar keempat prefiks itu menerima header `x-user-id` + `x-user-role` +
-//      `x-is-super-admin` apa adanya dari siapa pun. Diuji sendiri di `dev`: permintaan TANPA
-//      sesi apa pun, hanya berbekal tiga header itu, LOLOS gerbang (400 dari penjagaan bentuk,
-//      bukan 403). Muatan ujinya sengaja kosong ⇒ nol baris tertulis.
-//   ⇒ `requireSuperAdminCookie()` tidak membaca header sama sekali; ia memverifikasi klaim
-//   `is_super_admin` langsung dari JWT bertanda tangan Supabase — sumber yang SAMA dengan yang
-//   middleware pakai (`extractMembershipsFromPayload`: `payload['is_super_admin'] === true`).
 import { NextRequest, NextResponse } from 'next/server'
-import { requireSuperAdminCookie }   from '@/lib/auth-server'
+import { requireSuperAdmin }         from '@/lib/auth-server'
 import {
   FormFieldPolaRepo_hapus,
   FormFieldPolaRepo_ubah,
@@ -35,7 +19,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const auth = await requireSuperAdminCookie()
+    const auth = await requireSuperAdmin()
     if (!auth.ok) return auth.res
 
     const { id } = await params
@@ -57,7 +41,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const auth = await requireSuperAdminCookie()
+    const auth = await requireSuperAdmin()
     if (!auth.ok) return auth.res
 
     const { id } = await params

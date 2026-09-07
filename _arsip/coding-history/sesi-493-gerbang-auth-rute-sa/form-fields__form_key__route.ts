@@ -11,24 +11,8 @@
 //   Formulir publik `/register` TIDAK memakai rute ini; ia memanggil
 //   `getFormFieldsUntukFormulir()` langsung di server, yang hanya memulangkan kolom aktif.
 
-//
-// 🔴 GERBANG AUTH — `requireSuperAdminCookie()`, ⛔ BUKAN `requireSuperAdmin()`. S#493.
-//   Sebabnya DIUKUR di `dev` online, bukan ditaksir:
-//   1. `requireSuperAdmin()` memercayai header `x-is-super-admin` yang disuntikkan middleware
-//      Guard 6, dan Guard 6 hanya menyuntik untuk EMPAT prefiks: `/api/superadmin/` ·
-//      `/api/admintenant/` · `/api/config/` · `/api/monitoring/`. Rute ini tidak termasuk.
-//   2. Akibat pertama: SuperAdmin sungguhan yang menekan Simpan dari layar selalu ditolak
-//      403 "Akses ditolak" — dijatuhkan layar Philips S#493.
-//   3. Akibat kedua, lebih berat: karena Guard 6 juga yang MENGHAPUS header kiriman klien,
-//      rute di luar keempat prefiks itu menerima header `x-user-id` + `x-user-role` +
-//      `x-is-super-admin` apa adanya dari siapa pun. Diuji sendiri di `dev`: permintaan TANPA
-//      sesi apa pun, hanya berbekal tiga header itu, LOLOS gerbang (400 dari penjagaan bentuk,
-//      bukan 403). Muatan ujinya sengaja kosong ⇒ nol baris tertulis.
-//   ⇒ `requireSuperAdminCookie()` tidak membaca header sama sekali; ia memverifikasi klaim
-//   `is_super_admin` langsung dari JWT bertanda tangan Supabase — sumber yang SAMA dengan yang
-//   middleware pakai (`extractMembershipsFromPayload`: `payload['is_super_admin'] === true`).
 import { NextRequest, NextResponse }  from 'next/server'
-import { requireSuperAdminCookie }    from '@/lib/auth-server'
+import { requireSuperAdmin }          from '@/lib/auth-server'
 import { getFormFieldsUntukAdmin, invalidateFormFieldsCache } from '@/lib/services/form-field-registry.service'
 import { getPolaKeyAktif } from '@/lib/services/form-field-pola.service'
 import { FormFieldRegistryRepo_updateBaris } from '@/lib/repositories/form-field-registry.repository'
@@ -41,7 +25,7 @@ export async function GET(
   { params }: { params: Promise<{ form_key: string }> },
 ) {
   try {
-    const auth = await requireSuperAdminCookie()
+    const auth = await requireSuperAdmin()
     if (!auth.ok) return auth.res
 
     const { form_key } = await params
@@ -65,7 +49,7 @@ export async function PATCH(
   { params }: { params: Promise<{ form_key: string }> },
 ) {
   try {
-    const auth = await requireSuperAdminCookie()
+    const auth = await requireSuperAdmin()
     if (!auth.ok) return auth.res
     const uid = auth.uid
 
