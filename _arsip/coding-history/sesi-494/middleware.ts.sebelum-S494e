@@ -47,9 +47,6 @@ import { NextResponse }        from 'next/server'
 import type { NextRequest }    from 'next/server'
 import { ROLES, VENDOR_LOGIN_ALLOWED, ROLE_TO_DASHBOARD } from '@/lib/constants'
 import { bacaPosisiSaklarTutupSitus } from '@/lib/situs-tertutup-edge'
-// #129 — daftar header + sapuannya tinggal di berkas sendiri: `middleware.ts` sudah 256%
-//   plafon kode, dan bagian yang MURNI bisa diuji tanpa menyalakan server.
-import { sapuHeaderAuth } from '@/lib/utils/sapu-header-auth.util'
 
 // Konstanta Route Publik
 const PUBLIC_PATHS: string[] = [
@@ -67,7 +64,6 @@ const PUBLIC_PATHS: string[] = [
 ]
 
 const STATIC_EXTENSIONS = /\.(png|jpg|jpeg|svg|ico|css|js|webp|woff|woff2|ttf)$/i
-
 
 const DASHBOARD_ROLE_MAP: Record<string, string> = {
   '/dashboard/customer':    ROLES.CUSTOMER,
@@ -269,15 +265,6 @@ async function terapkanGerbangTutupSitus(request: NextRequest): Promise<NextResp
 // ─── Middleware Utama ──────────────────────────────────────────────────────────
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
-  // 🔴 #129 — DIHITUNG SEKALI, DIPAKAI SETIAP JALAN KELUAR YANG MENERUSKAN PERMINTAAN.
-  //   `lanjut()` menggantikan `NextResponse.next()` polos: yang polos meneruskan header asli
-  //   apa adanya, termasuk `x-is-super-admin` yang dikarang pengirim.
-  //   ⛔ DI LUAR `try`, bukan di dalamnya: blok `catch` di kaki fungsi ini juga memulangkan
-  //   `lanjut()`, dan `catch` tidak melihat pengenal yang lahir di dalam `try`. Ditemukan
-  //   `tsc` (TS2304), bukan sesudah mendarat.
-  const headerBersih = sapuHeaderAuth(request.headers)
-  const lanjut = (): NextResponse => NextResponse.next({ request: { headers: headerBersih } })
-
   try {
     const { pathname } = request.nextUrl
 
@@ -286,10 +273,10 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     if (gerbangTutupSitus) return gerbangTutupSitus
 
     if (PUBLIC_PATHS.includes(pathname) && pathname !== '/login'
-        && pathname !== '/sa/masuk' && pathname !== '/kelola/masuk') return lanjut()
+        && pathname !== '/sa/masuk' && pathname !== '/kelola/masuk') return NextResponse.next()
 
     if (pathname === '/sa/masuk') {
-      if (request.cookies.get('otp_pending')?.value === '1') return lanjut()
+      if (request.cookies.get('otp_pending')?.value === '1') return NextResponse.next()
       let saMasukResponse = NextResponse.next({ request })
       const supabaseSA = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
         cookies: { getAll() { return request.cookies.getAll() }, setAll(c) { c.forEach(({ name, value }) => request.cookies.set(name, value)); saMasukResponse = NextResponse.next({ request }); c.forEach(({ name, value, options }) => saMasukResponse.cookies.set(name, value, options)) } }
@@ -303,7 +290,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     }
 
     if (pathname === '/at/masuk') {
-      if (request.cookies.get('otp_pending')?.value === '1') return lanjut()
+      if (request.cookies.get('otp_pending')?.value === '1') return NextResponse.next()
       let atMasukResponse = NextResponse.next({ request })
       const supabaseAT = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
         cookies: { getAll() { return request.cookies.getAll() }, setAll(c) { c.forEach(({ name, value }) => request.cookies.set(name, value)); atMasukResponse = NextResponse.next({ request }); c.forEach(({ name, value, options }) => atMasukResponse.cookies.set(name, value, options)) } }
@@ -317,7 +304,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     }
 
     if (pathname === '/login') {
-      if (request.cookies.get('otp_pending')?.value === '1') return lanjut()
+      if (request.cookies.get('otp_pending')?.value === '1') return NextResponse.next()
       let loginResponse = NextResponse.next({ request })
       const supabaseLogin = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
         cookies: { getAll() { return request.cookies.getAll() }, setAll(c) { c.forEach(({ name, value }) => request.cookies.set(name, value)); loginResponse = NextResponse.next({ request }); c.forEach(({ name, value, options }) => loginResponse.cookies.set(name, value, options)) } }
@@ -331,10 +318,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       return loginResponse
     }
 
-    // `/_next/` dan berkas statis dilewatkan apa adanya — nol penanganan rute yang membaca
-    // header auth di sana. `/api/auth/*` TIDAK: ia rute sungguhan, jadi ia disapu.
-    if (pathname.startsWith('/_next/')) return NextResponse.next()
-    if (pathname.startsWith('/api/auth/')) return lanjut()
+    if (pathname.startsWith('/_next/') || pathname.startsWith('/api/auth/')) return NextResponse.next()
     if (STATIC_EXTENSIONS.test(pathname)) return NextResponse.next()
     if (pathname === '/favicon.ico') return NextResponse.next()
 
@@ -351,8 +335,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
         cookies: { getAll() { return request.cookies.getAll() }, setAll() {} }
       })
       const { userId, isSuperAdmin, memberships, role, tenantId, displayName } = await decodeJwtFromSession(supabaseApi)
-      // #129: sudah bersih dari `headerBersih` ⇒ nol `delete` berulang di sini (ATURAN 36).
-      const apiHeaders = new Headers(headerBersih)
+      const apiHeaders = new Headers(request.headers)
+      apiHeaders.delete('x-user-id'); apiHeaders.delete('x-user-role'); apiHeaders.delete('x-tenant-id')
+      apiHeaders.delete('x-user-display-name'); apiHeaders.delete('x-user-memberships'); apiHeaders.delete('x-is-super-admin')
       if (userId) {
         apiHeaders.set('x-user-id',          userId)
         apiHeaders.set('x-user-role',         role ?? '')
@@ -416,8 +401,10 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
         if (vendorStatus && !(VENDOR_LOGIN_ALLOWED as string[]).includes(vendorStatus.toLowerCase())) return NextResponse.redirect(new URL('/pending-approval', request.url))
       }
 
-      // #129: sudah bersih dari `headerBersih` ⇒ nol `delete` berulang di sini (ATURAN 36).
-      const requestHeaders = new Headers(headerBersih)
+      const requestHeaders = new Headers(request.headers)
+      requestHeaders.delete('x-user-id'); requestHeaders.delete('x-user-role'); requestHeaders.delete('x-tenant-id')
+      requestHeaders.delete('x-user-display-name'); requestHeaders.delete('x-vendor-status')
+      requestHeaders.delete('x-user-memberships'); requestHeaders.delete('x-is-super-admin')
       requestHeaders.set('x-user-id', userId); requestHeaders.set('x-user-role', userRole)
       requestHeaders.set('x-tenant-id', tenantId ?? ''); requestHeaders.set('x-user-display-name', displayName ?? userId)
       if (vendorStatus) requestHeaders.set('x-vendor-status', vendorStatus)
@@ -445,9 +432,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       return NextResponse.redirect(new URL('/login', request.url))
     }
 
-    return lanjut()
+    return NextResponse.next()
   } catch {
-    return lanjut()
+    return NextResponse.next()
   }
 }
 
