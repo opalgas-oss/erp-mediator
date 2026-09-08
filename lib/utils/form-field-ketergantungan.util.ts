@@ -137,10 +137,12 @@ export function periksaKetergantungan(
   //   seolah hidup; pendaftar tidak pernah melihatnya. Itu dashboard yang berbohong, kelas yang
   //   sama persis dengan hutang #130.
   //   ⛔ Yang diperiksa HANYA "sumber opsinya kosong sama sekali" — pemeriksaan MURNI, nol I/O.
-  //   Sumber yang TERISI tetapi kebetulan nol opsi (mis. `kbli`) SENGAJA tidak diperiksa di sini:
-  //   memeriksanya menuntut panggilan Supabase pada setiap PATCH, dan pesannya terpaksa menyuruh
-  //   SA mengisi sumber opsi lewat medan yang panel ini TIDAK PUNYA — cermin cacat K-492-T8.
-  //   Kelas itu berumah di hutang #131 dan ditutup dengan membuat grup dropdownnya, bukan di sini.
+  //   Sumber yang TERISI tetapi kebetulan nol opsi SENGAJA tidak diperiksa di sini: memeriksanya
+  //   menuntut panggilan Supabase pada setiap PATCH, dan pesannya terpaksa menyuruh SA mengisi
+  //   sumber opsi lewat medan yang panel ini TIDAK PUNYA — cermin cacat K-492-T8.
+  //   ⚠️ KOREKSI S#495 — baris ini semula meresepkan "ditutup dengan MEMBUAT grup dropdownnya".
+  //   Resep itu DICABUT: diukur S#495, ia salah untuk satu-satunya penghuni kelasnya (`kbli`).
+  //   Sebabnya di `KERJA_SESI_495`; `kbli` kini isian teks berpola, bukan kolom pilihan (#131).
   for (const b of barisSetelah) {
     if (!hidup(b)) continue
     if (!TIPE_BUTUH_SUMBER_OPSI.includes(b.tipe_input)) continue

@@ -7,6 +7,8 @@
 // Sumber yang TIDAK dikenali, atau yang dikenali tetapi kosong, memulangkan daftar kosong.
 // Kolomnya kemudian DILEWATI oleh pemanggil (bukan merusak halaman) dan dicatat ke log —
 // inilah yang mencegah "dropdown kosong yang wajib diisi" seperti kasus `kbli` di S#486.
+// ⚠️ S#495: `kbli` sudah BUKAN kolom pilihan lagi — ia isian teks berpola (hutang #131). Kalimat
+//   di atas tinggal sebagai sejarah lahirnya penjaga ini, ⛔ bukan sebagai contoh yang masih hidup.
 
 import 'server-only'
 import {

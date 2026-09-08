@@ -130,9 +130,9 @@ describe('R3 — kolom pilihan hidup tanpa sumber opsi (hutang #132)', () => {
     expect(periksaKetergantungan([pilihan({ sumber_opsi: '   ' })], [])).not.toBeNull()
   })
 
-  it('select hidup + sumber_opsi terisi ⇒ LOLOS (kbli bukan urusan R3)', () => {
-    const kbli = baris({ field_key: 'kbli', label: 'Klasifikasi KBLI', tipe_input: 'select', sumber_opsi: 'kbli' })
-    expect(periksaKetergantungan([kbli], [])).toBeNull()
+  it('pilihan hidup + sumber_opsi terisi ⇒ LOLOS (sumber nol opsi bukan urusan R3)', () => {
+    const kota = baris({ field_key: 'kota_dilayani', label: 'Kota Dilayani', tipe_input: 'multiselect', sumber_opsi: 'cities' })
+    expect(periksaKetergantungan([kota], [])).toBeNull()
   })
 
   it('kolom pilihan yang DIMATIKAN ⇒ LOLOS — SA boleh menyiapkannya lebih dulu', () => {
