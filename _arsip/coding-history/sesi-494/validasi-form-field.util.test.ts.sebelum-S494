@@ -4,15 +4,10 @@
 // Dijalankan `npm test` (vitest.config.ts include: lib/**/*.test.ts).
 // ⚠️ TIDAK ikut `npm run prebuild` — `prebuild` sengaja hanya menjalankan `lib/guards`.
 //
-// 🔴 CATATAN SEJARAH — DIMUTAKHIRKAN S#494, JANGAN DIBACA SEBAGAI KEADAAN SEKARANG.
-//   SAMPAI S#493 baris `nama_pemilik_rekening` di Supabase memuat `harus_sama_dengan: "ktp"`,
-//   sedangkan `ktp` bertipe `image` dan TIDAK PERNAH dirender di Tahap 1 ⇒ aturannya tersimpan
-//   tanpa pernah berlaku, dan menegakkannya apa adanya membuat SELURUH `/register` buntu.
-//   S#494 memindahkan rujukannya ke kolom teks BARU `nama_ktp` (label "Nama Sesuai KTP",
-//   grup Identitas, urutan 125) ⇒ aturan itu kini BENAR-BENAR berlaku.
-//   ⛔ Uji "kolom rujukan tidak dirender ⇒ DILEWATI" TETAP DI SINI sebagai PENJAGA REGRESI:
-//   SA masih bisa mematikan saklar Tampil pada `nama_ktp` kapan saja, dan formulir tetap
-//   tidak boleh buntu karenanya.
+// 🔴 KASUS HIDUP YANG PALING PENTING ADA DI BAWAH: baris `nama_pemilik_rekening` di Supabase
+//   hari ini memuat `harus_sama_dengan: "ktp"`, sedangkan `ktp` bertipe `image` dan TIDAK PERNAH
+//   dirender di Tahap 1. Menegakkannya apa adanya membuat SELURUH `/register` buntu.
+//   Uji "kolom rujukan tidak dirender ⇒ DILEWATI" adalah yang menahan kejadian itu.
 
 import { describe, expect, it } from 'vitest'
 import { validasiSemuaKolom } from './validasi-form-field.util'
@@ -65,8 +60,7 @@ describe('validasiSemuaKolom — harus_sama_dengan', () => {
   })
 
   it('🔴 kolom rujukan TIDAK ikut dirender ⇒ aturan DILEWATI, formulir tidak buntu', () => {
-    // Keadaan Supabase SAMPAI S#493: rujukannya `ktp` (tipe image, tidak pernah dirender).
-    // S#494 sudah memindahkannya ke `nama_ktp`; kasus ini ditahan sebagai penjaga regresi.
+    // Persis keadaan Supabase hari ini: rujukannya `ktp` (tipe image, tidak pernah dirender).
     const barisHidup = kolom({
       field_key:   'nama_pemilik_rekening',
       label:       'Nama Pemilik Rekening',
@@ -102,17 +96,6 @@ describe('validasiSemuaKolom — harus_sama_dengan', () => {
 
   it('kolom tanpa harus_sama_dengan tidak tersentuh sama sekali', () => {
     const galat = validasiSemuaKolom([NAMA_KTP], { nama_ktp: 'Budi Santoso' })
-    expect(galat).toEqual({})
-  })
-
-  // S#494 — mengunci keputusan "nama_ktp SENGAJA tanpa `min_len`". Nama sah bisa dua huruf
-  // ("Li", "Ng"); `is_required` sudah menahan yang kosong, dan `min_len` di sini hanya akan
-  // menolak orang sungguhan. Kalau kelak ada yang menambahkan `min_len`, uji ini yang jatuh.
-  it('nama dua huruf yang sama di kedua kolom LOLOS — nama_ktp tanpa min_len', () => {
-    const galat = validasiSemuaKolom([NAMA_PEMILIK, NAMA_KTP], {
-      nama_pemilik_rekening: 'Li',
-      nama_ktp:              'Li',
-    })
     expect(galat).toEqual({})
   })
 })
