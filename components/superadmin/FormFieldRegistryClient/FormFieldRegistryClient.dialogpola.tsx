@@ -9,6 +9,14 @@
 //
 // Medan parameter DITURUNKAN dari `parameter_skema` jenis pola yang dipilih — jadi jenis
 // pola baru yang SA buat sendiri langsung punya medannya di sini, tanpa menyentuh berkas ini.
+//
+// 🔴 S#494 — HUTANG #130 DIBAYAR: kalimat "Belum ada pola" DULU BERBOHONG.
+//   Kolom `nik` memuat pembatas warisan `regex: "^[0-9]{16}$"` yang tersimpan dalam bentuk
+//   LAMA (kunci `regex`, bukan baris pola). `validasiSatuKolom` menegakkannya LEBIH DULU
+//   daripada pola berlapis, jadi bentuk isian kolom itu memang dibatasi — sementara dialog
+//   menyatakan sebaliknya kepada SuperAdmin. Yang salah bukan penegaknya, melainkan
+//   kalimatnya. Sejak sekarang pembatas warisan itu DITAMPILKAN apa adanya, dan kalimat
+//   "tidak dibatasi" hanya muncul kalau memang benar-benar tidak ada pembatas.
 
 import { Button } from '@/components/ui/button'
 import type { FormFieldPolaPublik } from '@/lib/types/form-field-pola.types'
@@ -16,19 +24,24 @@ import type { PolaBaris } from './FormFieldRegistryClient.kontrak'
 import { Bantuan, MedanPilih, MedanTeks } from './FormFieldRegistryClient.dialogmedan'
 
 export function DaftarPola({
-  daftar, katalog, ubah, hapus, tambah,
+  daftar, katalog, ubah, hapus, tambah, regexWarisan,
 }: {
   daftar:  PolaBaris[]
   katalog: FormFieldPolaPublik[]
   ubah:    (indeks: number, baris: PolaBaris) => void
   hapus:   (indeks: number) => void
   tambah:  () => void
+  /** Pembatas bentuk lama (`validasi.regex`) yang MASIH BERLAKU pada baris ini, kalau ada. */
+  regexWarisan?: string
 }) {
   const opsiJenis = katalog.map(k => ({ nilai: k.pola_key, label: k.label }))
+  const adaWarisan = typeof regexWarisan === 'string' && regexWarisan.length > 0
 
   return (
     <div className="flex flex-col gap-3">
-      {daftar.length === 0 ? (
+      {adaWarisan ? <PembatasWarisan ekspresi={regexWarisan!} adaPolaLain={daftar.length > 0} /> : null}
+
+      {daftar.length === 0 && !adaWarisan ? (
         <Bantuan isi="Belum ada pola. Tanpa pola, bentuk isian tidak dibatasi." />
       ) : null}
 
@@ -81,6 +94,35 @@ export function DaftarPola({
         'Menambah pola baru tidak membuat data lama menjadi tidak sah. Daftar pilihan Pola di atas adalah data, ' +
         'bukan bagian dari program — Anda dapat menambah jenis pola baru sendiri di Konfigurasi › Pola Isian.'
       } />
+    </div>
+  )
+}
+
+/**
+ * Pembatas warisan — DITAMPILKAN, ⛔ bukan disembunyikan (hutang #130).
+ * Ia tidak disajikan sebagai baris pola yang bisa disunting, dan itu disengaja: bentuknya
+ * berbeda (satu ekspresi utuh, tanpa nama/tanggal/sumber), dan menyuntingnya dari sini berarti
+ * menawarkan pengaturan yang penegaknya berbeda dengan yang dijanjikan — persis yang ATURAN 34
+ * larang. Yang ditawarkan hanyalah KETERANGAN JUJUR tentang apa yang sedang menjaga kolom itu.
+ */
+function PembatasWarisan({ ekspresi, adaPolaLain }: { ekspresi: string; adaPolaLain: boolean }) {
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 flex flex-col gap-1.5">
+      <div className="text-sm font-medium text-amber-900">
+        Kolom ini sudah dibatasi oleh pembatas lama
+      </div>
+      <div className="text-[11px] text-amber-900">
+        Bentuk isian yang diterima kolom ini <strong>sudah dibatasi</strong> oleh sebuah pembatas
+        yang tersimpan dalam bentuk lama, dan pembatas itu diperiksa <strong>lebih dulu</strong>
+        {adaPolaLain ? ' daripada pola di bawah' : ''}. Isinya:
+      </div>
+      <code className="text-[11px] font-mono bg-white border border-amber-200 rounded px-2 py-1 break-all text-amber-900">
+        {ekspresi}
+      </code>
+      <div className="text-[11px] text-amber-900">
+        Pembatas ini belum bisa disunting dari layar ini. Untuk menggantinya dengan pola yang bisa
+        Anda atur sendiri, tambahkan pola di bawah lalu minta pembatas lamanya dicabut.
+      </div>
     </div>
   )
 }

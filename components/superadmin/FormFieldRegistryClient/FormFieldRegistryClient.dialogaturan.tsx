@@ -28,13 +28,17 @@ export function BagianAturan({
   const ubahPola = (i: number, p: PolaBaris): void =>
     setDraft({ ...draft, pola: draft.pola.map((lama, j) => (j === i ? p : lama)) })
 
+  // Hutang #130 — pembatas bentuk lama tinggal di `draft.lain` karena dialog tidak merendernya
+  // sebagai medan. Ia TETAP ditegakkan `validasiSatuKolom`, jadi ia WAJIB terlihat SA.
+  const regexWarisan = typeof draft.lain.regex === 'string' ? draft.lain.regex : undefined
+
   return (
     <>
       {medan.pola ? (
         <>
           <SubJudul isi="Pola isian yang diterima" />
           <DaftarPola
-            daftar={draft.pola} katalog={katalogPola} ubah={ubahPola}
+            daftar={draft.pola} katalog={katalogPola} ubah={ubahPola} regexWarisan={regexWarisan}
             hapus={i => setDraft({ ...draft, pola: draft.pola.filter((_, j) => j !== i) })}
             tambah={() => setDraft({
               ...draft,
