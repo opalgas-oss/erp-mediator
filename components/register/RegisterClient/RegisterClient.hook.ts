@@ -25,7 +25,10 @@ export function useRegisterForm({
   kelompok:    KelompokKolom[]
   katalogPola: FormFieldPolaPublik[]
 }) {
-  const [akun, setAkun]         = useState({ nama: '', email: '', nomor_wa: '', password: '', ulangi: '' })
+  // 🔴 S#494 — `nama` DICABUT dari keadaan akun: nama vendor kini datang dari kolom formulir
+  //   yang Config Registry tunjuk (`register_vendor` / `kolom_sumber_nama_profil`), bukan
+  //   diketik terpisah di bagian Data Akun.
+  const [akun, setAkun]         = useState({ email: '', nomor_wa: '', password: '', ulangi: '' })
   const [jawaban, setJawaban]   = useState<Record<string, NilaiJawaban>>({})
   const [setuju, setSetuju]     = useState({ snk: false, data_pribadi: false, pasal_3_3: false })
   const [umpan, setUmpan]       = useState('')
@@ -45,7 +48,6 @@ export function useRegisterForm({
     setPesan(null)
 
     const galatAkun: Record<string, string> = {}
-    if (!akun.nama.trim())                      galatAkun.nama = 'Nama lengkap wajib diisi'
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(akun.email.trim()))
       galatAkun.email = 'Format email tidak valid. Contoh: nama@email.com'
     if (!akun.nomor_wa.trim())                  galatAkun.nomor_wa = 'Nomor WhatsApp wajib diisi'
@@ -69,7 +71,7 @@ export function useRegisterForm({
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           akun: {
-            nama: akun.nama, email: akun.email, nomor_wa: akun.nomor_wa, password: akun.password,
+            email: akun.email, nomor_wa: akun.nomor_wa, password: akun.password,
           },
           jawaban: semuaKolom.map((k) => ({ field_key: k.field_key, nilai: jawaban[k.field_key] ?? null })),
           persetujuan: setuju,

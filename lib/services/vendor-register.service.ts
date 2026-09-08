@@ -86,16 +86,38 @@ export async function daftarVendor(
   if (sudahAda) throw new Error('Email sudah terdaftar. Gunakan email lain atau masuk.')
 
   // 5) Nilai kebijakan dari Config Registry — ⛔ bukan dari kode.
-  const [statusAwal, versiTeks, tenantConfig, versiAturan] = await Promise.all([
+  const [statusAwal, versiTeks, tenantConfig, versiAturan, kunciSumberNama] = await Promise.all([
     getConfigValue(FEATURE_KEY_VENDOR, 'status_awal_pendaftar', 'pending'),
     getConfigValue(FEATURE_KEY_VENDOR, 'versi_teks_persetujuan'),
     getConfigValue(FEATURE_KEY_VENDOR, 'tenant_id_pendaftar_publik'),
     getConfigValue(FEATURE_KEY_VENDOR, 'versi_aturan_formulir'),
+    // ⚠️ Fallback WAJIB ada: `getConfigValues` menelan galat Supabase dan memulangkan `{}`,
+    //   lalu `{}` itu ikut ter-cache 300 detik. Tanpa fallback, satu kedipan jaringan
+    //   mematikan seluruh corong pendaftaran selama lima menit.
+    getConfigValue(FEATURE_KEY_VENDOR, 'kolom_sumber_nama_profil', 'nama_ktp'),
   ])
   const tenantId = tenantIdDariDomain ?? tenantConfig
   if (!tenantId) {
     throw new Error('Konfigurasi tenant pendaftar publik belum diisi — hubungi pengelola')
   }
+
+  // 5b) NAMA PROFIL — S#494, perintah Philips "Nama Lengkap Vendor harus sesuai KTP".
+  //   Nama vendor tidak lagi diketik terpisah di Data Akun; ia jawaban kolom formulir yang
+  //   Config Registry tunjuk ⇒ nama profil dan nama KTP tidak mungkin lagi berbeda.
+  //   🔴 Dihitung SEBELUM akun auth lahir (langkah 6) — gagal sesudahnya = akun yatim.
+  //   ⛔ Tipenya diperiksa dulu: `NilaiJawaban` boleh larik/boolean, dan `.trim()` atasnya
+  //   melempar TypeError yang jadi 500 dari rute PUBLIK.
+  //   ⚠️ GAGAL-AMAN: kolom itu dimatikan ⇒ pendaftaran TIDAK dimatikan, nama memakai email
+  //   dan sebabnya dicatat. Yang MENCEGAH keadaan itu = R2 di rute PATCH panel Kolom Formulir.
+  const nilaiNama  = jawaban[kunciSumberNama ?? 'nama_ktp']
+  const namaProfil = typeof nilaiNama === 'string' ? nilaiNama.trim() : ''
+  if (!namaProfil) {
+    console.error(
+      `[vendor-register.service] kolom sumber nama "${kunciSumberNama}" kosong/tidak dirender ` +
+      '— nama profil memakai email. Periksa Konfigurasi › Kolom Formulir.',
+    )
+  }
+  const namaDipakai = namaProfil || emailNormal
 
   const db = createServerSupabaseClient()
 
@@ -104,7 +126,7 @@ export async function daftarVendor(
     email:         emailNormal,
     password:      payload.akun.password,
     email_confirm: false,
-    user_metadata: { nama: payload.akun.nama.trim(), nomor_wa: payload.akun.nomor_wa.trim() },
+    user_metadata: { nama: namaDipakai, nomor_wa: payload.akun.nomor_wa.trim() },
   })
   if (authError || !authData?.user) {
     throw new Error(authError?.message ?? 'Gagal membuat akun')
@@ -116,7 +138,7 @@ export async function daftarVendor(
       id:               userId,
       tenant_id:        tenantId,
       email:            emailNormal,
-      nama:             payload.akun.nama.trim(),
+      nama:             namaDipakai,
       nomor_wa:         payload.akun.nomor_wa.trim(),
       role:             'vendor',
       register_status:  statusAwal ?? 'pending',

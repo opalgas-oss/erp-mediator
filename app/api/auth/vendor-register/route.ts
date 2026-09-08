@@ -18,8 +18,9 @@ interface GalatBerkolom { galatKolom?: Record<string, string> }
 
 function tidakLengkap(p: VendorRegisterPayload): string | null {
   if (!p.akun) return 'Data akun wajib diisi'
-  const { nama, email, nomor_wa, password } = p.akun
-  if (!nama?.trim())           return 'Nama lengkap wajib diisi'
+  // 🔴 S#494 — `nama` tidak lagi datang dari sini; ia jawaban kolom formulir. Penjagaan
+  //   "wajib diisi"-nya dijalankan `validasiSemuaKolom` atas saklar Wajib kolom itu.
+  const { email, nomor_wa, password } = p.akun
   if (!email?.trim())          return 'Email wajib diisi'
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return 'Format email tidak valid. Contoh: nama@email.com'
   if (!nomor_wa?.trim())       return 'Nomor WhatsApp wajib diisi'

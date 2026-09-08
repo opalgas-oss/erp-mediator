@@ -28,10 +28,16 @@ export interface PersetujuanVendor {
   pasal_3_3:     boolean
 }
 
-/** Isi kiriman formulir pendaftaran vendor. */
+/**
+ * Isi kiriman formulir pendaftaran vendor.
+ * 🔴 S#494 — `akun.nama` DICABUT. Nama vendor bukan lagi medan akun yang diketik terpisah;
+ *   ia jawaban kolom formulir yang Config Registry tunjuk
+ *   (`register_vendor` / `kolom_sumber_nama_profil`, hari ini `nama_ktp`).
+ *   Sebabnya perintah Philips: "Nama Lengkap Vendor harus sesuai KTP" — dan cara paling
+ *   pasti membuat dua nama sama adalah meniadakan yang kedua, bukan membandingkannya.
+ */
 export interface VendorRegisterPayload {
   akun: {
-    nama:     string
     email:    string
     nomor_wa: string
     password: string

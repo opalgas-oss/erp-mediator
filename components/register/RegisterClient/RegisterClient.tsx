@@ -72,8 +72,11 @@ export default function RegisterClient({
       <CardContent className="pb-6 space-y-5">
         <section className="space-y-3">
           <h3 className={TYPOGRAPHY.cardTitle}>Data Akun</h3>
-          <Isian label="Nama Lengkap" id="nama" nilai={akun.nama} galat={galat.nama}
-                 onUbah={(v) => setAkun({ ...akun, nama: v })} />
+          {/* 🔴 S#494 — medan "Nama Lengkap" DIHAPUS dari sini atas perintah Philips
+              ("Nama Lengkap Vendor harus sesuai KTP"). Nama vendor kini punya SATU rumah:
+              kolom "Nama Sesuai KTP" di bagian Identitas, yang datang dari Field Registry
+              dan bisa SA atur. Dua kotak untuk satu nama adalah undangan supaya keduanya
+              berbeda — dan nama profil yang berbeda dari nama KTP persis yang dilarang. */}
           <Isian label="Email" id="email" tipe="email" nilai={akun.email} galat={galat.email}
                  onUbah={(v) => setAkun({ ...akun, email: v })} />
           <Isian label="Nomor WhatsApp" id="wa" nilai={akun.nomor_wa} galat={galat.nomor_wa}
