@@ -20,6 +20,13 @@
  */
 export const TIPE_BISA_DIBANDINGKAN = ['text', 'textarea']
 
+/**
+ * Tipe kolom yang isinya DIAMBIL dari katalog, bukan diketik pendaftar.
+ * 🔴 Kolom bertipe ini TANPA sumber opsi tidak akan pernah muncul di formulir — ia dibuang
+ * `saringKolomYangBisaDirender` secara SENYAP. Itulah cacat yang R3 di bawah tangkap.
+ */
+export const TIPE_BUTUH_SUMBER_OPSI = ['select', 'multiselect']
+
 /** Bentuk minimum satu baris yang penjagaan ini butuhkan. */
 export interface BarisKetergantungan {
   id:          string
@@ -30,6 +37,12 @@ export interface BarisKetergantungan {
   is_required: boolean
   is_active:   boolean
   validasi:    Record<string, unknown>
+  /**
+   * Alamat sumber opsi kolom pilihan. ⚠️ SENGAJA OPSIONAL, bukan wajib: `FormFieldRow` memuatnya
+   * sehingga pemanggil boleh mengoper baris utuh apa adanya, sedangkan baris uji yang tidak
+   * mengurusi kolom pilihan tidak perlu menuliskannya. Tidak hadir = diperlakukan kosong.
+   */
+  sumber_opsi?: string | null
 }
 
 /** Patch apa adanya dari muatan PATCH — hanya medan yang berubah yang hadir. */
@@ -115,6 +128,27 @@ export function periksaKetergantungan(
     return `"${b.label}" tidak boleh dimatikan: aplikasi membacanya sendiri di luar formulir ` +
            `ini. Saklar Tampil, Aktif, dan Wajib pada kolom itu wajib tetap menyala. ` +
            `Daftarnya diatur di Konfigurasi › Kolom Formulir.`
+  }
+
+  // R3 — kolom pilihan yang hidup tetapi NOL sumber opsi. Lahir S#495 dari hutang #132.
+  //   🔴 SEBABNYA DIUKUR, BUKAN DIRASA: `daftar_petugas_lapangan` berdiri berbulan-bulan dengan
+  //   saklar Tampil MENYALA dan `sumber_opsi` NULL. `getOpsiUntukKolom` tidak pernah memasukkannya
+  //   ke peta, lalu `saringKolomYangBisaDirender` membuangnya — **senyap**. Panel SA menampilkannya
+  //   seolah hidup; pendaftar tidak pernah melihatnya. Itu dashboard yang berbohong, kelas yang
+  //   sama persis dengan hutang #130.
+  //   ⛔ Yang diperiksa HANYA "sumber opsinya kosong sama sekali" — pemeriksaan MURNI, nol I/O.
+  //   Sumber yang TERISI tetapi kebetulan nol opsi (mis. `kbli`) SENGAJA tidak diperiksa di sini:
+  //   memeriksanya menuntut panggilan Supabase pada setiap PATCH, dan pesannya terpaksa menyuruh
+  //   SA mengisi sumber opsi lewat medan yang panel ini TIDAK PUNYA — cermin cacat K-492-T8.
+  //   Kelas itu berumah di hutang #131 dan ditutup dengan membuat grup dropdownnya, bukan di sini.
+  for (const b of barisSetelah) {
+    if (!hidup(b)) continue
+    if (!TIPE_BUTUH_SUMBER_OPSI.includes(b.tipe_input)) continue
+    if (typeof b.sumber_opsi === 'string' && b.sumber_opsi.trim().length > 0) continue
+    return `Kolom "${b.label}" bertipe pilihan tetapi belum punya sumber pilihan sama sekali, ` +
+           `jadi ia TIDAK akan muncul di formulir pendaftar walau saklarnya menyala. Sumber ` +
+           `pilihan belum bisa diatur dari panel ini ⇒ matikan saklar Tampil pada "${b.label}", ` +
+           `atau minta pengelola mengubah tipenya menjadi isian teks bebas.`
   }
 
   return null

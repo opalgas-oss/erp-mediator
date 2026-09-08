@@ -1,7 +1,7 @@
 // Uji penjagaan ketergantungan antar-kolom — S#494, perintah Philips "perbaiki saklar Tampil".
 import { describe, expect, it } from 'vitest'
 import {
-  periksaKetergantungan, terapkanPatch, TIPE_BISA_DIBANDINGKAN,
+  periksaKetergantungan, terapkanPatch, TIPE_BISA_DIBANDINGKAN, TIPE_BUTUH_SUMBER_OPSI,
   type BarisKetergantungan,
 } from './form-field-ketergantungan.util'
 
@@ -107,5 +107,53 @@ describe('R2 — kolom yang aplikasi baca sendiri', () => {
 describe('rumah tunggal tipe yang bisa dibandingkan', () => {
   it('hanya text dan textarea', () => {
     expect(TIPE_BISA_DIBANDINGKAN).toEqual(['text', 'textarea'])
+  })
+})
+
+describe('R3 — kolom pilihan hidup tanpa sumber opsi (hutang #132)', () => {
+  const pilihan = (extra: Partial<BarisKetergantungan> = {}) =>
+    baris({ field_key: 'daftar_petugas_lapangan', label: 'Daftar Petugas Lapangan',
+            tipe_input: 'multiselect', is_required: false, ...extra })
+
+  it('🔴 multiselect hidup + sumber_opsi tidak ada ⇒ DITOLAK, pesannya menyebut label + aksi nyata', () => {
+    const pesan = periksaKetergantungan([pilihan()], [])
+    expect(pesan).toContain('Daftar Petugas Lapangan')
+    expect(pesan).toContain('TIDAK akan muncul')
+    expect(pesan).toContain('matikan saklar Tampil')
+  })
+
+  it('sumber_opsi null ⇒ DITOLAK', () => {
+    expect(periksaKetergantungan([pilihan({ sumber_opsi: null })], [])).not.toBeNull()
+  })
+
+  it('sumber_opsi hanya spasi ⇒ DITOLAK', () => {
+    expect(periksaKetergantungan([pilihan({ sumber_opsi: '   ' })], [])).not.toBeNull()
+  })
+
+  it('select hidup + sumber_opsi terisi ⇒ LOLOS (kbli bukan urusan R3)', () => {
+    const kbli = baris({ field_key: 'kbli', label: 'Klasifikasi KBLI', tipe_input: 'select', sumber_opsi: 'kbli' })
+    expect(periksaKetergantungan([kbli], [])).toBeNull()
+  })
+
+  it('kolom pilihan yang DIMATIKAN ⇒ LOLOS — SA boleh menyiapkannya lebih dulu', () => {
+    expect(periksaKetergantungan([pilihan({ is_visible: false })], [])).toBeNull()
+  })
+
+  it('🟢 sesudah tipenya jadi textarea ⇒ LOLOS (perbaikan S#495 butir 1)', () => {
+    const sesudah = pilihan({ tipe_input: 'textarea', validasi: { max_len: 1000 } })
+    expect(periksaKetergantungan([sesudah], [])).toBeNull()
+  })
+
+  it('mematikan Tampil lewat patch ⇒ LOLOS, SA punya jalan keluar', () => {
+    const setelah = terapkanPatch([pilihan()], [{ id: 'id-daftar_petugas_lapangan', is_visible: false }])
+    expect(periksaKetergantungan(setelah, [])).toBeNull()
+  })
+
+  it('kolom teks tanpa sumber_opsi TIDAK tersentuh R3', () => {
+    expect(periksaKetergantungan([NAMA_KTP], [])).toBeNull()
+  })
+
+  it('daftar tipe yang butuh sumber opsi = select + multiselect', () => {
+    expect(TIPE_BUTUH_SUMBER_OPSI).toEqual(['select', 'multiselect'])
   })
 })
