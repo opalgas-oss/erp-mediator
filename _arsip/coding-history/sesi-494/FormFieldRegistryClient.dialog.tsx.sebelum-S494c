@@ -19,9 +19,9 @@ import type { DraftSunting } from './FormFieldRegistryClient.kontrak'
 import { medanUntukTipe } from './FormFieldRegistryClient.kontrak'
 import { MedanTeks } from './FormFieldRegistryClient.dialogmedan'
 import { BagianAturan } from './FormFieldRegistryClient.dialogaturan'
-// 🔴 S#494 — daftar tipe yang bisa dibandingkan PINDAH ke util (ATURAN 36, rumah tunggal):
-//   penjaga sisi server memakai daftar yang SAMA, dan dua salinan pasti melenceng suatu hari.
-import { TIPE_BISA_DIBANDINGKAN } from '@/lib/utils/form-field-ketergantungan.util'
+
+/** Kolom yang isinya bisa dibandingkan huruf per huruf. Gambar dan berkas tidak bisa. */
+const TIPE_BISA_DIBANDINGKAN = ['text', 'textarea']
 
 export function DialogSunting({
   baris, draft, semuaBaris, katalogPola, setDraft, tutup, terapkan,

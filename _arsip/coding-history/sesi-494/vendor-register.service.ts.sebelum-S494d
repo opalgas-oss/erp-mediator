@@ -1,0 +1,153 @@
+// lib/services/vendor-register.service.ts
+// Pendaftaran vendor publik — Tahap 1 (Opsi B). Dibuat: Sesi #486.
+// Rumah spesifikasinya: Arsitektur_Project/02_Functional/01_Auth_Akses/SPEK_FORMULIR_REGISTER_VENDOR_v1.md
+//
+// 🔴 SERVER YANG MENEGAKKAN SAKLAR SA, BUKAN LAYAR (SPEK §3 K6). Kolom yang tidak `is_visible`
+//   atau tidak `is_active` DIBUANG di sini — jawaban untuknya tidak pernah ditulis, sekalipun
+//   dikirim. Tanpa ini, saklar di layar SuperAdmin hanya hiasan.
+// 🔴 Nol nilai kebijakan dibekukan: status awal & tenant pendaftar dibaca dari Config Registry.
+
+import 'server-only'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { getConfigValue }             from '@/lib/config-registry'
+import { validasiSemuaKolom }         from '@/lib/utils/validasi-form-field.util'
+import { findByEmail }                from '@/lib/repositories/user.repository'
+import {
+  VendorRegisterRepo_buatSubmission,
+  VendorRegisterRepo_simpanJawaban,
+  VendorRegisterRepo_hapusSubmission,
+} from '@/lib/repositories/vendor-register.repository'
+import type {
+  HasilPendaftaranVendor,
+  NilaiJawaban,
+  VendorRegisterPayload,
+} from '@/lib/types/vendor-register.types'
+import {
+  FEATURE_KEY_VENDOR,
+  FORM_KEY_VENDOR,
+  getSusunanFormulirVendor,
+} from '@/lib/services/vendor-register.susunan'
+import { buatSnapshotAturan, keBarisJawaban } from '@/lib/services/vendor-register.rekaman'
+
+// ---------------------------------------------------------------------------
+// Pemecahan S#492 (ATURAN 53.1): berkas ini terukur 8.564 B = 83,63% plafon kode
+//   10.240 B — di atas ambang tindakan 8.192 B (hutang #120), SEBELUM sesi ini
+//   menambah apa pun. Sumbu = ALASAN BERUBAH: apa yang DIRENDER -> `.susunan.ts`,
+//   apa yang DIREKAM -> `.rekaman.ts`, alur pendaftaran tetap di sini.
+//   NOL perubahan perilaku: yang pindah dipindah apa adanya oleh program.
+// Jalur impor lama tetap sah — pemanggil yang sudah ada NOL disentuh (ATURAN 5).
+// ---------------------------------------------------------------------------
+export {
+  FEATURE_KEY_VENDOR,
+  FORM_KEY_VENDOR,
+  getSusunanFormulirVendor,
+  kelompokkanKolom,
+} from '@/lib/services/vendor-register.susunan'
+export type { SusunanFormulir } from '@/lib/services/vendor-register.susunan'
+export { keBarisJawaban } from '@/lib/services/vendor-register.rekaman'
+
+export interface GagalPendaftaran { pesan: string; galatKolom?: Record<string, string> }
+
+/**
+ * Jalankan pendaftaran. Urutan + pemulihannya menyalin pola `admin-tenant-create.service.ts`:
+ * akun auth → user_profiles → submission → jawaban; gagal di mana pun ⇒ akun dihapus lagi
+ * supaya tidak lahir akun yatim yang menghalangi pendaftar mencoba ulang.
+ * ⛔ Nol sesi dibuat: pendaftar tidak pernah login selagi statusnya belum disetujui.
+ */
+export async function daftarVendor(
+  payload: VendorRegisterPayload,
+  tenantIdDariDomain?: string | null,
+): Promise<HasilPendaftaranVendor> {
+  const { kolom, katalogPola } = await getSusunanFormulirVendor()
+
+  // 1) Jawaban disaring ke kolom yang benar-benar berlaku — sisanya dibuang tanpa dicatat.
+  const jawaban: Record<string, NilaiJawaban> = {}
+  const kunciSah = new Set(kolom.map((k) => k.field_key))
+  for (const j of payload.jawaban) {
+    if (kunciSah.has(j.field_key)) jawaban[j.field_key] = j.nilai
+  }
+
+  // 2) Validasi ulang di server — layar boleh dilewati, ini tidak.
+  const galatKolom = validasiSemuaKolom(kolom, jawaban, katalogPola)
+  if (Object.keys(galatKolom).length > 0) {
+    const gagal: GagalPendaftaran = { pesan: 'Ada isian yang belum benar', galatKolom }
+    throw Object.assign(new Error(gagal.pesan), gagal)
+  }
+
+  // 3) Persetujuan: ketiganya wajib, ⛔ nol yang boleh dianggap tercentang.
+  const { snk, data_pribadi, pasal_3_3 } = payload.persetujuan
+  if (!snk || !data_pribadi || !pasal_3_3) {
+    throw new Error('Ketiga pernyataan persetujuan wajib dicentang')
+  }
+
+  // 4) Email belum boleh terdaftar.
+  const emailNormal = payload.akun.email.trim().toLowerCase()
+  const sudahAda = await findByEmail(emailNormal)
+  if (sudahAda) throw new Error('Email sudah terdaftar. Gunakan email lain atau masuk.')
+
+  // 5) Nilai kebijakan dari Config Registry — ⛔ bukan dari kode.
+  const [statusAwal, versiTeks, tenantConfig, versiAturan] = await Promise.all([
+    getConfigValue(FEATURE_KEY_VENDOR, 'status_awal_pendaftar', 'pending'),
+    getConfigValue(FEATURE_KEY_VENDOR, 'versi_teks_persetujuan'),
+    getConfigValue(FEATURE_KEY_VENDOR, 'tenant_id_pendaftar_publik'),
+    getConfigValue(FEATURE_KEY_VENDOR, 'versi_aturan_formulir'),
+  ])
+  const tenantId = tenantIdDariDomain ?? tenantConfig
+  if (!tenantId) {
+    throw new Error('Konfigurasi tenant pendaftar publik belum diisi — hubungi pengelola')
+  }
+
+  const db = createServerSupabaseClient()
+
+  // 6) Akun auth (server-only, service_role). Pendaftar TIDAK di-login-kan.
+  const { data: authData, error: authError } = await db.auth.admin.createUser({
+    email:         emailNormal,
+    password:      payload.akun.password,
+    email_confirm: false,
+    user_metadata: { nama: payload.akun.nama.trim(), nomor_wa: payload.akun.nomor_wa.trim() },
+  })
+  if (authError || !authData?.user) {
+    throw new Error(authError?.message ?? 'Gagal membuat akun')
+  }
+  const userId = authData.user.id
+
+  try {
+    const { error: galatProfil } = await db.from('user_profiles').insert({
+      id:               userId,
+      tenant_id:        tenantId,
+      email:            emailNormal,
+      nama:             payload.akun.nama.trim(),
+      nomor_wa:         payload.akun.nomor_wa.trim(),
+      role:             'vendor',
+      register_status:  statusAwal ?? 'pending',
+      lifecycle_status: 'in_registration',
+    })
+    if (galatProfil) throw new Error(galatProfil.message)
+
+    const submissionId = await VendorRegisterRepo_buatSubmission({
+      user_id:                userId,
+      tenant_id:              tenantId,
+      form_key:               FORM_KEY_VENDOR,
+      status:                 statusAwal ?? 'pending',
+      versi_teks_persetujuan: versiTeks,
+      versi_aturan_formulir:  versiAturan,
+      snapshot_aturan:        buatSnapshotAturan(kolom, katalogPola),
+      kanal:                  'web',
+      persetujuan:            payload.persetujuan,
+    })
+
+    try {
+      await VendorRegisterRepo_simpanJawaban(submissionId, keBarisJawaban(kolom, jawaban))
+    } catch (err) {
+      await VendorRegisterRepo_hapusSubmission(submissionId)
+      throw err
+    }
+
+    return { submission_id: submissionId, status: statusAwal ?? 'pending' }
+  } catch (err) {
+    await db.auth.admin.deleteUser(userId).catch((e) =>
+      console.error('[vendor-register.service] rollback deleteUser gagal:', e),
+    )
+    throw err
+  }
+}

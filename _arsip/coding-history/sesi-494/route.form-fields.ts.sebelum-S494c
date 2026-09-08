@@ -21,14 +21,9 @@
 //      403 "Akses ditolak" — dijatuhkan layar Philips S#493.
 //   3. Akibat kedua, lebih berat: karena Guard 6 juga yang MENGHAPUS header kiriman klien,
 //      rute di luar keempat prefiks itu menerima header `x-user-id` + `x-user-role` +
-//      `x-is-super-admin` apa adanya dari siapa pun.
-//      🔴 KOREKSI S#494 atas kalimat yang berdiri di sini sebelumnya (E-493-2): kalimat lama
-//      menulis bahwa permintaan "TANPA sesi apa pun" LOLOS gerbang. Itu MELEBIHI buktinya —
-//      permintaan uji itu membawa cookie peramban bawaan Claude, yang ternyata memegang sesi
-//      SuperAdmin sah (T-493-1). Yang benar-benar terbukti waktu itu: header DIPERCAYA dan
-//      mengalahkan ketiadaan header. Bahwa anonim murni tembus pada versi lama adalah
-//      PEMBACAAN KODE, ⛔ bukan hasil uji. Sesudah perbaikan, anonim (`credentials:'omit'`)
-//      dijawab 401 — itu yang diuji dan itu yang berlaku. Sisa lubangnya = hutang #129.
+//      `x-is-super-admin` apa adanya dari siapa pun. Diuji sendiri di `dev`: permintaan TANPA
+//      sesi apa pun, hanya berbekal tiga header itu, LOLOS gerbang (400 dari penjagaan bentuk,
+//      bukan 403). Muatan ujinya sengaja kosong ⇒ nol baris tertulis.
 //   ⇒ `requireSuperAdminCookie()` tidak membaca header sama sekali; ia memverifikasi klaim
 //   `is_super_admin` langsung dari JWT bertanda tangan Supabase — sumber yang SAMA dengan yang
 //   middleware pakai (`extractMembershipsFromPayload`: `payload['is_super_admin'] === true`).
@@ -38,9 +33,6 @@ import { getFormFieldsUntukAdmin, invalidateFormFieldsCache } from '@/lib/servic
 import { getPolaKeyAktif } from '@/lib/services/form-field-pola.service'
 import { FormFieldRegistryRepo_updateBaris } from '@/lib/repositories/form-field-registry.repository'
 import { saringPerubahan } from '@/lib/utils/form-field-patch.util'
-import { getConfigValue } from '@/lib/config-registry'
-import { parseMultiValue } from '@/lib/utils/config-page.utils'
-import { periksaKetergantungan, terapkanPatch } from '@/lib/utils/form-field-ketergantungan.util'
 
 // ─── GET ──────────────────────────────────────────────────────────────────────
 
@@ -89,31 +81,6 @@ export async function PATCH(
       return NextResponse.json({ success: false, message: hasil.pesan }, { status: 400 })
     }
     const bersih = hasil.patches
-
-    // 🔴 PENJAGAAN KETERGANTUNGAN ANTAR-KOLOM — S#494, perintah Philips "perbaiki saklar Tampil".
-    //   `saringPerubahan` di atas memeriksa tiap patch SENDIRI-SENDIRI; ia tidak bisa melihat
-    //   bahwa mematikan satu kolom membunuh aturan kolom lain. Yang di bawah memeriksa keadaan
-    //   AKHIR seluruh formulir, bukan potongan yang dikirim.
-    //   ⚠️ `getFormFieldsUntukAdmin` sengaja TIDAK di-cache (temuan #109) ⇒ bahannya segar.
-    const grupSekarang = await getFormFieldsUntukAdmin(form_key)
-    const barisSekarang = grupSekarang.flatMap((g) => g.fields)
-
-    // Daftar kolom yang aplikasi baca sendiri — DARI Config Registry, ⛔ bukan dari kode.
-    // ⛔ Daftar kosong TIDAK dianggap "lolos": penjaga yang bisa mati diam-diam lebih berbahaya
-    //   daripada tidak ada penjaga. Ia dijawab 500 supaya ketahuan, bukan 200 supaya lewat.
-    const kunciWajibHidup = parseMultiValue(await getConfigValue(form_key, 'kolom_wajib_hidup'))
-    if (kunciWajibHidup.length === 0) {
-      console.error(`[form-fields PATCH] Config "${form_key}/kolom_wajib_hidup" kosong atau tidak aktif`)
-      return NextResponse.json({
-        success: false,
-        message: 'Kebijakan "kolom yang tidak boleh dimatikan" belum terisi — hubungi pengelola sebelum menyimpan.',
-      }, { status: 500 })
-    }
-
-    const galatKetergantungan = periksaKetergantungan(terapkanPatch(barisSekarang, bersih), kunciWajibHidup)
-    if (galatKetergantungan) {
-      return NextResponse.json({ success: false, message: galatKetergantungan }, { status: 400 })
-    }
 
     for (const patch of bersih) {
       await FormFieldRegistryRepo_updateBaris(form_key, patch, uid)
