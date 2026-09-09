@@ -6,9 +6,6 @@
 // 🔴 Jawaban pendaftar adalah DATA, bukan kolom tabel (SPEK §3 K3). Menambah kolom formulir
 //   = menambah baris di form_field_registry, ⛔ BUKAN mengubah tipe di berkas ini.
 
-import type { FormFieldRow } from '@/lib/types/form-field-registry.types'
-import type { FormFieldPolaPublik } from '@/lib/types/form-field-pola.types'
-
 /** Satu opsi untuk kolom `select` / `multiselect`. Sumbernya diterjemahkan di service opsi. */
 export interface OpsiPilihan {
   nilai: string
@@ -55,25 +52,6 @@ export interface VendorRegisterPayload {
 export interface HasilPendaftaranVendor {
   submission_id: string
   status:        string
-}
-
-/** Galat pendaftaran yang membawa rincian per-kolom. Dilempar oleh tahap persiapan. */
-export interface GagalPendaftaran { pesan: string; galatKolom?: Record<string, string> }
-
-/**
- * Hasil tahap persiapan — sudah dipastikan benar + nilai kebijakannya sudah ditetapkan,
- * siap ditulis. Lahir S#496 bersama `vendor-register.persiapan.ts`.
- */
-export interface HasilPersiapan {
-  kolom:       FormFieldRow[]
-  katalogPola: FormFieldPolaPublik[]
-  jawaban:     Record<string, NilaiJawaban>
-  emailNormal: string
-  tenantId:    string
-  statusAwal:  string | null
-  versiTeks:   string | null
-  versiAturan: string | null
-  namaDipakai: string
 }
 
 /** Satu galat validasi, dipetakan ke kolom yang menyebabkannya. */
