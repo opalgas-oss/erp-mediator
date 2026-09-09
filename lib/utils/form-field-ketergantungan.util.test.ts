@@ -8,7 +8,8 @@ import {
 function baris(s: Partial<BarisKetergantungan> & { field_key: string }): BarisKetergantungan {
   return {
     id: `id-${s.field_key}`, label: s.field_key, tipe_input: 'text',
-    is_visible: true, is_required: true, is_active: true, validasi: {}, ...s,
+    is_visible: true, is_required: true, is_active: true,
+    butuh_verifikasi_admin: false, validasi: {}, ...s,
   }
 }
 
@@ -19,6 +20,15 @@ const NAMA_REK = baris({
 })
 const KTP_GAMBAR = baris({ field_key: 'ktp', label: 'Foto KTP', tipe_input: 'image', is_visible: false })
 const WAJIB = ['nama_ktp']
+
+/**
+ * Setelan platform untuk uji R1/R2/R3 di berkas ini.
+ * 🔴 `layarVerifikasiBerkasAktif: true` DISENGAJA: dengan kunci menyala R4 memulangkan `null`
+ * lebih dulu, sehingga berkas ini tetap menguji R1/R2/R3 saja. Uji R4 sendiri — kedua arahnya —
+ * berumah di `form-field-ketergantungan.aturan.test.ts`.
+ */
+const setelan = (kunciWajibHidup: string[] = []) =>
+  ({ kunciWajibHidup, layarVerifikasiBerkasAktif: true })
 
 describe('terapkanPatch — keadaan AKHIR, bukan potongan yang dikirim', () => {
   it('baris yang tidak ikut dikirim TIDAK berubah', () => {
@@ -36,12 +46,12 @@ describe('terapkanPatch — keadaan AKHIR, bukan potongan yang dikirim', () => {
 
 describe('R1 — kolom rujukan tidak boleh dimatikan diam-diam', () => {
   it('keadaan sehat ⇒ null', () => {
-    expect(periksaKetergantungan([NAMA_KTP, NAMA_REK, KTP_GAMBAR], WAJIB)).toBeNull()
+    expect(periksaKetergantungan([NAMA_KTP, NAMA_REK, KTP_GAMBAR], setelan(WAJIB))).toBeNull()
   })
 
   it('🔴 SA mematikan Tampil pada kolom rujukan ⇒ DITOLAK, pesannya menyebut kedua label', () => {
     const setelah = terapkanPatch([NAMA_KTP, NAMA_REK], [{ id: 'id-nama_ktp', is_visible: false }])
-    const pesan = periksaKetergantungan(setelah, [])
+    const pesan = periksaKetergantungan(setelah, setelan())
     expect(pesan).toContain('Nama Sesuai KTP')
     expect(pesan).toContain('Nama Pemilik Rekening')
     expect(pesan).toContain('tidak dibandingkan')
@@ -49,18 +59,18 @@ describe('R1 — kolom rujukan tidak boleh dimatikan diam-diam', () => {
 
   it('SA mematikan Aktif pada kolom rujukan ⇒ DITOLAK juga', () => {
     const setelah = terapkanPatch([NAMA_KTP, NAMA_REK], [{ id: 'id-nama_ktp', is_active: false }])
-    expect(periksaKetergantungan(setelah, [])).not.toBeNull()
+    expect(periksaKetergantungan(setelah, setelan())).not.toBeNull()
   })
 
   it('kolom rujukan hilang sama sekali ⇒ DITOLAK dengan pesan yang berbeda', () => {
-    const pesan = periksaKetergantungan([NAMA_REK], [])
+    const pesan = periksaKetergantungan([NAMA_REK], setelan())
     expect(pesan).toContain('tidak ada lagi di formulir ini')
   })
 
   it('rujukan ke kolom bertipe gambar ⇒ DITOLAK (cacat asal hutang #128)', () => {
     const rek = { ...NAMA_REK, validasi: { harus_sama_dengan: 'ktp' } }
     const ktpHidup = { ...KTP_GAMBAR, is_visible: true }
-    const pesan = periksaKetergantungan([ktpHidup, rek], [])
+    const pesan = periksaKetergantungan([ktpHidup, rek], setelan())
     expect(pesan).toContain('image')
     expect(pesan).toContain('tidak bisa dibandingkan')
   })
@@ -69,7 +79,7 @@ describe('R1 — kolom rujukan tidak boleh dimatikan diam-diam', () => {
     const setelah = terapkanPatch([NAMA_KTP, NAMA_REK], [
       { id: 'id-nama_ktp', is_visible: false }, { id: 'id-nama_pemilik_rekening', is_visible: false },
     ])
-    expect(periksaKetergantungan(setelah, [])).toBeNull()
+    expect(periksaKetergantungan(setelah, setelan())).toBeNull()
   })
 
   it('aturan dicabut lalu kolomnya dimatikan dalam SATU kiriman ⇒ LOLOS', () => {
@@ -77,30 +87,30 @@ describe('R1 — kolom rujukan tidak boleh dimatikan diam-diam', () => {
       { id: 'id-nama_pemilik_rekening', validasi: { max_len: 100 } },
       { id: 'id-nama_ktp', is_visible: false },
     ])
-    expect(periksaKetergantungan(setelah, [])).toBeNull()
+    expect(periksaKetergantungan(setelah, setelan())).toBeNull()
   })
 
   it('kolom X sendiri yang dimatikan ⇒ aturannya ikut berhenti, LOLOS', () => {
     const setelah = terapkanPatch([NAMA_KTP, NAMA_REK], [
       { id: 'id-nama_pemilik_rekening', is_visible: false }, { id: 'id-nama_ktp', is_visible: false },
     ])
-    expect(periksaKetergantungan(setelah, [])).toBeNull()
+    expect(periksaKetergantungan(setelah, setelan())).toBeNull()
   })
 })
 
 describe('R2 — kolom yang aplikasi baca sendiri', () => {
   it('🔴 mematikan Tampil pada kolom sumber nama profil ⇒ DITOLAK', () => {
     const setelah = terapkanPatch([NAMA_KTP], [{ id: 'id-nama_ktp', is_visible: false }])
-    const pesan = periksaKetergantungan(setelah, WAJIB)
+    const pesan = periksaKetergantungan(setelah, setelan(WAJIB))
     expect(pesan).toContain('Nama Sesuai KTP')
     expect(pesan).toContain('aplikasi membacanya sendiri')
   })
   it('mematikan saklar Wajib pun DITOLAK', () => {
     const setelah = terapkanPatch([NAMA_KTP], [{ id: 'id-nama_ktp', is_required: false }])
-    expect(periksaKetergantungan(setelah, WAJIB)).not.toBeNull()
+    expect(periksaKetergantungan(setelah, setelan(WAJIB))).not.toBeNull()
   })
   it('kunci yang tidak ada di formulir ini DILEWATI, bukan menggagalkan', () => {
-    expect(periksaKetergantungan([NAMA_KTP], ['kolom_entah_apa'])).toBeNull()
+    expect(periksaKetergantungan([NAMA_KTP], setelan(['kolom_entah_apa']))).toBeNull()
   })
 })
 
@@ -116,41 +126,41 @@ describe('R3 — kolom pilihan hidup tanpa sumber opsi (hutang #132)', () => {
             tipe_input: 'multiselect', is_required: false, ...extra })
 
   it('🔴 multiselect hidup + sumber_opsi tidak ada ⇒ DITOLAK, pesannya menyebut label + aksi nyata', () => {
-    const pesan = periksaKetergantungan([pilihan()], [])
+    const pesan = periksaKetergantungan([pilihan()], setelan())
     expect(pesan).toContain('Daftar Petugas Lapangan')
     expect(pesan).toContain('TIDAK akan muncul')
     expect(pesan).toContain('matikan saklar Tampil')
   })
 
   it('sumber_opsi null ⇒ DITOLAK', () => {
-    expect(periksaKetergantungan([pilihan({ sumber_opsi: null })], [])).not.toBeNull()
+    expect(periksaKetergantungan([pilihan({ sumber_opsi: null })], setelan())).not.toBeNull()
   })
 
   it('sumber_opsi hanya spasi ⇒ DITOLAK', () => {
-    expect(periksaKetergantungan([pilihan({ sumber_opsi: '   ' })], [])).not.toBeNull()
+    expect(periksaKetergantungan([pilihan({ sumber_opsi: '   ' })], setelan())).not.toBeNull()
   })
 
   it('pilihan hidup + sumber_opsi terisi ⇒ LOLOS (sumber nol opsi bukan urusan R3)', () => {
     const kota = baris({ field_key: 'kota_dilayani', label: 'Kota Dilayani', tipe_input: 'multiselect', sumber_opsi: 'cities' })
-    expect(periksaKetergantungan([kota], [])).toBeNull()
+    expect(periksaKetergantungan([kota], setelan())).toBeNull()
   })
 
   it('kolom pilihan yang DIMATIKAN ⇒ LOLOS — SA boleh menyiapkannya lebih dulu', () => {
-    expect(periksaKetergantungan([pilihan({ is_visible: false })], [])).toBeNull()
+    expect(periksaKetergantungan([pilihan({ is_visible: false })], setelan())).toBeNull()
   })
 
   it('🟢 sesudah tipenya jadi textarea ⇒ LOLOS (perbaikan S#495 butir 1)', () => {
     const sesudah = pilihan({ tipe_input: 'textarea', validasi: { max_len: 1000 } })
-    expect(periksaKetergantungan([sesudah], [])).toBeNull()
+    expect(periksaKetergantungan([sesudah], setelan())).toBeNull()
   })
 
   it('mematikan Tampil lewat patch ⇒ LOLOS, SA punya jalan keluar', () => {
     const setelah = terapkanPatch([pilihan()], [{ id: 'id-daftar_petugas_lapangan', is_visible: false }])
-    expect(periksaKetergantungan(setelah, [])).toBeNull()
+    expect(periksaKetergantungan(setelah, setelan())).toBeNull()
   })
 
   it('kolom teks tanpa sumber_opsi TIDAK tersentuh R3', () => {
-    expect(periksaKetergantungan([NAMA_KTP], [])).toBeNull()
+    expect(periksaKetergantungan([NAMA_KTP], setelan())).toBeNull()
   })
 
   it('daftar tipe yang butuh sumber opsi = select + multiselect', () => {

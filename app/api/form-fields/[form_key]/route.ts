@@ -38,8 +38,7 @@ import { getFormFieldsUntukAdmin, invalidateFormFieldsCache } from '@/lib/servic
 import { getPolaKeyAktif } from '@/lib/services/form-field-pola.service'
 import { FormFieldRegistryRepo_updateBaris } from '@/lib/repositories/form-field-registry.repository'
 import { saringPerubahan } from '@/lib/utils/form-field-patch.util'
-import { getConfigValue } from '@/lib/config-registry'
-import { parseMultiValue } from '@/lib/utils/config-page.utils'
+import { bacaSetelanPenjagaan } from '@/lib/services/form-field-penjagaan.service'
 import { periksaKetergantungan, terapkanPatch } from '@/lib/utils/form-field-ketergantungan.util'
 
 // ─── GET ──────────────────────────────────────────────────────────────────────
@@ -98,19 +97,17 @@ export async function PATCH(
     const grupSekarang = await getFormFieldsUntukAdmin(form_key)
     const barisSekarang = grupSekarang.flatMap((g) => g.fields)
 
-    // Daftar kolom yang aplikasi baca sendiri — DARI Config Registry, ⛔ bukan dari kode.
-    // ⛔ Daftar kosong TIDAK dianggap "lolos": penjaga yang bisa mati diam-diam lebih berbahaya
-    //   daripada tidak ada penjaga. Ia dijawab 500 supaya ketahuan, bukan 200 supaya lewat.
-    const kunciWajibHidup = parseMultiValue(await getConfigValue(form_key, 'kolom_wajib_hidup'))
-    if (kunciWajibHidup.length === 0) {
-      console.error(`[form-fields PATCH] Config "${form_key}/kolom_wajib_hidup" kosong atau tidak aktif`)
-      return NextResponse.json({
-        success: false,
-        message: 'Kebijakan "kolom yang tidak boleh dimatikan" belum terisi — hubungi pengelola sebelum menyimpan.',
-      }, { status: 500 })
+    // Setelan platform yang penjagaan pakai — DARI Config Registry, ⛔ bukan dari kode.
+    //   ⛔ Setelan yang tidak terbaca TIDAK dianggap "lolos": penjaga yang bisa mati diam-diam
+    //   lebih berbahaya daripada tidak ada penjaga. Dijawab 500 supaya ketahuan (lihat sebab
+    //   per kunci di `form-field-penjagaan.service.ts`).
+    const setelan = await bacaSetelanPenjagaan(form_key)
+    if (!setelan.ok) {
+      console.error(`[form-fields PATCH] Config "${setelan.kunci}" kosong atau tidak aktif`)
+      return NextResponse.json({ success: false, message: setelan.pesan }, { status: 500 })
     }
 
-    const galatKetergantungan = periksaKetergantungan(terapkanPatch(barisSekarang, bersih), kunciWajibHidup)
+    const galatKetergantungan = periksaKetergantungan(terapkanPatch(barisSekarang, bersih), setelan.setelan)
     if (galatKetergantungan) {
       return NextResponse.json({ success: false, message: galatKetergantungan }, { status: 400 })
     }

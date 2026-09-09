@@ -6,7 +6,7 @@
 // ⛔ MURNI — nol Supabase, nol `server-only`; bisa diuji tanpa menyalakan server.
 
 import type { BarisKetergantungan } from '@/lib/types/form-field-ketergantungan.types'
-import { hidup, TIPE_BISA_DIBANDINGKAN, TIPE_BUTUH_SUMBER_OPSI } from './form-field-ketergantungan.dasar'
+import { hidup, TIPE_BERKAS, TIPE_BISA_DIBANDINGKAN, TIPE_BUTUH_SUMBER_OPSI } from './form-field-ketergantungan.dasar'
 
 /** R1 — kolom yang masih hidup dan membandingkan dirinya dengan kolom lain. */
 export function aturanR1(
@@ -80,6 +80,50 @@ export function aturanR3(barisSetelah: BarisKetergantungan[]): string | null {
            `jadi ia TIDAK akan muncul di formulir pendaftar walau saklarnya menyala. Sumber ` +
            `pilihan belum bisa diatur dari panel ini ⇒ matikan saklar Tampil pada "${b.label}", ` +
            `atau minta pengelola mengubah tipenya menjadi isian teks bebas.`
+  }
+  return null
+}
+
+/**
+ * R4 — kolom BERKAS yang wajib diperiksa admin, HIDUP sementara layar pemeriksanya belum ada.
+ *   Lahir S#497; butir 2 pada urutan `KERJA_SESI_495_REKOMENDASI.md` §7.2.
+ *
+ *   🔴 BINGKAINYA **ATURAN 34**, ⛔ BUKAN penjaga kebijakan (K-496-T1). Bingkai kebijakan
+ *   menabrak K-483-4 — *"dasar hukum memberi tahu, ⛔ tidak menolak"* — di empat dokumen, dan
+ *   sudah dicabut di spek §8 butir 1. Yang dijaga di sini sekelas R3: kolom yang hidup tetapi
+ *   hasilnya tidak sampai ke siapa pun. Bedanya, R3 soal kolom yang tak pernah TAMPIL;
+ *   R4 soal berkas yang tak pernah TERBACA.
+ *
+ *   🔴 CAKUPANNYA TIPE BERKAS SAJA — DAN ITU DIUKUR, BUKAN DITAKSIR (K-497-T1). Bunyi di
+ *   spek §1 K0 tidak menyebut tipe. Ditulis apa adanya, ia menolak keadaan yang SEDANG
+ *   BERJALAN: `SELECT form_field_registry` 9 Sep 2026 memulangkan `nib` (tipe `text`) HIDUP
+ *   dengan `butuh_verifikasi_admin=true`, sehingga SETIAP simpanan SA di panel Kolom Formulir
+ *   akan tertolak oleh kolom yang sama sekali bukan urusan unggah berkas — panel jadi buntu,
+ *   persis kelas kegagalan yang uji R1/R3 jaga (*"SA tidak dibuat buntu"*). Nama kunci
+ *   Config-nya sendiri sudah menyebut cakupan yang benar: `layar_verifikasi_BERKAS_aktif`.
+ *   ⇒ hutang `butuh_verifikasi_admin` nol pembaca pada kolom TEKS tetap di rumahnya, **#138**.
+ *
+ *   ⇒ yang dijaga = pembelahan Tahap A / Kelompok B. Diukur 9 Sep 2026: 5 kolom `file`/`image`
+ *   ber-`butuh_verifikasi_admin=true` (`ktp` · `selfie_dengan_ktp` · `skck` · `surat_domisili` ·
+ *   `bukti_standar_teknis`) semuanya `is_visible=false` ⇒ keadaan hari ini LOLOS. Tiga kolom
+ *   Tahap A (`sertifikat_kompetensi` · `foto_profil_usaha` · `dokumen_usaha_lain`)
+ *   ber-`butuh_verifikasi_admin=false` ⇒ ⛔ tidak tersentuh aturan ini.
+ */
+export function aturanR4(
+  barisSetelah:               BarisKetergantungan[],
+  layarVerifikasiBerkasAktif: boolean,
+): string | null {
+  if (layarVerifikasiBerkasAktif) return null
+
+  for (const b of barisSetelah) {
+    if (!hidup(b)) continue
+    if (!TIPE_BERKAS.includes(b.tipe_input)) continue
+    if (!b.butuh_verifikasi_admin) continue
+    return `Kolom "${b.label}" mengumpulkan berkas yang wajib diperiksa admin, sedangkan ` +
+           `layar verifikasi berkas belum dinyatakan aktif — berkas pendaftar akan menumpuk ` +
+           `tanpa satu pun layar yang bisa membacanya. Matikan saklar Tampil pada "${b.label}", ` +
+           `atau nyalakan "Layar verifikasi berkas aktif" di Konfigurasi › Pendaftaran Vendor ` +
+           `lebih dulu.`
   }
   return null
 }

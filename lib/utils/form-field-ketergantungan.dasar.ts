@@ -19,6 +19,14 @@ export const TIPE_BISA_DIBANDINGKAN = ['text', 'textarea']
  */
 export const TIPE_BUTUH_SUMBER_OPSI = ['select', 'multiselect']
 
+/**
+ * Tipe kolom yang isinya BERKAS yang diunggah, bukan diketik.
+ * 🔴 Ia yang menentukan cakupan R4, dan nama kunci Config-nya sendiri menyebutnya:
+ * `layar_verifikasi_BERKAS_aktif`. Kolom teks ber-`butuh_verifikasi_admin` (mis. `nib`)
+ * ⛔ BUKAN urusan R4 — hutangnya #138, dan R4 tidak diam-diam mengubahnya jadi kunci panel.
+ */
+export const TIPE_BERKAS = ['file', 'image']
+
 /** Kolom dianggap HIDUP di formulir hanya kalau kedua saklarnya menyala. */
 export function hidup(b: BarisKetergantungan): boolean {
   return b.is_visible && b.is_active

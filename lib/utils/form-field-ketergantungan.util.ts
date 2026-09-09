@@ -25,10 +25,12 @@
 // ⛔ NOL PERUBAHAN PERILAKU pada pemecahan itu, dan SELURUH jalur impor lama tetap sah
 //   (ATURAN 5): apa pun yang dulu diimpor dari berkas ini masih diekspor dari berkas ini.
 
-import type { BarisKetergantungan, PatchKetergantungan } from '@/lib/types/form-field-ketergantungan.types'
-import { aturanR1, aturanR2, aturanR3 } from './form-field-ketergantungan.aturan'
+import type {
+  BarisKetergantungan, PatchKetergantungan, SetelanPenjagaan,
+} from '@/lib/types/form-field-ketergantungan.types'
+import { aturanR1, aturanR2, aturanR3, aturanR4 } from './form-field-ketergantungan.aturan'
 
-export type { BarisKetergantungan, PatchKetergantungan }
+export type { BarisKetergantungan, PatchKetergantungan, SetelanPenjagaan }
 export { TIPE_BISA_DIBANDINGKAN, TIPE_BUTUH_SUMBER_OPSI } from './form-field-ketergantungan.dasar'
 
 /**
@@ -50,6 +52,7 @@ export function terapkanPatch(
       is_visible:  p.is_visible  ?? b.is_visible,
       is_required: p.is_required ?? b.is_required,
       is_active:   p.is_active   ?? b.is_active,
+      butuh_verifikasi_admin: p.butuh_verifikasi_admin ?? b.butuh_verifikasi_admin,
       validasi:    p.validasi    ?? b.validasi,
     }
   })
@@ -61,13 +64,14 @@ export function terapkanPatch(
  * cara membetulkannya — bukan sekadar "tidak boleh".
  */
 export function periksaKetergantungan(
-  barisSetelah:    BarisKetergantungan[],
-  kunciWajibHidup: string[],
+  barisSetelah: BarisKetergantungan[],
+  setelan:      SetelanPenjagaan,
 ): string | null {
   const perKunci = new Map<string, BarisKetergantungan>()
   for (const b of barisSetelah) perKunci.set(b.field_key, b)
 
   return aturanR1(barisSetelah, perKunci)
-      ?? aturanR2(perKunci, kunciWajibHidup)
+      ?? aturanR2(perKunci, setelan.kunciWajibHidup)
       ?? aturanR3(barisSetelah)
+      ?? aturanR4(barisSetelah, setelan.layarVerifikasiBerkasAktif)
 }
