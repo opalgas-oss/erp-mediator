@@ -13,46 +13,23 @@
 // ⛔ NOL kebijakan dibekukan: daftar kolom yang tidak boleh dimatikan DIBACA dari Config
 //   Registry (`register_vendor` / `kolom_wajib_hidup`), bukan ditulis di sini.
 
-/**
- * Tipe kolom yang isinya bisa dibandingkan huruf per huruf.
- * 🔴 RUMAH TUNGGALNYA DI SINI (ATURAN 36) — dialog Sunting mengimpornya, ⛔ tidak menyalinnya.
- * Gambar dan berkas tidak bisa dibandingkan; itulah cacat yang melahirkan hutang #128.
- */
-export const TIPE_BISA_DIBANDINGKAN = ['text', 'textarea']
+//
+// 🔴 DIPECAH S#497 (ATURAN 50/53), SEBABNYA DIUKUR: berkas ini terukur **7.565 B = 73,9%**
+//   plafon kode 10.240 B, dan aturan **R4** yang menunggu di urutan §7.2 butir 2 pasti
+//   menyentuhnya ⇒ dipecah LEBIH DULU, commit tersendiri, ⛔ bukan ditumpuki. Sumbu = ALASAN
+//   BERUBAH (ATURAN 54.2/54.4); pola yang sama dipakai S#496 pada `vendor-register.service.ts`.
+//     bentuk baris & patch  -> `lib/types/form-field-ketergantungan.types.ts`
+//     kosakata + arti HIDUP -> `./form-field-ketergantungan.dasar.ts`
+//     isi tiap aturan       -> `./form-field-ketergantungan.aturan.ts`
+//     di sini               -> `terapkanPatch` + orkestrator yang memanggilnya berurutan
+// ⛔ NOL PERUBAHAN PERILAKU pada pemecahan itu, dan SELURUH jalur impor lama tetap sah
+//   (ATURAN 5): apa pun yang dulu diimpor dari berkas ini masih diekspor dari berkas ini.
 
-/**
- * Tipe kolom yang isinya DIAMBIL dari katalog, bukan diketik pendaftar.
- * 🔴 Kolom bertipe ini TANPA sumber opsi tidak akan pernah muncul di formulir — ia dibuang
- * `saringKolomYangBisaDirender` secara SENYAP. Itulah cacat yang R3 di bawah tangkap.
- */
-export const TIPE_BUTUH_SUMBER_OPSI = ['select', 'multiselect']
+import type { BarisKetergantungan, PatchKetergantungan } from '@/lib/types/form-field-ketergantungan.types'
+import { aturanR1, aturanR2, aturanR3 } from './form-field-ketergantungan.aturan'
 
-/** Bentuk minimum satu baris yang penjagaan ini butuhkan. */
-export interface BarisKetergantungan {
-  id:          string
-  field_key:   string
-  label:       string
-  tipe_input:  string
-  is_visible:  boolean
-  is_required: boolean
-  is_active:   boolean
-  validasi:    Record<string, unknown>
-  /**
-   * Alamat sumber opsi kolom pilihan. ⚠️ SENGAJA OPSIONAL, bukan wajib: `FormFieldRow` memuatnya
-   * sehingga pemanggil boleh mengoper baris utuh apa adanya, sedangkan baris uji yang tidak
-   * mengurusi kolom pilihan tidak perlu menuliskannya. Tidak hadir = diperlakukan kosong.
-   */
-  sumber_opsi?: string | null
-}
-
-/** Patch apa adanya dari muatan PATCH — hanya medan yang berubah yang hadir. */
-export interface PatchKetergantungan {
-  id:           string
-  is_visible?:  boolean
-  is_required?: boolean
-  is_active?:   boolean
-  validasi?:    Record<string, unknown>
-}
+export type { BarisKetergantungan, PatchKetergantungan }
+export { TIPE_BISA_DIBANDINGKAN, TIPE_BUTUH_SUMBER_OPSI } from './form-field-ketergantungan.dasar'
 
 /**
  * Hitung keadaan AKHIR tiap baris sesudah patch diterapkan.
@@ -78,11 +55,6 @@ export function terapkanPatch(
   })
 }
 
-/** Kolom dianggap HIDUP di formulir hanya kalau kedua saklarnya menyala. */
-function hidup(b: BarisKetergantungan): boolean {
-  return b.is_visible && b.is_active
-}
-
 /**
  * Periksa keadaan AKHIR satu formulir. Memulangkan pesan galat untuk SA, atau `null` kalau sehat.
  * Pesannya sengaja menyebut LABEL (yang SA lihat di layar), ⛔ bukan `field_key`, dan menyebut
@@ -95,63 +67,7 @@ export function periksaKetergantungan(
   const perKunci = new Map<string, BarisKetergantungan>()
   for (const b of barisSetelah) perKunci.set(b.field_key, b)
 
-  // R1 — kolom yang masih hidup dan membandingkan dirinya dengan kolom lain.
-  for (const x of barisSetelah) {
-    if (!hidup(x)) continue
-    const target = x.validasi?.harus_sama_dengan
-    if (typeof target !== 'string' || target.length === 0) continue
-
-    const y = perKunci.get(target)
-    if (!y) {
-      return `Kolom "${x.label}" diatur harus sama dengan kolom "${target}", tetapi kolom itu ` +
-             `tidak ada lagi di formulir ini. Buka Sunting pada "${x.label}" lalu pilih ` +
-             `"— tidak dibandingkan —".`
-    }
-    if (!hidup(y)) {
-      return `"${y.label}" tidak boleh dimatikan: kolom "${x.label}" diatur harus sama dengan ` +
-             `kolom itu, dan mematikannya membuat aturan tersebut berhenti berlaku tanpa ` +
-             `pemberitahuan. Nyalakan kembali Tampil dan Aktif pada "${y.label}", atau buka ` +
-             `Sunting pada "${x.label}" lalu pilih "— tidak dibandingkan —".`
-    }
-    if (!TIPE_BISA_DIBANDINGKAN.includes(y.tipe_input)) {
-      return `Kolom "${x.label}" diatur harus sama dengan "${y.label}", padahal "${y.label}" ` +
-             `bertipe ${y.tipe_input} yang isinya tidak bisa dibandingkan huruf per huruf. ` +
-             `Buka Sunting pada "${x.label}" lalu pilih kolom teks.`
-    }
-  }
-
-  // R2 — kolom yang APLIKASI sendiri baca. Daftarnya dari Config Registry, bukan dari kode.
-  for (const kunci of kunciWajibHidup) {
-    const b = perKunci.get(kunci)
-    if (!b) continue
-    if (hidup(b) && b.is_required) continue
-    return `"${b.label}" tidak boleh dimatikan: aplikasi membacanya sendiri di luar formulir ` +
-           `ini. Saklar Tampil, Aktif, dan Wajib pada kolom itu wajib tetap menyala. ` +
-           `Daftarnya diatur di Konfigurasi › Kolom Formulir.`
-  }
-
-  // R3 — kolom pilihan yang hidup tetapi NOL sumber opsi. Lahir S#495 dari hutang #132.
-  //   🔴 SEBABNYA DIUKUR, BUKAN DIRASA: `daftar_petugas_lapangan` berdiri berbulan-bulan dengan
-  //   saklar Tampil MENYALA dan `sumber_opsi` NULL. `getOpsiUntukKolom` tidak pernah memasukkannya
-  //   ke peta, lalu `saringKolomYangBisaDirender` membuangnya — **senyap**. Panel SA menampilkannya
-  //   seolah hidup; pendaftar tidak pernah melihatnya. Itu dashboard yang berbohong, kelas yang
-  //   sama persis dengan hutang #130.
-  //   ⛔ Yang diperiksa HANYA "sumber opsinya kosong sama sekali" — pemeriksaan MURNI, nol I/O.
-  //   Sumber yang TERISI tetapi kebetulan nol opsi SENGAJA tidak diperiksa di sini: memeriksanya
-  //   menuntut panggilan Supabase pada setiap PATCH, dan pesannya terpaksa menyuruh SA mengisi
-  //   sumber opsi lewat medan yang panel ini TIDAK PUNYA — cermin cacat K-492-T8.
-  //   ⚠️ KOREKSI S#495 — baris ini semula meresepkan "ditutup dengan MEMBUAT grup dropdownnya".
-  //   Resep itu DICABUT: diukur S#495, ia salah untuk satu-satunya penghuni kelasnya (`kbli`).
-  //   Sebabnya di `KERJA_SESI_495`; `kbli` kini isian teks berpola, bukan kolom pilihan (#131).
-  for (const b of barisSetelah) {
-    if (!hidup(b)) continue
-    if (!TIPE_BUTUH_SUMBER_OPSI.includes(b.tipe_input)) continue
-    if (typeof b.sumber_opsi === 'string' && b.sumber_opsi.trim().length > 0) continue
-    return `Kolom "${b.label}" bertipe pilihan tetapi belum punya sumber pilihan sama sekali, ` +
-           `jadi ia TIDAK akan muncul di formulir pendaftar walau saklarnya menyala. Sumber ` +
-           `pilihan belum bisa diatur dari panel ini ⇒ matikan saklar Tampil pada "${b.label}", ` +
-           `atau minta pengelola mengubah tipenya menjadi isian teks bebas.`
-  }
-
-  return null
+  return aturanR1(barisSetelah, perKunci)
+      ?? aturanR2(perKunci, kunciWajibHidup)
+      ?? aturanR3(barisSetelah)
 }
